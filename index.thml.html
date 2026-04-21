@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PunchPro — Système de pointage</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117;
+    --bg2: #171b26;
+    --bg3: #1e2336;
+    --border: rgba(255,255,255,0.08);
+    --border2: rgba(255,255,255,0.15);
+    --text: #f0f2f8;
+    --muted: #8892aa;
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --success: #3ecf8e;
+    --warning: #f5a623;
+    --danger: #e5484d;
+    --font-head: 'Syne', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
+    --r: 12px;
+    --r-sm: 8px;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 15px; line-height: 1.6; min-height: 100vh; }
+  #root { min-height: 100vh; }
+
+  /* ── CONFIG MODAL ── */
+  .config-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 1rem; }
+  .config-modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: 20px; padding: 2.5rem; max-width: 560px; width: 100%; }
+  .config-modal h1 { font-family: var(--font-head); font-size: 2rem; font-weight: 800; margin-bottom: 0.5rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .config-modal p { color: var(--muted); margin-bottom: 2rem; font-size: 14px; }
+  .form-group { margin-bottom: 1.25rem; }
+  .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem; }
+  .form-group input { width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.75rem 1rem; color: var(--text); font-family: var(--font-body); font-size: 14px; outline: none; transition: border-color 0.2s; }
+  .form-group input:focus { border-color: var(--accent); }
+  .form-group small { display: block; margin-top: 0.4rem; font-size: 12px; color: var(--muted); }
+  .btn-primary { width: 100%; background: linear-gradient(135deg, var(--accent), var(--accent2)); border: none; border-radius: var(--r-sm); padding: 0.85rem; color: #fff; font-family: var(--font-head); font-size: 15px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; margin-top: 0.5rem; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn-secondary { background: transparent; border: 1px solid var(--border2); border-radius: var(--r-sm); padding: 0.7rem 1.25rem; color: var(--text); font-family: var(--font-body); font-size: 14px; cursor: pointer; transition: background 0.2s; }
+  .btn-secondary:hover { background: var(--bg3); }
+
+  /* ── MAIN LAYOUT ── */
+  .app-wrap { min-height: 100vh; display: flex; flex-direction: column; }
+  .topbar { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 0.75rem 1.5rem; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+  .logo { font-family: var(--font-head); font-size: 1.2rem; font-weight: 800; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .topbar-right { display: flex; align-items: center; gap: 0.75rem; }
+  .view-toggle { display: flex; background: var(--bg3); border-radius: var(--r-sm); padding: 3px; border: 1px solid var(--border); }
+  .view-btn { padding: 0.35rem 0.9rem; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--muted); transition: all 0.2s; }
+  .view-btn.active { background: var(--accent); color: #fff; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .content { flex: 1; padding: 1.5rem; max-width: 1100px; margin: 0 auto; width: 100%; }
+
+  /* ── PUNCH VIEW ── */
+  .punch-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 700px) { .punch-wrap { grid-template-columns: 1fr; } }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--r); padding: 1.5rem; }
+  .card h2 { font-family: var(--font-head); font-size: 1.1rem; font-weight: 700; margin-bottom: 1rem; color: var(--text); }
+  .card h3 { font-family: var(--font-head); font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 1rem; }
+
+  /* PIN PAD */
+  .pin-display { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--r-sm); padding: 1rem 1.5rem; text-align: center; font-family: var(--font-head); font-size: 2rem; letter-spacing: 0.5rem; margin-bottom: 1.25rem; min-height: 64px; display: flex; align-items: center; justify-content: center; color: var(--accent); }
+  .pin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+  .pin-key { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 1rem; font-family: var(--font-head); font-size: 1.2rem; font-weight: 700; color: var(--text); cursor: pointer; text-align: center; transition: all 0.15s; user-select: none; }
+  .pin-key:hover { background: var(--bg); border-color: var(--accent); color: var(--accent); }
+  .pin-key:active { transform: scale(0.95); }
+  .pin-key.delete { color: var(--danger); }
+  .pin-key.zero { grid-column: 2; }
+
+  /* PUNCH RESULT */
+  .punch-result { padding: 1.25rem; border-radius: var(--r-sm); margin-top: 1rem; text-align: center; }
+  .punch-result.success { background: rgba(62,207,142,0.1); border: 1px solid rgba(62,207,142,0.3); }
+  .punch-result.error { background: rgba(229,72,77,0.1); border: 1px solid rgba(229,72,77,0.3); }
+  .punch-result .emp-name { font-family: var(--font-head); font-size: 1.3rem; font-weight: 800; }
+  .punch-result .punch-time { font-size: 13px; color: var(--muted); margin-top: 0.25rem; }
+  .punch-badge { display: inline-block; padding: 0.3rem 0.8rem; border-radius: 20px; font-size: 12px; font-weight: 600; margin-top: 0.5rem; }
+  .punch-badge.in { background: rgba(62,207,142,0.2); color: var(--success); }
+  .punch-badge.out { background: rgba(229,72,77,0.15); color: var(--danger); }
+
+  /* JOBS FROM CALENDAR */
+  .job-item { padding: 0.75rem; background: var(--bg3); border-radius: var(--r-sm); margin-bottom: 0.5rem; border-left: 3px solid var(--accent); }
+  .job-item .job-title { font-weight: 500; font-size: 14px; }
+  .job-item .job-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* LIVE STATUS */
+  .status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.75rem; }
+  .status-emp { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0.75rem 1rem; display: flex; align-items: center; gap: 0.6rem; }
+  .status-emp .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .status-emp .dot.punched-in { background: var(--success); box-shadow: 0 0 5px var(--success); }
+  .status-emp .dot.punched-out { background: var(--muted); }
+  .status-emp .emp-info .name { font-size: 13px; font-weight: 500; }
+  .status-emp .emp-info .since { font-size: 11px; color: var(--muted); }
+
+  /* STATS */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+  .stat-box { background: var(--bg3); border-radius: var(--r-sm); padding: 1rem; text-align: center; }
+  .stat-box .val { font-family: var(--font-head); font-size: 1.6rem; font-weight: 800; color: var(--accent); }
+  .stat-box .lbl { font-size: 11px; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+  /* HISTORY TABLE */
+  .history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .history-table th { text-align: left; padding: 0.5rem 0.75rem; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; border-bottom: 1px solid var(--border); }
+  .history-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
+  .history-table tr:last-child td { border-bottom: none; }
+  .history-table .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+  .badge-in { background: rgba(62,207,142,0.15); color: var(--success); }
+  .badge-out { background: rgba(229,72,77,0.12); color: var(--danger); }
+  .badge-bank { background: rgba(245,166,35,0.15); color: var(--warning); }
+
+  /* TABS */
+  .tabs { display: flex; gap: 0.25rem; margin-bottom: 1.25rem; background: var(--bg3); border-radius: var(--r-sm); padding: 4px; border: 1px solid var(--border); width: fit-content; }
+  .tab { padding: 0.4rem 1rem; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: transparent; color: var(--muted); transition: all 0.2s; }
+  .tab.active { background: var(--accent); color: #fff; }
+
+  /* BANK HOURS */
+  .bank-row { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem; background: var(--bg3); border-radius: var(--r-sm); margin-bottom: 0.5rem; border: 1px solid var(--border); }
+  .bank-row .emp { font-weight: 500; font-size: 14px; }
+  .bank-row .hours { font-family: var(--font-head); font-weight: 700; color: var(--warning); font-size: 1.1rem; }
+  .bank-row .actions { display: flex; gap: 0.5rem; }
+  .btn-sm { padding: 0.3rem 0.75rem; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer; border: none; transition: opacity 0.2s; }
+  .btn-sm:hover { opacity: 0.8; }
+  .btn-approve { background: rgba(62,207,142,0.2); color: var(--success); }
+  .btn-deny { background: rgba(229,72,77,0.15); color: var(--danger); }
+
+  /* BOSS LAYOUT */
+  .boss-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+  @media (max-width: 800px) { .boss-grid { grid-template-columns: 1fr; } }
+  .full-width { grid-column: 1 / -1; }
+
+  /* EMPLOYEE MGMT */
+  .emp-row { display: flex; align-items: center; justify-content: space-between; padding: 0.7rem 0.75rem; background: var(--bg3); border-radius: var(--r-sm); margin-bottom: 0.4rem; }
+  .emp-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--accent2)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 12px; flex-shrink: 0; }
+  .emp-details { flex: 1; margin-left: 0.75rem; }
+  .emp-details .emp-name { font-size: 13px; font-weight: 500; }
+  .emp-details .emp-pin { font-size: 11px; color: var(--muted); font-family: monospace; }
+  .btn-icon { background: transparent; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; color: var(--muted); cursor: pointer; font-size: 12px; transition: all 0.2s; }
+  .btn-icon:hover { border-color: var(--danger); color: var(--danger); }
+
+  /* ADD EMP FORM */
+  .add-form { background: var(--bg3); border-radius: var(--r-sm); padding: 1rem; margin-top: 0.75rem; border: 1px solid var(--border2); }
+  .add-form .row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 0.75rem; }
+  .add-form input { width: 100%; background: var(--bg2); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.75rem; color: var(--text); font-family: var(--font-body); font-size: 13px; outline: none; }
+  .add-form input:focus { border-color: var(--accent); }
+
+  /* NOTIFICATION */
+  .notif { position: fixed; top: 1rem; right: 1rem; background: var(--bg2); border: 1px solid var(--border2); border-radius: var(--r-sm); padding: 0.75rem 1.25rem; font-size: 14px; z-index: 999; max-width: 300px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); animation: slideIn 0.3s ease; }
+  .notif.success { border-color: rgba(62,207,142,0.4); }
+  .notif.warn { border-color: rgba(245,166,35,0.4); }
+  @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+  /* CLOCK */
+  .clock { font-family: var(--font-head); font-size: 2.5rem; font-weight: 800; text-align: center; color: var(--text); margin-bottom: 0.25rem; letter-spacing: -1px; }
+  .date-str { text-align: center; color: var(--muted); font-size: 13px; margin-bottom: 1.5rem; }
+
+  /* WEEK SUMMARY */
+  .week-bar-wrap { margin-bottom: 1rem; }
+  .week-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .week-bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+  .week-bar-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.5s ease; }
+  .week-bar-fill.overtime { background: linear-gradient(90deg, var(--warning), var(--danger)); }
+
+  /* SCROLL */
+  .scroll-area { max-height: 280px; overflow-y: auto; }
+  .scroll-area::-webkit-scrollbar { width: 4px; }
+  .scroll-area::-webkit-scrollbar-track { background: var(--bg3); }
+  .scroll-area::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+// ─── GOOGLE API HELPERS ──────────────────────────────────────────────────────
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.readonly';
+const DISCOVERY_DOCS = [
+  'https://sheets.googleapis.com/$discovery/rest?version=v4',
+  'https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'
+];
+
+let gapiLoaded = false, gisLoaded = false, tokenClient = null;
+
+function loadGAPI() {
+  return new Promise(res => {
+    const s = document.createElement('script');
+    s.src = 'https://apis.google.com/js/api.js';
+    s.onload = () => gapi.load('client', async () => {
+      gapiLoaded = true; res();
+    });
+    document.head.appendChild(s);
+  });
+}
+
+function loadGIS(clientId) {
+  return new Promise(res => {
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.onload = () => { gisLoaded = true; res(); };
+    document.head.appendChild(s);
+  });
+}
+
+async function initGAPI(apiKey) {
+  await gapi.client.init({ apiKey, discoveryDocs: DISCOVERY_DOCS });
+}
+
+function initGIS(clientId, callback) {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId, scope: SCOPES, callback
+  });
+}
+
+// ─── SHEETS HELPERS ──────────────────────────────────────────────────────────
+async function ensureSheetStructure(spreadsheetId) {
+  const sheetNames = ['Employés', 'Pointages', 'HeuresEnBanque'];
+  try {
+    const res = await gapi.client.sheets.spreadsheets.get({ spreadsheetId });
+    const existing = res.result.sheets.map(s => s.properties.title);
+    const reqs = [];
+    for (const name of sheetNames) {
+      if (!existing.includes(name)) reqs.push({ addSheet: { properties: { title: name } } });
+    }
+    if (reqs.length) await gapi.client.sheets.spreadsheets.batchUpdate({ spreadsheetId, resource: { requests: reqs } });
+    // Headers
+    const headers = {
+      'Employés': [['Nom', 'PIN', 'Statut', 'HeuresBanque']],
+      'Pointages': [['Employé', 'Type', 'DateTime', 'DateStr', 'HeureStr', 'Semaine', 'Mois']],
+      'HeuresEnBanque': [['Employé', 'Semaine', 'HeuresSupp', 'Statut', 'DateDemande']]
+    };
+    for (const [sheet, h] of Object.entries(headers)) {
+      const check = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheet}!A1` });
+      if (!check.result.values) {
+        await gapi.client.sheets.spreadsheets.values.update({
+          spreadsheetId, range: `${sheet}!A1`, valueInputOption: 'RAW', resource: { values: h }
+        });
+      }
+    }
+    return true;
+  } catch(e) { console.error(e); return false; }
+}
+
+async function getEmployees(spreadsheetId) {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId, range: 'Employés!A2:D' });
+    return (res.result.values || []).map((r, i) => ({ nom: r[0]||'', pin: r[1]||'', statut: r[2]||'out', heuresBanque: parseFloat(r[3])||0, row: i+2 }));
+  } catch(e) { return []; }
+}
+
+async function saveEmployee(spreadsheetId, emp) {
+  await gapi.client.sheets.spreadsheets.values.append({
+    spreadsheetId, range: 'Employés!A:D', valueInputOption: 'RAW',
+    resource: { values: [[emp.nom, emp.pin, 'out', 0]] }
+  });
+}
+
+async function deleteEmployee(spreadsheetId, rowIndex) {
+  await gapi.client.sheets.spreadsheets.batchUpdate({
+    spreadsheetId, resource: { requests: [{ deleteDimension: { range: { sheetId: await getSheetId(spreadsheetId, 'Employés'), dimension: 'ROWS', startIndex: rowIndex-1, endIndex: rowIndex } } }] }
+  });
+}
+
+async function getSheetId(spreadsheetId, sheetName) {
+  const res = await gapi.client.sheets.spreadsheets.get({ spreadsheetId });
+  const sh = res.result.sheets.find(s => s.properties.title === sheetName);
+  return sh ? sh.properties.sheetId : 0;
+}
+
+async function updateEmployeeStatus(spreadsheetId, rowIndex, statut) {
+  await gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId, range: `Employés!C${rowIndex}`, valueInputOption: 'RAW', resource: { values: [[statut]] }
+  });
+}
+
+async function addPointage(spreadsheetId, emp, type) {
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('fr-CA');
+  const heureStr = now.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' });
+  const semaine = getWeekNumber(now);
+  const mois = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  await gapi.client.sheets.spreadsheets.values.append({
+    spreadsheetId, range: 'Pointages!A:G', valueInputOption: 'RAW',
+    resource: { values: [[emp.nom, type, now.toISOString(), dateStr, heureStr, semaine, mois]] }
+  });
+}
+
+async function getPointages(spreadsheetId, filter = {}) {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId, range: 'Pointages!A2:G' });
+    let rows = (res.result.values || []).map(r => ({ nom: r[0], type: r[1], datetime: r[2], date: r[3], heure: r[4], semaine: r[5], mois: r[6] }));
+    if (filter.nom) rows = rows.filter(r => r.nom === filter.nom);
+    if (filter.semaine) rows = rows.filter(r => r.semaine === filter.semaine);
+    if (filter.mois) rows = rows.filter(r => r.mois === filter.mois);
+    if (filter.date) rows = rows.filter(r => r.date === filter.date);
+    return rows;
+  } catch(e) { return []; }
+}
+
+async function getHeuresBanque(spreadsheetId) {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({ spreadsheetId, range: 'HeuresEnBanque!A2:E' });
+    return (res.result.values || []).map((r,i) => ({ nom: r[0], semaine: r[1], heures: parseFloat(r[2])||0, statut: r[3]||'pending', date: r[4], row: i+2 }));
+  } catch(e) { return []; }
+}
+
+async function addHeuresBanque(spreadsheetId, nom, semaine, heures) {
+  const now = new Date().toLocaleDateString('fr-CA');
+  await gapi.client.sheets.spreadsheets.values.append({
+    spreadsheetId, range: 'HeuresEnBanque!A:E', valueInputOption: 'RAW',
+    resource: { values: [[nom, semaine, heures, 'pending', now]] }
+  });
+}
+
+async function updateBanqueStatus(spreadsheetId, rowIndex, statut) {
+  await gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId, range: `HeuresEnBanque!D${rowIndex}`, valueInputOption: 'RAW', resource: { values: [[statut]] }
+  });
+}
+
+async function getCalendarJobs(calendarId = 'primary') {
+  try {
+    const now = new Date();
+    const end = new Date(now); end.setDate(end.getDate() + 7);
+    const res = await gapi.client.calendar.events.list({
+      calendarId, timeMin: now.toISOString(), timeMax: end.toISOString(), singleEvents: true, orderBy: 'startTime', maxResults: 10
+    });
+    return (res.result.items || []).map(e => ({
+      id: e.id, title: e.summary||'Sans titre',
+      start: e.start.dateTime || e.start.date,
+      end: e.end.dateTime || e.end.date,
+      location: e.location || ''
+    }));
+  } catch(e) { return []; }
+}
+
+function getWeekNumber(d) {
+  const date = new Date(d); date.setHours(0,0,0,0);
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7);
+  const week1 = new Date(date.getFullYear(), 0, 4);
+  return `${date.getFullYear()}-S${String(1 + Math.round(((date.getTime()-week1.getTime())/86400000 - 3+(week1.getDay()+6)%7)/7)).padStart(2,'0')}`;
+}
+
+function calcHeures(pointages) {
+  let total = 0, lastIn = null;
+  for (const p of pointages) {
+    if (p.type === 'in') lastIn = new Date(p.datetime);
+    else if (p.type === 'out' && lastIn) { total += (new Date(p.datetime) - lastIn) / 3600000; lastIn = null; }
+  }
+  return Math.round(total * 10) / 10;
+}
+
+// ─── COMPONENTS ──────────────────────────────────────────────────────────────
+
+function Clock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 1000); return () => clearInterval(t); }, []);
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  return (
+    <>
+      <div className="clock">{h}:{m}:{s}</div>
+      <div className="date-str">{days[now.getDay()]} {now.getDate()} {months[now.getMonth()]} {now.getFullYear()}</div>
+    </>
+  );
+}
+
+function PinPad({ onSubmit }) {
+  const [pin, setPin] = useState('');
+  const keys = ['1','2','3','4','5','6','7','8','9','←','0','✓'];
+  const handleKey = (k) => {
+    if (k === '←') setPin(p => p.slice(0,-1));
+    else if (k === '✓') { if (pin.length >= 4) { onSubmit(pin); setPin(''); } }
+    else if (pin.length < 6) setPin(p => p + k);
+  };
+  return (
+    <div>
+      <div className="pin-display">{pin ? '●'.repeat(pin.length) : <span style={{color:'var(--muted)',fontSize:'1rem'}}>Entrez votre PIN</span>}</div>
+      <div className="pin-grid">
+        {keys.map((k,i) => (
+          <div key={i} className={`pin-key ${k==='←'?'delete':''} ${k==='0'?'zero':''}`} style={k==='✓'?{background:'linear-gradient(135deg,var(--accent),var(--accent2))',color:'#fff',border:'none'}:{}} onClick={() => handleKey(k)}>{k}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Notif({ msg, type, onClose }) {
+  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, []);
+  return <div className={`notif ${type}`} onClick={onClose}>{msg}</div>;
+}
+
+// ─── BOSS VIEW ──────────────────────────────────────────────────────────────
+function BossView({ spreadsheetId, refreshKey, notify }) {
+  const [tab, setTab] = useState('dashboard');
+  const [employees, setEmployees] = useState([]);
+  const [pointages, setPointages] = useState([]);
+  const [banque, setBanque] = useState([]);
+  const [jobs, setJobs] = useState([]);
+  const [showAddEmp, setShowAddEmp] = useState(false);
+  const [newEmp, setNewEmp] = useState({ nom: '', pin: '' });
+  const [selEmp, setSelEmp] = useState('');
+  const [histTab, setHistTab] = useState('semaine');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+      const [emps, pts, bq, js] = await Promise.all([
+        getEmployees(spreadsheetId), getPointages(spreadsheetId), getHeuresBanque(spreadsheetId), getCalendarJobs()
+      ]);
+      setEmployees(emps); setPointages(pts); setBanque(bq); setJobs(js);
+      setLoading(false);
+    }
+    load();
+  }, [refreshKey]);
+
+  const punchedIn = employees.filter(e => e.statut === 'in');
+  const todayStr = new Date().toLocaleDateString('fr-CA');
+  const curWeek = getWeekNumber(new Date());
+  const curMois = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+
+  const pendingBanque = banque.filter(b => b.statut === 'pending');
+
+  async function handleAddEmp() {
+    if (!newEmp.nom || !newEmp.pin) return;
+    await saveEmployee(spreadsheetId, newEmp);
+    notify('Employé ajouté!', 'success');
+    setNewEmp({ nom: '', pin: '' }); setShowAddEmp(false);
+  }
+
+  async function handleDelEmp(emp) {
+    if (!confirm(`Supprimer ${emp.nom}?`)) return;
+    await deleteEmployee(spreadsheetId, emp.row);
+    notify('Employé supprimé', 'success');
+  }
+
+  async function handleBanque(b, statut) {
+    await updateBanqueStatus(spreadsheetId, b.row, statut);
+    if (statut === 'approved') notify(`${b.heures}h en banque approuvées pour ${b.nom}`, 'success');
+    else notify(`Demande refusée`, 'success');
+  }
+
+  function getHistoire() {
+    let pts = selEmp ? pointages.filter(p => p.nom === selEmp) : pointages;
+    if (histTab === 'today') pts = pts.filter(p => p.date === todayStr);
+    else if (histTab === 'semaine') pts = pts.filter(p => p.semaine === curWeek);
+    else if (histTab === 'mois') pts = pts.filter(p => p.mois === curMois);
+    return pts.slice().reverse().slice(0, 50);
+  }
+
+  const totalHeuresToday = (() => {
+    let t = 0;
+    for (const emp of employees) {
+      const pts = pointages.filter(p => p.nom === emp.nom && p.date === todayStr);
+      t += calcHeures(pts);
+    }
+    return Math.round(t * 10) / 10;
+  })();
+
+  const totalHeursSemaine = (() => {
+    let t = 0;
+    for (const emp of employees) {
+      const pts = pointages.filter(p => p.nom === emp.nom && p.semaine === curWeek);
+      t += calcHeures(pts);
+    }
+    return Math.round(t * 10) / 10;
+  })();
+
+  if (loading) return <div style={{textAlign:'center',color:'var(--muted)',padding:'3rem'}}>Chargement...</div>;
+
+  return (
+    <div>
+      <div className="tabs">
+        {[['dashboard','Dashboard'],['employes','Employés'],['historique','Historique'],['banque','Heures en banque'],['jobs','Jobs']].map(([k,l]) => (
+          <div key={k} className={`tab ${tab===k?'active':''}`} onClick={() => setTab(k)}>{l} {k==='banque'&&pendingBanque.length?<span style={{background:'var(--warning)',color:'#000',borderRadius:'10px',padding:'1px 6px',fontSize:'11px',marginLeft:'4px'}}>{pendingBanque.length}</span>:null}</div>
+        ))}
+      </div>
+
+      {tab === 'dashboard' && (
+        <div className="boss-grid">
+          <div className="card">
+            <h3>Aperçu aujourd'hui</h3>
+            <div className="stats-grid" style={{marginBottom:'1rem'}}>
+              <div className="stat-box"><div className="val" style={{color:'var(--success)'}}>{punchedIn.length}</div><div className="lbl">Sur place</div></div>
+              <div className="stat-box"><div className="val">{totalHeuresToday}h</div><div className="lbl">Heures aujourd'hui</div></div>
+              <div className="stat-box"><div className="val">{totalHeursSemaine}h</div><div className="lbl">Heures semaine</div></div>
+            </div>
+            <h3>Statut en temps réel</h3>
+            <div className="status-grid">
+              {employees.map(emp => (
+                <div key={emp.nom} className="status-emp">
+                  <div className={`dot ${emp.statut === 'in' ? 'punched-in' : 'punched-out'}`}></div>
+                  <div className="emp-info">
+                    <div className="name">{emp.nom}</div>
+                    <div className="since">{emp.statut === 'in' ? 'Punché ✓' : 'Absent'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card">
+            <h3>Prochains jobs (Google Agenda)</h3>
+            <div className="scroll-area">
+              {jobs.length === 0 ? <div style={{color:'var(--muted)',fontSize:'13px'}}>Aucun événement cette semaine</div> :
+              jobs.map(j => (
+                <div key={j.id} className="job-item">
+                  <div className="job-title">{j.title}</div>
+                  <div className="job-meta">{new Date(j.start).toLocaleDateString('fr-CA')} · {j.location||'Aucun lieu'}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card full-width">
+            <h3>Heures cette semaine par employé</h3>
+            {employees.map(emp => {
+              const pts = pointages.filter(p => p.nom === emp.nom && p.semaine === curWeek);
+              const h = calcHeures(pts); const pct = Math.min(100, (h/40)*100);
+              return (
+                <div key={emp.nom} className="week-bar-wrap">
+                  <div className="week-bar-label"><span>{emp.nom}</span><span style={{color: h>40?'var(--warning)':'var(--muted)'}}>{h}h / 40h {h>40?`(+${Math.round((h-40)*10)/10}h supp)`:''}</span></div>
+                  <div className="week-bar"><div className={`week-bar-fill ${h>40?'overtime':''}`} style={{width:`${pct}%`}}></div></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab === 'employes' && (
+        <div className="card" style={{maxWidth:500}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+            <h2>Mes employés</h2>
+            <button className="btn-secondary" onClick={() => setShowAddEmp(!showAddEmp)}>+ Ajouter</button>
+          </div>
+          {showAddEmp && (
+            <div className="add-form">
+              <div className="row">
+                <input placeholder="Nom complet" value={newEmp.nom} onChange={e => setNewEmp(p=>({...p,nom:e.target.value}))} />
+                <input placeholder="PIN (4 chiffres)" value={newEmp.pin} maxLength={6} onChange={e => setNewEmp(p=>({...p,pin:e.target.value}))} />
+              </div>
+              <button className="btn-primary" style={{marginTop:0}} onClick={handleAddEmp}>Sauvegarder</button>
+            </div>
+          )}
+          <div style={{marginTop:'1rem'}}>
+            {employees.map(emp => (
+              <div key={emp.nom} className="emp-row">
+                <div className="emp-avatar">{emp.nom.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)}</div>
+                <div className="emp-details">
+                  <div className="emp-name">{emp.nom}</div>
+                  <div className="emp-pin">PIN: {emp.pin} · Banque: {emp.heuresBanque}h</div>
+                </div>
+                <span className={`badge ${emp.statut==='in'?'badge-in':'badge-out'}`}>{emp.statut==='in'?'Présent':'Absent'}</span>
+                <button className="btn-icon" style={{marginLeft:'0.5rem'}} onClick={() => handleDelEmp(emp)}>✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {tab === 'historique' && (
+        <div className="card">
+          <div style={{display:'flex',gap:'1rem',alignItems:'center',flexWrap:'wrap',marginBottom:'1rem'}}>
+            <select value={selEmp} onChange={e => setSelEmp(e.target.value)} style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:'6px',padding:'0.4rem 0.75rem',color:'var(--text)',fontSize:'13px'}}>
+              <option value="">Tous les employés</option>
+              {employees.map(e => <option key={e.nom} value={e.nom}>{e.nom}</option>)}
+            </select>
+            <div className="tabs" style={{margin:0}}>
+              {[['today',"Auj."],['semaine','Semaine'],['mois','Mois'],['all','Tout']].map(([k,l]) => (
+                <div key={k} className={`tab ${histTab===k?'active':''}`} onClick={() => setHistTab(k)}>{l}</div>
+              ))}
+            </div>
+          </div>
+          <div className="scroll-area" style={{maxHeight:400}}>
+            <table className="history-table">
+              <thead><tr><th>Employé</th><th>Type</th><th>Date</th><th>Heure</th><th>Semaine</th></tr></thead>
+              <tbody>
+                {getHistoire().map((p,i) => (
+                  <tr key={i}>
+                    <td>{p.nom}</td>
+                    <td><span className={`badge ${p.type==='in'?'badge-in':'badge-out'}`}>{p.type==='in'?'Entrée':'Sortie'}</span></td>
+                    <td>{p.date}</td><td>{p.heure}</td><td>{p.semaine}</td>
+                  </tr>
+                ))}
+                {getHistoire().length === 0 && <tr><td colSpan={5} style={{textAlign:'center',color:'var(--muted)'}}>Aucun pointage</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'banque' && (
+        <div>
+          {pendingBanque.length > 0 && (
+            <div className="card" style={{marginBottom:'1rem'}}>
+              <h2>⚠️ Demandes en attente</h2>
+              {pendingBanque.map(b => (
+                <div key={b.row} className="bank-row">
+                  <div>
+                    <div className="emp">{b.nom}</div>
+                    <div style={{fontSize:'12px',color:'var(--muted)'}}>Semaine {b.semaine} · {b.date}</div>
+                  </div>
+                  <div className="hours">+{b.heures}h</div>
+                  <div className="actions">
+                    <button className="btn-sm btn-approve" onClick={() => handleBanque(b,'approved')}>✓ Approuver</button>
+                    <button className="btn-sm btn-deny" onClick={() => handleBanque(b,'denied')}>✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="card">
+            <h2>Heures en banque — Historique</h2>
+            <table className="history-table">
+              <thead><tr><th>Employé</th><th>Semaine</th><th>Heures</th><th>Statut</th><th>Date</th></tr></thead>
+              <tbody>
+                {banque.map((b,i) => (
+                  <tr key={i}>
+                    <td>{b.nom}</td><td>{b.semaine}</td><td>+{b.heures}h</td>
+                    <td><span className={`badge ${b.statut==='approved'?'badge-in':b.statut==='pending'?'badge-bank':'badge-out'}`}>{b.statut==='approved'?'Approuvé':b.statut==='pending'?'En attente':'Refusé'}</span></td>
+                    <td>{b.date}</td>
+                  </tr>
+                ))}
+                {banque.length === 0 && <tr><td colSpan={5} style={{textAlign:'center',color:'var(--muted)'}}>Aucune heure en banque</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'jobs' && (
+        <div className="card">
+          <h2>Jobs — Google Agenda (7 prochains jours)</h2>
+          {jobs.length === 0 ? <div style={{color:'var(--muted)',padding:'1rem 0'}}>Aucun événement trouvé dans votre agenda principal.</div> :
+          jobs.map(j => (
+            <div key={j.id} className="job-item" style={{marginBottom:'0.75rem'}}>
+              <div className="job-title" style={{fontSize:'15px'}}>{j.title}</div>
+              <div className="job-meta">{new Date(j.start).toLocaleDateString('fr-CA')} · {j.location||'Aucun lieu'}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── EMPLOYEE VIEW ───────────────────────────────────────────────────────────
+function EmployeeView({ spreadsheetId, employees, refreshKey, notify, onRefresh }) {
+  const [punchResult, setPunchResult] = useState(null);
+  const [empData, setEmpData] = useState(null);
+  const [pointages, setPointages] = useState([]);
+  const [histTab, setHistTab] = useState('today');
+  const [banque, setBanque] = useState([]);
+  const [jobs, setJobs] = useState([]);
+
+  useEffect(() => {
+    if (empData) loadEmpData(empData.nom);
+  }, [refreshKey, empData?.nom]);
+
+  useEffect(() => { getCalendarJobs().then(setJobs); }, []);
+
+  async function loadEmpData(nom) {
+    const [pts, bq] = await Promise.all([
+      getPointages(spreadsheetId, { nom }), getHeuresBanque(spreadsheetId)
+    ]);
+    setPointages(pts);
+    setBanque(bq.filter(b => b.nom === nom));
+  }
+
+  async function handlePunch(pin) {
+    const emp = employees.find(e => e.pin === pin);
+    if (!emp) { setPunchResult({ error: true, msg: 'PIN invalide' }); setTimeout(() => setPunchResult(null), 2500); return; }
+    const type = emp.statut === 'in' ? 'out' : 'in';
+    await addPointage(spreadsheetId, emp, type);
+    await updateEmployeeStatus(spreadsheetId, emp.row, type);
+
+    // Check end-of-week overtime
+    const curWeek = getWeekNumber(new Date());
+    const semPts = await getPointages(spreadsheetId, { nom: emp.nom, semaine: curWeek });
+    const totalH = calcHeures([...semPts]);
+    if (type === 'out' && totalH >= 40) {
+      const extra = Math.round((totalH - 40) * 10) / 10;
+      if (extra > 0) {
+        const existing = await getHeuresBanque(spreadsheetId);
+        const alreadySent = existing.some(b => b.nom === emp.nom && b.semaine === curWeek);
+        if (!alreadySent) {
+          await addHeuresBanque(spreadsheetId, emp.nom, curWeek, extra);
+          notify(`${emp.nom} a ${extra}h en banque cette semaine — demande envoyée au boss!`, 'warn');
+        }
+      }
+    }
+
+    setPunchResult({ nom: emp.nom, type, heure: new Date().toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' }) });
+    setEmpData(emp);
+    await loadEmpData(emp.nom);
+    onRefresh();
+    setTimeout(() => setPunchResult(null), 4000);
+  }
+
+  const todayStr = new Date().toLocaleDateString('fr-CA');
+  const curWeek = getWeekNumber(new Date());
+  const curMois = `${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}`;
+
+  function getFilteredPts() {
+    if (histTab === 'today') return pointages.filter(p => p.date === todayStr);
+    if (histTab === 'semaine') return pointages.filter(p => p.semaine === curWeek);
+    if (histTab === 'mois') return pointages.filter(p => p.mois === curMois);
+    return pointages;
+  }
+
+  const heuresAujourd = calcHeures(pointages.filter(p => p.date === todayStr));
+  const heuresSemaine = calcHeures(pointages.filter(p => p.semaine === curWeek));
+  const heuresMois = calcHeures(pointages.filter(p => p.mois === curMois));
+  const bankTotal = banque.filter(b => b.statut === 'approved').reduce((s, b) => s + b.heures, 0);
+
+  return (
+    <div className="punch-wrap">
+      <div className="card">
+        <Clock />
+        <PinPad onSubmit={handlePunch} />
+        {punchResult && (
+          <div className={`punch-result ${punchResult.error ? 'error' : 'success'}`}>
+            {punchResult.error ? <div style={{color:'var(--danger)'}}>{punchResult.msg}</div> : (
+              <>
+                <div className="emp-name">{punchResult.nom}</div>
+                <div><span className={`punch-badge ${punchResult.type}`}>{punchResult.type==='in'?'✓ Pointage IN':'✓ Pointage OUT'}</span></div>
+                <div className="punch-time">{punchResult.heure}</div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{display:'flex',flexDirection:'column',gap:'1rem'}}>
+        {empData && (
+          <div className="card">
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1rem'}}>
+              <div>
+                <div style={{fontFamily:'var(--font-head)',fontSize:'1.1rem',fontWeight:700}}>{empData.nom}</div>
+                <div style={{fontSize:'12px',color:'var(--muted)'}}>
+                  <span className={`badge ${empData.statut==='in'?'badge-in':'badge-out'}`}>{empData.statut==='in'?'En cours':'Absent'}</span>
+                  {bankTotal > 0 && <span className="badge badge-bank" style={{marginLeft:'0.5rem'}}>🏦 {bankTotal}h banque</span>}
+                </div>
+              </div>
+            </div>
+            <div className="stats-grid">
+              <div className="stat-box"><div className="val">{heuresAujourd}h</div><div className="lbl">Aujourd'hui</div></div>
+              <div className="stat-box"><div className="val">{heuresSemaine}h</div><div className="lbl">Semaine</div></div>
+              <div className="stat-box"><div className="val">{heuresMois}h</div><div className="lbl">Mois</div></div>
+            </div>
+            <div style={{marginTop:'1rem'}}>
+              <h3>Historique</h3>
+              <div className="tabs">
+                {[['today',"Auj."],['semaine','Semaine'],['mois','Mois'],['all','Tout']].map(([k,l]) => (
+                  <div key={k} className={`tab ${histTab===k?'active':''}`} onClick={() => setHistTab(k)}>{l}</div>
+                ))}
+              </div>
+              <div className="scroll-area" style={{maxHeight:160}}>
+                <table className="history-table">
+                  <thead><tr><th>Type</th><th>Date</th><th>Heure</th></tr></thead>
+                  <tbody>
+                    {getFilteredPts().slice().reverse().slice(0,20).map((p,i) => (
+                      <tr key={i}>
+                        <td><span className={`badge ${p.type==='in'?'badge-in':'badge-out'}`}>{p.type==='in'?'Entrée':'Sortie'}</span></td>
+                        <td>{p.date}</td><td>{p.heure}</td>
+                      </tr>
+                    ))}
+                    {getFilteredPts().length === 0 && <tr><td colSpan={3} style={{color:'var(--muted)',textAlign:'center'}}>Aucun pointage</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="card">
+          <h3>Jobs cette semaine</h3>
+          <div className="scroll-area">
+            {jobs.length === 0 ? <div style={{color:'var(--muted)',fontSize:'13px'}}>Aucun job planifié</div> :
+            jobs.map(j => (
+              <div key={j.id} className="job-item">
+                <div className="job-title">{j.title}</div>
+                <div className="job-meta">{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})} · {j.location||'Aucun lieu'}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CONFIG MODAL ────────────────────────────────────────────────────────────
+function ConfigModal({ onSave }) {
+  const [cfg, setCfg] = useState({ apiKey: '', clientId: '', spreadsheetId: '' });
+  return (
+    <div className="config-overlay">
+      <div className="config-modal">
+        <h1>PunchPro</h1>
+        <p>Configuration initiale — entrez vos credentials Google API pour connecter l'app à votre Google Sheets et Agenda.</p>
+        <div className="form-group">
+          <label>Google API Key</label>
+          <input placeholder="AIzaSy..." value={cfg.apiKey} onChange={e => setCfg(p=>({...p,apiKey:e.target.value}))} />
+          <small>Console Google Cloud → APIs &amp; Services → Credentials → API Key</small>
+        </div>
+        <div className="form-group">
+          <label>OAuth 2.0 Client ID</label>
+          <input placeholder="123...apps.googleusercontent.com" value={cfg.clientId} onChange={e => setCfg(p=>({...p,clientId:e.target.value}))} />
+          <small>Console Google Cloud → OAuth 2.0 Client IDs (Web application)</small>
+        </div>
+        <div className="form-group">
+          <label>Google Spreadsheet ID</label>
+          <input placeholder="144Ub45GKP6bvMEd2Zda9JIhfwYpkKMNm" value={cfg.spreadsheetId} onChange={e => setCfg(p=>({...p,spreadsheetId:e.target.value}))} />
+          <small>L'ID dans l'URL de ton Sheet: docs.google.com/spreadsheets/d/<strong>[ID]</strong>/edit</small>
+        </div>
+        <button className="btn-primary" onClick={() => cfg.apiKey && cfg.clientId && cfg.spreadsheetId && onSave(cfg)}>
+          Connecter l'app →
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── MAIN APP ────────────────────────────────────────────────────────────────
+function App() {
+  const [cfg, setCfg] = useState(() => { try { return JSON.parse(localStorage.getItem('pp_cfg')||'null'); } catch { return null; } });
+  const [authed, setAuthed] = useState(false);
+  const [view, setView] = useState('employee');
+  const [employees, setEmployees] = useState([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [notif, setNotif] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+
+  function notify(msg, type='success') {
+    setNotif({ msg, type, id: Date.now() });
+  }
+  function onRefresh() { setRefreshKey(k => k+1); }
+
+  async function initAll(config) {
+    setAuthLoading(true);
+    try {
+      await loadGAPI();
+      await initGAPI(config.apiKey);
+      await loadGIS(config.clientId);
+      initGIS(config.clientId, async (resp) => {
+        if (resp.error) { setAuthLoading(false); return; }
+        await ensureSheetStructure(config.spreadsheetId);
+        const emps = await getEmployees(config.spreadsheetId);
+        setEmployees(emps);
+        setAuthed(true);
+        setAuthLoading(false);
+        notify('Connecté à Google Sheets & Agenda!', 'success');
+        onRefresh();
+      });
+    } catch(e) { console.error(e); setAuthLoading(false); }
+  }
+
+  useEffect(() => { if (cfg) initAll(cfg); }, []);
+
+  function handleSaveCfg(config) {
+    localStorage.setItem('pp_cfg', JSON.stringify(config));
+    setCfg(config);
+    initAll(config);
+  }
+
+  function handleAuth() {
+    if (tokenClient) tokenClient.requestAccessToken({ prompt: '' });
+    else notify('Initialisation...', 'success');
+  }
+
+  // Reload employees when refresh
+  useEffect(() => {
+    if (authed && cfg) {
+      getEmployees(cfg.spreadsheetId).then(setEmployees);
+    }
+  }, [refreshKey, authed]);
+
+  return (
+    <div className="app-wrap">
+      {!cfg && <ConfigModal onSave={handleSaveCfg} />}
+      {notif && <Notif key={notif.id} msg={notif.msg} type={notif.type} onClose={() => setNotif(null)} />}
+      <div className="topbar">
+        <div className="logo">PunchPro</div>
+        <div className="topbar-right">
+          {authed ? (
+            <>
+              <div className="status-dot"></div>
+              <div className="view-toggle">
+                <div className={`view-btn ${view==='employee'?'active':''}`} onClick={() => setView('employee')}>Employés</div>
+                <div className={`view-btn ${view==='boss'?'active':''}`} onClick={() => setView('boss')}>Boss</div>
+              </div>
+              <button className="btn-secondary" style={{fontSize:'12px',padding:'0.35rem 0.75rem'}} onClick={onRefresh}>↻ Refresh</button>
+            </>
+          ) : (
+            <button className="btn-primary" style={{width:'auto',padding:'0.5rem 1.25rem',fontSize:'13px'}} onClick={handleAuth} disabled={authLoading}>
+              {authLoading ? 'Connexion...' : '🔐 Connexion Google'}
+            </button>
+          )}
+          <button className="btn-secondary" style={{fontSize:'12px',padding:'0.35rem 0.75rem'}} onClick={() => { if(confirm('Reset config?')) { localStorage.removeItem('pp_cfg'); setCfg(null); setAuthed(false); } }}>⚙</button>
+        </div>
+      </div>
+      <div className="content">
+        {!authed ? (
+          <div style={{textAlign:'center',padding:'4rem 0'}}>
+            <div style={{fontSize:'3rem',marginBottom:'1rem'}}>👋</div>
+            <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,marginBottom:'0.5rem'}}>Bienvenue sur PunchPro</div>
+            <div style={{color:'var(--muted)',marginBottom:'2rem',maxWidth:400,margin:'0 auto 2rem'}}>Clique sur "Connexion Google" pour autoriser l'accès à ton Google Sheets et Agenda.</div>
+            <button className="btn-primary" style={{width:'auto',padding:'0.85rem 2rem',margin:'0 auto'}} onClick={handleAuth} disabled={authLoading}>
+              {authLoading ? 'Connexion en cours...' : '🔐 Se connecter avec Google'}
+            </button>
+          </div>
+        ) : view === 'boss' ? (
+          <BossView spreadsheetId={cfg.spreadsheetId} refreshKey={refreshKey} notify={notify} />
+        ) : (
+          <EmployeeView spreadsheetId={cfg.spreadsheetId} employees={employees} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
