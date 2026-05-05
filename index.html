@@ -843,14 +843,14 @@ function App() {
   }
   function onRefresh() { setRefreshKey(k => k+1); }
 
-  async function initAll(config) {
-    setAuthLoading(true);
+  // Charge les scripts Google silencieusement sans demander d'auth
+  async function initLibs(config) {
     try {
       await loadGAPI();
       await initGAPI(config.apiKey);
       await loadGIS(config.clientId);
       initGIS(config.clientId, async (resp) => {
-        if (resp.error) { setAuthLoading(false); return; }
+        if (resp.error) { setAuthLoading(false); notify('Erreur de connexion Google', 'warn'); return; }
         await ensureSheetStructure(config.spreadsheetId);
         const emps = await getEmployees(config.spreadsheetId);
         setEmployees(emps);
@@ -862,17 +862,20 @@ function App() {
     } catch(e) { console.error(e); setAuthLoading(false); }
   }
 
-  useEffect(() => { if (cfg) initAll(cfg); }, []);
+  // Charge les libs au démarrage SANS déclencher le popup OAuth
+  useEffect(() => { if (cfg) initLibs(cfg); }, []);
 
   function handleSaveCfg(config) {
     localStorage.setItem('pp_cfg', JSON.stringify(config));
     setCfg(config);
-    initAll(config);
+    initLibs(config);
   }
 
+  // Le popup OAuth se déclenche SEULEMENT quand l'utilisateur clique
   function handleAuth() {
-    if (tokenClient) tokenClient.requestAccessToken({ prompt: '' });
-    else notify('Initialisation...', 'success');
+    if (!tokenClient) { notify('Initialisation en cours, réessaie dans 2 secondes...', 'warn'); return; }
+    setAuthLoading(true);
+    tokenClient.requestAccessToken({ prompt: 'consent' });
   }
 
   // Reload employees when refresh
@@ -913,7 +916,7 @@ function App() {
             <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,marginBottom:'0.5rem'}}>Bienvenue sur PunchPro</div>
             <div style={{color:'var(--muted)',marginBottom:'2rem',maxWidth:400,margin:'0 auto 2rem'}}>Clique sur "Connexion Google" pour autoriser l'accès à ton Google Sheets et Agenda.</div>
             <button className="btn-primary" style={{width:'auto',padding:'0.85rem 2rem',margin:'0 auto'}} onClick={handleAuth} disabled={authLoading}>
-              {authLoading ? 'Connexion en cours...' : '🔐 Se connecter avec Google'}
+              {authLoading ? '⏳ Connexion en cours...' : '🔐 Se connecter avec Google'}
             </button>
           </div>
         ) : view === 'boss' ? (
