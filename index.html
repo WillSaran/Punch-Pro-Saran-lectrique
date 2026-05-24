@@ -1,0 +1,2184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PunchPro — Saran Électrique</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--bg4:#21262d;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e6edf3;--muted:#7d8590;
+  --accent:#2f81f7;--accent2:#6e40c9;
+  --success:#3fb950;--warning:#d29922;--danger:#f85149;
+  --font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif;
+  --topbar-h:50px;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;line-height:1.5;min-height:100vh;-webkit-font-smoothing:antialiased}
+#root{min-height:100vh}
+button{font-family:var(--font-body)}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;z-index:1000;padding:1rem;overflow-y:auto}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:1.75rem;max-width:500px;width:100%}
+.modal-title{font-family:var(--font-head);font-size:1.4rem;font-weight:800;margin-bottom:0.2rem;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.modal-sub{color:var(--muted);font-size:12px;margin-bottom:1.25rem}
+.fg{margin-bottom:0.85rem}
+.fg label{display:block;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem}
+.fg input,.fg select,.fg textarea{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.75rem;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none;transition:border-color 0.2s}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--accent)}
+.fg small{display:block;margin-top:0.28rem;font-size:11px;color:var(--muted)}
+.btn-p{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;padding:0.7rem;color:#fff;font-family:var(--font-head);font-size:14px;font-weight:700;cursor:pointer;transition:opacity 0.2s;margin-top:0.4rem}
+.btn-p:hover{opacity:0.88}.btn-p:disabled{opacity:0.4;cursor:not-allowed}
+.btn-s{background:transparent;border:1px solid var(--border2);border-radius:8px;padding:0.5rem 0.9rem;color:var(--text);font-size:12px;cursor:pointer;transition:background 0.2s;white-space:nowrap}
+.btn-s:hover{background:var(--bg3)}
+.app-wrap{min-height:100vh;display:flex;flex-direction:column}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1rem;height:var(--topbar-h);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.logo{font-family:var(--font-head);font-size:0.95rem;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.topbar-left{display:flex;align-items:center;gap:0.5rem}
+.topbar-right{display:flex;align-items:center;gap:0.4rem}
+.back-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.28rem 0.65rem;color:var(--muted);cursor:pointer;font-size:12px;transition:all 0.2s}
+.back-btn:hover{color:var(--text);border-color:var(--border2)}
+.nav-tabs{display:flex;background:var(--bg3);border-radius:8px;padding:2px;border:1px solid var(--border)}
+.nav-tab{padding:0.26rem 0.7rem;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;background:transparent;color:var(--muted);transition:all 0.2s;white-space:nowrap;position:relative}
+.nav-tab.active{background:var(--accent);color:#fff}
+.nav-tab.admin.active{background:linear-gradient(135deg,#b7860b,var(--warning));color:#000}
+.nav-badge{position:absolute;top:-5px;right:-5px;background:var(--danger);color:#fff;border-radius:10px;font-size:9px;font-weight:700;padding:1px 5px;min-width:16px;text-align:center}
+.online-badge{display:flex;align-items:center;gap:4px;background:rgba(63,185,80,0.1);border:1px solid rgba(63,185,80,0.2);border-radius:20px;padding:0.2rem 0.55rem;font-size:11px;color:var(--success)}
+.online-dot{width:5px;height:5px;border-radius:50%;background:var(--success);box-shadow:0 0 4px var(--success)}
+.settings-wrap{position:relative}
+.settings-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.28rem 0.6rem;color:var(--muted);cursor:pointer;font-size:13px;transition:all 0.2s}
+.settings-btn:hover{border-color:var(--border2);color:var(--text)}
+.settings-menu{position:absolute;top:calc(100% + 6px);right:0;background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:0.4rem;min-width:230px;box-shadow:0 8px 32px rgba(0,0,0,0.6);z-index:200}
+.si{display:flex;align-items:center;gap:0.55rem;padding:0.45rem 0.6rem;border-radius:6px;cursor:pointer;font-size:12px;color:var(--text);transition:background 0.15s;white-space:nowrap;border:none;background:transparent;width:100%;text-align:left}
+.si:hover{background:var(--bg3)}.si.danger:hover{background:rgba(248,81,73,0.1);color:var(--danger)}
+.si .ico{font-size:13px;width:16px;text-align:center}
+.sdiv{height:1px;background:var(--border);margin:0.28rem 0}
+.ssec{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;padding:0.28rem 0.6rem 0.12rem}
+.acct-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.6rem;margin:0.28rem 0}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.6rem}
+.toggle{width:34px;height:18px;border-radius:9px;background:var(--bg3);border:1px solid var(--border2);position:relative;cursor:pointer;transition:background 0.2s}
+.toggle.on{background:var(--accent)}
+.toggle-knob{width:12px;height:12px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left 0.2s}
+.toggle.on .toggle-knob{left:18px}
+.content{flex:1;padding:1.1rem;max-width:1080px;margin:0 auto;width:100%}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.1rem}
+.card-title{font-family:var(--font-head);font-size:0.92rem;font-weight:700;margin-bottom:0.75rem}
+.csec{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);margin-bottom:0.5rem}
+.welcome{min-height:calc(100vh - var(--topbar-h));display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:1.25rem 1rem;text-align:center;overflow-y:auto}
+.w-time{font-family:var(--font-head);font-size:3rem;font-weight:800;letter-spacing:-2px;line-height:1;margin-top:0.5rem}
+.w-date{font-size:12px;color:var(--muted);margin:0.25rem 0 1.5rem}
+.emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.45rem;max-width:600px;width:100%}
+.emp-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:0.85rem 0.5rem;cursor:pointer;transition:all 0.18s;text-align:center;-webkit-tap-highlight-color:transparent}
+.emp-card:active{transform:scale(0.96)}
+.emp-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,0.35)}
+.emp-av-lg{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;margin:0 auto 0.4rem}
+.mode-wrap{max-width:360px;width:100%;text-align:left}
+.mode-btn{display:flex;align-items:center;gap:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;cursor:pointer;transition:all 0.18s;width:100%;margin-bottom:0.45rem;-webkit-tap-highlight-color:transparent}
+.mode-btn:hover,.mode-btn:active{border-color:var(--accent);background:rgba(47,129,247,0.06)}
+.mode-icon{font-size:1.5rem;flex-shrink:0}
+.mode-title{font-family:var(--font-head);font-weight:700;font-size:0.88rem}
+.mode-desc{font-size:11px;color:var(--muted);margin-top:2px}
+.job-wrap{max-width:520px;width:100%;text-align:left}
+.job-btn{display:flex;align-items:center;gap:8px;background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:0.65rem 0.85rem;cursor:pointer;transition:all 0.18s;width:100%;margin-bottom:0.32rem;-webkit-tap-highlight-color:transparent}
+.job-btn:active{transform:scale(0.98)}
+.job-color-bar{width:4px;min-height:34px;border-radius:2px;flex-shrink:0;align-self:stretch}
+.dur-wrap{max-width:380px;width:100%;text-align:left}
+.dur-section{background:var(--bg3);border-radius:10px;padding:0.8rem;margin-bottom:0.6rem}
+.dur-row{display:flex;align-items:center;justify-content:center;gap:0.65rem;margin-top:0.4rem}
+.dur-btn{width:36px;height:36px;border-radius:8px;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.dur-btn:active{transform:scale(0.9);border-color:var(--accent)}
+.dur-val{font-family:var(--font-head);font-size:1.6rem;font-weight:800;color:var(--accent);min-width:44px;text-align:center}
+.travel-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:0.35rem;margin-top:0.4rem}
+.travel-opt{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0.45rem;cursor:pointer;text-align:center;transition:all 0.15s;-webkit-tap-highlight-color:transparent}
+.travel-opt:active{transform:scale(0.94)}
+.travel-opt.sel{border-color:var(--accent);background:rgba(47,129,247,0.12)}
+.travel-opt .tv{font-family:var(--font-head);font-size:0.95rem;font-weight:800;color:var(--accent)}
+.travel-opt .tl{font-size:9px;color:var(--muted)}
+.teammate-list{display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.4rem}
+.teammate-chip{display:flex;align-items:center;gap:5px;padding:0.3rem 0.65rem;border-radius:20px;border:1px solid var(--border);cursor:pointer;font-size:12px;transition:all 0.15s;-webkit-tap-highlight-color:transparent}
+.files-wrap{margin-bottom:0.6rem}
+.file-list{display:flex;flex-direction:column;gap:0.35rem;margin-bottom:0.45rem}
+.file-item{display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:0.4rem 0.65rem}
+.file-add-row{display:flex;gap:0.4rem}
+.file-zone{flex:1;border:1px dashed var(--border2);border-radius:8px;padding:0.6rem;text-align:center;cursor:pointer;transition:all 0.2s;-webkit-tap-highlight-color:transparent}
+.file-zone:active{border-color:var(--accent);background:rgba(47,129,247,0.05)}
+.pin-wrap{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.1rem;max-width:300px;width:100%}
+.pin-display{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:0.6rem 1rem;text-align:center;font-family:var(--font-head);font-size:1.6rem;letter-spacing:0.5rem;margin-bottom:0.75rem;min-height:50px;display:flex;align-items:center;justify-content:center;color:var(--accent)}
+.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0.38rem}
+.pin-key{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.75rem;font-family:var(--font-head);font-size:1.1rem;font-weight:700;color:var(--text);cursor:pointer;text-align:center;transition:all 0.12s;user-select:none;-webkit-tap-highlight-color:transparent}
+.pin-key:active{transform:scale(0.92);background:var(--bg4)}
+.pin-key.del{color:var(--danger)}.pin-key.zero{grid-column:2}
+.punch-result{padding:1.1rem;border-radius:14px;text-align:center;max-width:320px;width:100%;animation:popIn 0.25s ease}
+.punch-result.ok{background:rgba(63,185,80,0.07);border:1px solid rgba(63,185,80,0.3)}
+.punch-result.err{background:rgba(248,81,73,0.07);border:1px solid rgba(248,81,73,0.25)}
+@keyframes popIn{from{transform:scale(0.92);opacity:0}to{transform:scale(1);opacity:1}}
+.pbadge{display:inline-block;padding:0.25rem 0.75rem;border-radius:20px;font-size:11px;font-weight:700;margin:0.28rem 0.15rem}
+.pbadge.in{background:rgba(63,185,80,0.18);color:var(--success)}
+.pbadge.out{background:rgba(248,81,73,0.14);color:var(--danger)}
+.pbadge.confirm{background:rgba(110,64,201,0.18);color:#a78bfa}
+.pbadge.travel{background:rgba(210,153,34,0.18);color:var(--warning)}
+.punch-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:0.28rem;margin-top:0.65rem}
+.ps{background:var(--bg3);border-radius:8px;padding:0.4rem;text-align:center}
+.ps .v{font-family:var(--font-head);font-size:0.85rem;font-weight:800;color:var(--accent)}
+.ps .l{font-size:9px;color:var(--muted);text-transform:uppercase;margin-top:1px}
+.hist-line{background:var(--bg3);border-radius:10px;padding:0.7rem 0.85rem;margin-bottom:0.4rem;border-left:3px solid var(--border2)}
+.hist-line.has-ot{border-left-color:var(--warning)}
+.hist-header{display:flex;align-items:flex-start;justify-content:space-between;gap:0.5rem}
+.hist-actions{display:flex;gap:0.35rem;margin-top:0.5rem;flex-wrap:wrap}
+.hist-edit-form{background:var(--bg2);border-radius:8px;padding:0.75rem;margin-top:0.5rem;border:1px solid var(--border2)}
+.emp-av{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:9px;color:#fff;flex-shrink:0}
+.job-item{padding:0.6rem 0.75rem;background:var(--bg3);border-radius:8px;margin-bottom:0.32rem;border-left:3px solid var(--accent)}
+.achip{display:inline-flex;align-items:center;gap:3px;padding:2px 6px;border-radius:8px;font-size:10px;font-weight:600;margin-top:4px;margin-right:3px}
+.status-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:0.4rem}
+.semp{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.65rem;display:flex;align-items:center;gap:0.4rem}
+.stats-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem}
+@media(min-width:500px){.stats-grid{grid-template-columns:repeat(4,1fr)}}
+.stat-box{background:var(--bg3);border-radius:8px;padding:0.7rem;text-align:center}
+.stat-box .val{font-family:var(--font-head);font-size:1.2rem;font-weight:800;color:var(--accent)}
+.stat-box .lbl{font-size:10px;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:0.05em}
+.htable{width:100%;border-collapse:collapse;font-size:12px}
+.htable th{text-align:left;padding:0.38rem 0.55rem;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:0.07em;border-bottom:1px solid var(--border)}
+.htable td{padding:0.42rem 0.55rem;border-bottom:1px solid var(--border);vertical-align:middle}
+.htable tr:last-child td{border-bottom:none}
+.badge{display:inline-block;padding:2px 6px;border-radius:7px;font-size:10px;font-weight:600}
+.badge-in{background:rgba(63,185,80,0.15);color:var(--success)}
+.badge-out{background:rgba(248,81,73,0.12);color:var(--danger)}
+.badge-pend{background:rgba(210,153,34,0.15);color:var(--warning)}
+.badge-conf{background:rgba(110,64,201,0.15);color:#a78bfa}
+.tabs{display:flex;gap:0.18rem;margin-bottom:0.75rem;background:var(--bg3);border-radius:8px;padding:3px;border:1px solid var(--border);width:fit-content;flex-wrap:wrap}
+.tab{padding:0.28rem 0.72rem;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--muted);transition:all 0.2s}
+.tab.active{background:var(--accent);color:#fff}
+.bank-row{display:flex;align-items:center;justify-content:space-between;padding:0.55rem 0.65rem;background:var(--bg3);border-radius:8px;margin-bottom:0.32rem;border:1px solid var(--border);gap:0.45rem;flex-wrap:wrap}
+.btn-sm{padding:0.2rem 0.55rem;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;border:none;transition:opacity 0.2s}
+.btn-sm:hover{opacity:0.8}
+.btn-approve{background:rgba(63,185,80,0.18);color:var(--success)}
+.btn-deny{background:rgba(248,81,73,0.14);color:var(--danger)}
+.admin-grid{display:grid;grid-template-columns:1fr;gap:1rem}
+@media(min-width:700px){.admin-grid{grid-template-columns:1fr 1fr}}
+.full-w{grid-column:1/-1}
+.emp-row{display:flex;align-items:center;padding:0.5rem 0.6rem;background:var(--bg3);border-radius:8px;margin-bottom:0.28rem;gap:0.4rem}
+.btn-icon{background:transparent;border:1px solid var(--border);border-radius:6px;padding:3px 6px;color:var(--muted);cursor:pointer;font-size:11px;transition:all 0.2s}
+.btn-icon:hover{border-color:var(--danger);color:var(--danger)}
+.btn-icon.edit:hover{border-color:var(--accent);color:var(--accent)}
+.add-form{background:var(--bg3);border-radius:8px;padding:0.75rem;margin-top:0.55rem;border:1px solid var(--border2)}
+.add-form input{width:100%;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.55rem;color:var(--text);font-family:var(--font-body);font-size:12px;outline:none;margin-bottom:0.4rem}
+.add-form input:focus{border-color:var(--accent)}
+.fl{display:block;font-size:10px;color:var(--muted);margin-bottom:3px}
+.color-row{display:flex;gap:5px;flex-wrap:wrap;margin-top:4px}
+.cswatch{width:18px;height:18px;border-radius:50%;cursor:pointer;border:2px solid transparent;transition:transform 0.12s}
+.cswatch:hover{transform:scale(1.25)}
+.wbar-wrap{margin-bottom:0.72rem}
+.wbar-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:3px;align-items:center}
+.wbar{height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.wbar-fill{height:100%;border-radius:3px;transition:width 0.5s ease}
+.wbar-fill.ot{background:linear-gradient(90deg,var(--warning),var(--danger)) !important}
+.notif{position:fixed;top:1rem;right:1rem;background:var(--bg2);border:1px solid var(--border2);border-radius:8px;padding:0.55rem 0.9rem;font-size:12px;z-index:999;max-width:280px;box-shadow:0 4px 20px rgba(0,0,0,0.5);animation:slideIn 0.3s ease;cursor:pointer}
+.notif.success{border-color:rgba(63,185,80,0.4)}.notif.warn{border-color:rgba(210,153,34,0.4)}.notif.err{border-color:rgba(248,81,73,0.4)}
+@keyframes slideIn{from{transform:translateX(18px);opacity:0}to{transform:translateX(0);opacity:1}}
+.scroll-area{overflow-y:auto}
+.scroll-area::-webkit-scrollbar{width:3px}
+.scroll-area::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+.note-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.48rem 0.65rem;color:var(--text);font-family:var(--font-body);font-size:12px;outline:none;resize:none}
+.note-input:focus{border-color:var(--accent)}
+.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.75rem}
+.msg-card{background:var(--bg3);border-radius:8px;padding:0.65rem 0.75rem;margin-bottom:0.38rem;border-left:3px solid var(--warning)}
+.msg-card.read{border-left-color:var(--border);opacity:0.6}
+/* TIME INPUT */
+.time-input-wrap{display:flex;align-items:center;gap:0.5rem;background:var(--bg3);border-radius:10px;padding:0.85rem;margin-bottom:0.6rem}
+.time-input{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.75rem;color:var(--accent);font-family:var(--font-head);font-size:1.4rem;font-weight:800;width:90px;text-align:center;outline:none}
+.time-input:focus{border-color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const APP_VERSION='v30';
+const { useState, useEffect, useRef } = React;
+
+const EMP_COLORS=['#2f81f7','#6e40c9','#3fb950','#d29922','#f85149','#0ea5e9','#ec4899','#a855f7','#22c55e','#f97316'];
+const GCAL_COLORS={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000','':'#2f81f7'};
+const BOSS_EMAILS=['info@saranelectrique.com'];
+const SCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email';
+const DISCOVERY=['https://sheets.googleapis.com/$discovery/rest?version=v4','https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'];
+let tokenClient=null;
+
+// ── UTILS ────────────────────────────────────────────────────────────────────
+function getWeek(d){
+  const dt=new Date(d);dt.setHours(0,0,0,0);dt.setDate(dt.getDate()+3-(dt.getDay()+6)%7);
+  const w1=new Date(dt.getFullYear(),0,4);
+  return dt.getFullYear()+'-S'+String(1+Math.round(((dt-w1)/86400000-3+(w1.getDay()+6)%7)/7)).padStart(2,'0');
+}
+function getMois(d){const dt=new Date(d);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');}
+function localDateStr(d){const dt=d||new Date();return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
+function parseDriveFolders(raw){
+  if(!raw)return[];
+  return raw.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean).map(s=>{
+    const idx=s.indexOf(':');if(idx<0)return null;
+    const name=s.slice(0,idx).trim();const id=s.slice(idx+1).trim();
+    return(name&&id)?{name,id}:null;
+  }).filter(Boolean);
+}
+function calcH(pts){
+  let t=0,last=null;
+  for(const p of pts){
+    if(p.type==='in')last=new Date(p.datetime);
+    else if(p.type==='out'&&last){t+=(new Date(p.datetime)-last)/3600000;last=null;}
+    else if(p.type==='confirm')t+=p.heures||0;
+  }
+  return Math.round(t*10)/10;
+}
+function combinePts(pts){
+  const lines=[];const processed=new Set();
+  const sorted=[...pts].sort((a,b)=>new Date(a.datetime)-new Date(b.datetime));
+  for(const p of sorted){
+    if(processed.has(p.row))continue;
+    if(p.type==='confirm'){
+      processed.add(p.row);
+      lines.push({date:p.date,type:'confirm',job:p.job,jobColor:p.jobColor,heures:p.heures,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:null,semaine:p.semaine,nom:p.nom,ot:Math.max(0,Math.round((p.heures-8)*10)/10)});
+    }else if(p.type==='in'){
+      processed.add(p.row);
+      const matchOut=sorted.find(o=>o.type==='out'&&o.nom===p.nom&&!processed.has(o.row)&&new Date(o.datetime)>new Date(p.datetime));
+      let h=null,ot=0;
+      if(matchOut){processed.add(matchOut.row);h=Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/360000)/10;ot=Math.max(0,Math.round((h-8)*10)/10);}
+      lines.push({date:p.date,type:'pair',heure:p.heure,heureOut:matchOut?matchOut.heure:'',job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:matchOut?matchOut.row:null,semaine:p.semaine,nom:p.nom,ot});
+    }
+  }
+  return lines.sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+function rgba(hex,a){
+  try{const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return 'rgba('+r+','+g+','+b+','+(a||0.15)+')';}
+  catch{return 'rgba(47,129,247,'+(a||0.15)+')';}
+}
+function colorDist(c1,c2){
+  try{const r1=parseInt(c1.slice(1,3),16),g1=parseInt(c1.slice(3,5),16),b1=parseInt(c1.slice(5,7),16),r2=parseInt(c2.slice(1,3),16),g2=parseInt(c2.slice(3,5),16),b2=parseInt(c2.slice(5,7),16);return Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);}
+  catch{return 999;}
+}
+function useClock(){
+  const [now,setNow]=useState(new Date());
+  useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
+  return now;
+}
+function nowTimeStr(){const n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+
+// ── CALENDAR ──────────────────────────────────────────────────────────────────
+async function getCalendarJobs(calendarIds){
+  const now=new Date(),end=new Date(now);end.setDate(end.getDate()+14);
+  const all=[];
+  for(const calId of (calendarIds||['primary'])){
+    try{
+      const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:now.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:30});
+      (res.result.items||[]).forEach(e=>{
+        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
+      });
+    }catch(e){console.error(e);}
+  }
+  return all.sort((a,b)=>new Date(a.start)-new Date(b.start));
+}
+function hexToGcalColorId(hex){
+  const gcal={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000'};
+  let best='7',bestDist=99999;
+  for(const [id,h] of Object.entries(gcal)){
+    try{const r1=parseInt(hex.slice(1,3),16),g1=parseInt(hex.slice(3,5),16),b1=parseInt(hex.slice(5,7),16),r2=parseInt(h.slice(1,3),16),g2=parseInt(h.slice(3,5),16),b2=parseInt(h.slice(5,7),16);const d=Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);if(d<bestDist){bestDist=d;best=id;}}catch{}
+  }
+  return best;
+}
+async function createCalendarEvent(calId,title,date,empColor){
+  try{
+    const s=new Date(date+'T07:00:00'),e=new Date(date+'T17:00:00');
+    const resource={summary:title,start:{dateTime:s.toISOString()},end:{dateTime:e.toISOString()}};
+    if(empColor)resource.colorId=hexToGcalColorId(empColor);
+    return (await gapi.client.calendar.events.insert({calendarId:calId||'primary',resource})).result;
+  }catch(e){console.error(e);return null;}
+}
+async function attachFileToCalendarEvent(calendarId,eventId,fileId,fileName,mimeType){
+  if(!calendarId||!eventId||!fileId)return false;
+  try{
+    const token=gapi.client.getToken();
+    if(!token||!token.access_token)return false;
+    const calUrl='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calendarId)+'/events/'+encodeURIComponent(eventId);
+    const evtRes=await fetch(calUrl,{headers:{'Authorization':'Bearer '+token.access_token}});
+    const evt=await evtRes.json();
+    const existing=evt.attachments||[];
+    const newAtt={fileId,title:fileName||fileId,mimeType:mimeType||'application/octet-stream',fileUrl:'https://drive.google.com/file/d/'+fileId+'/view'};
+    await fetch(calUrl+'?supportsAttachments=true',{method:'PATCH',headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},body:JSON.stringify({attachments:[...existing,newAtt]})});
+    return true;
+  }catch(e){console.error(e);return false;}
+}
+async function findCalendarEventByTitle(calendarIds,title){
+  const now=new Date();
+  const start=new Date(now);start.setDate(start.getDate()-2);
+  const end=new Date(now);end.setDate(end.getDate()+2);
+  for(const calId of (calendarIds||['primary'])){
+    try{
+      const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,q:title,maxResults:5});
+      const match=(res.result.items||[]).find(e=>(e.summary||'').toLowerCase()===title.toLowerCase());
+      if(match)return{calendarId:calId,eventId:match.id};
+    }catch(e){console.error(e);}
+  }
+  return null;
+}
+
+
+function loadScript(src){return new Promise(res=>{const s=document.createElement('script');s.src=src;s.onload=res;document.head.appendChild(s);});}
+async function initLibs(cfg,onToken){
+  await loadScript('https://apis.google.com/js/api.js');
+  await new Promise(res=>gapi.load('client',res));
+  await gapi.client.init({apiKey:cfg.apiKey,discoveryDocs:DISCOVERY});
+  await loadScript('https://accounts.google.com/gsi/client');
+  tokenClient=google.accounts.oauth2.initTokenClient({client_id:cfg.clientId,scope:SCOPES,callback:onToken});
+}
+async function getUserEmail(){
+  try{
+    const token=gapi.client.getToken();
+    if(token&&token.access_token){
+      const r=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{'Authorization':'Bearer '+token.access_token}});
+      const d=await r.json();
+      if(d.email)return d.email.toLowerCase().trim();
+    }
+  }catch(e){console.error(e);}
+  return '';
+}
+
+// ── SHEETS ────────────────────────────────────────────────────────────────────
+async function ensureStructure(sid){
+  try{
+    const res=await gapi.client.sheets.spreadsheets.get({spreadsheetId:sid});
+    const ex=res.result.sheets.map(s=>s.properties.title);
+    const needed=['Employés','Pointages','HeuresEnBanque','Messages','Projets'];
+    const reqs=needed.filter(n=>!ex.includes(n)).map(n=>({addSheet:{properties:{title:n}}}));
+    if(reqs.length)await gapi.client.sheets.spreadsheets.batchUpdate({spreadsheetId:sid,resource:{requests:reqs}});
+    const headers={
+      'Employés':[['Nom','PIN','Statut','HeuresBanque','Couleur','Code','Email','Telephone']],
+      'Pointages':[['Employé','Type','DateTime','DateStr','HeureStr','Semaine','Mois','Job','CouleurJob','DéplacementMin','HeuresConfirmées','Note','FichiersURL','Coéquipiers']],
+      'HeuresEnBanque':[['Employé','Semaine','HeuresSupp','Statut','DateDemande']],
+      'Projets':[['NomProjet','NumPO','Categorie','Statut','DateDebut','Description','JobsAssociees']],
+      'Messages':[['De','Action','Détails','DateTime','Lu']]
+    };
+    for(const [sheet,h] of Object.entries(headers)){
+      // Always update headers to ensure all columns are present
+      await gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId:sid,range:sheet+'!A1',valueInputOption:'RAW',resource:{values:h}
+      });
+    }
+  }catch(e){console.error(e);}
+}
+async function getEmployees(sid){
+  try{
+    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:H'});
+    return (res.result.values||[]).map((r,i)=>({
+      nom:r[0]||'',pin:r[1]||'',statut:r[2]||'out',heuresBanque:parseFloat(r[3])||0,
+      couleur:r[4]||EMP_COLORS[i%EMP_COLORS.length],code:r[5]||(r[0]||'??').substring(0,2).toUpperCase(),
+      email:r[6]||'',telephone:r[7]||'',row:i+2
+    }));
+  }catch{return[];}
+}
+async function saveEmployee(sid,emp){
+  await gapi.client.sheets.spreadsheets.values.append({
+    spreadsheetId:sid,range:'Employés!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
+    resource:{values:[[emp.nom,emp.pin,'out',emp.heuresBanque||0,emp.couleur,emp.code,emp.email||'',emp.telephone||'']]}
+  });
+}
+async function updateEmployee(sid,row,emp){
+  await gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId:sid,range:'Employés!A'+row+':H'+row,valueInputOption:'RAW',
+    resource:{values:[[emp.nom,emp.pin,emp.statut,emp.heuresBanque,emp.couleur,emp.code,emp.email||'',emp.telephone||'']]}
+  });
+}
+async function deleteEmployee(sid,row){
+  const r=await gapi.client.sheets.spreadsheets.get({spreadsheetId:sid});
+  const sh=r.result.sheets.find(s=>s.properties.title==='Employés');
+  await gapi.client.sheets.spreadsheets.batchUpdate({spreadsheetId:sid,resource:{requests:[{deleteDimension:{range:{sheetId:sh?sh.properties.sheetId:0,dimension:'ROWS',startIndex:row-1,endIndex:row}}}]}});
+}
+async function updateStatus(sid,row,statut){
+  await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'Employés!C'+row,valueInputOption:'RAW',resource:{values:[[statut]]}});
+}
+async function addPointage(sid,emp,type,data){
+  const now=new Date();
+  let dt=now;
+  if(data.customTime){
+    // Build date using local time parts to avoid UTC timezone shift
+    const parts=data.customTime.split(':');
+    dt=new Date(now.getFullYear(),now.getMonth(),now.getDate(),parseInt(parts[0])||0,parseInt(parts[1])||0,0,0);
+  }
+  // Format date as YYYY-MM-DD in local time
+  const dateStr=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
+  const heureStr=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
+  await gapi.client.sheets.spreadsheets.values.append({
+    spreadsheetId:sid,range:'Pointages!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
+    resource:{values:[[
+      emp.nom,type,dt.toISOString(),
+      dateStr,heureStr,
+      getWeek(dt),getMois(dt),
+      data.job||'',data.jobColor||'',
+      data.deplacement||0,data.heures||0,
+      data.note||'',
+      (data.fichiersURL||[]).join(' | '),
+      (data.coequipiers||[]).join(', ')
+    ]]}
+  });
+}
+async function getPointages(sid,filter){
+  const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Pointages!A2:N'});
+  let rows=(res.result.values||[]).map((r,i)=>({
+    nom:r[0],type:r[1],datetime:r[2],date:r[3],heure:r[4],semaine:r[5],mois:r[6],
+    job:r[7]||'',jobColor:r[8]||'',deplacement:parseFloat(r[9])||0,
+    heures:parseFloat(r[10])||0,note:r[11]||'',
+    fichiersURL:(r[12]||'').split(' | ').filter(Boolean),
+    coequipiers:(r[13]||'').split(', ').filter(Boolean),
+    row:i+2
+  }));
+  if(filter&&filter.nom)rows=rows.filter(r=>r.nom===filter.nom);
+  if(filter&&filter.semaine)rows=rows.filter(r=>r.semaine===filter.semaine);
+  if(filter&&filter.mois)rows=rows.filter(r=>r.mois===filter.mois);
+  if(filter&&filter.date)rows=rows.filter(r=>r.date===filter.date);
+  return rows;
+}
+async function updatePointageData(sid,row,data){
+  await gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId:sid,range:'Pointages!H'+row+':N'+row,valueInputOption:'RAW',
+    resource:{values:[[data.job||'',data.jobColor||'',data.deplacement||0,data.heures||0,data.note||'',(data.fichiersURL||[]).join(' | '),(data.coequipiers||[]).join(', ')]]}
+  });
+}
+async function updatePointageFichiers(sid,row,urls){
+  await gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId:sid,range:'Pointages!M'+row,valueInputOption:'RAW',
+    resource:{values:[[(urls||[]).join(' | ')]]}
+  });
+}
+async function deletePointageRow(sid,row){
+  const r=await gapi.client.sheets.spreadsheets.get({spreadsheetId:sid});
+  const sh=r.result.sheets.find(s=>s.properties.title==='Pointages');
+  await gapi.client.sheets.spreadsheets.batchUpdate({spreadsheetId:sid,resource:{requests:[{deleteDimension:{range:{sheetId:sh?sh.properties.sheetId:0,dimension:'ROWS',startIndex:row-1,endIndex:row}}}]}});
+}
+async function getHeuresBanque(sid){
+  try{
+    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'HeuresEnBanque!A2:E'});
+    return (res.result.values||[]).map((r,i)=>({nom:r[0],semaine:r[1],heures:parseFloat(r[2])||0,statut:r[3]||'pending',date:r[4],row:i+2}));
+  }catch{return[];}
+}
+async function addHeuresBanque(sid,nom,semaine,heures){
+  await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'HeuresEnBanque!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',resource:{values:[[nom,semaine,heures,'pending',localDateStr()]]}});
+}
+async function updateBanqueStatus(sid,row,statut){
+  await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'HeuresEnBanque!D'+row,valueInputOption:'RAW',resource:{values:[[statut]]}});
+}
+async function addMessage(sid,de,action,details){
+  await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'Messages!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',resource:{values:[[de,action,details,new Date().toISOString(),'non']]}});
+}
+async function getMessages(sid){
+  try{
+    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Messages!A2:E'});
+    return (res.result.values||[]).map((r,i)=>({de:r[0],action:r[1],details:r[2],datetime:r[3],lu:r[4]==='oui',row:i+2})).reverse();
+  }catch{return[];}
+}
+async function markMessageRead(sid,row){
+  await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'Messages!E'+row,valueInputOption:'RAW',resource:{values:[['oui']]}});
+}
+
+// ── DRIVE ────────────────────────────────────────────────────────────────────
+// Upload vers un dossier Drive spécifique, retourne {id, webViewLink, name}
+async function uploadToDrive(file, empName, jobName, folderId){
+  try{
+    const token=gapi.client.getToken();
+    if(!token||!token.access_token)return{url:'',id:''};
+    const fname=empName+'_'+(jobName||'punch')+'_'+new Date().toLocaleDateString('fr-CA')+'_'+file.name;
+    const meta={name:fname,mimeType:file.type};
+    if(folderId)meta.parents=[folderId];
+    const form=new FormData();
+    form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
+    form.append('file',file);
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,name',{method:'POST',headers:{'Authorization':'Bearer '+token.access_token},body:form});
+    const data=await res.json();
+    if(data.id){await fetch('https://www.googleapis.com/drive/v3/files/'+data.id+'/permissions',{method:'POST',headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'anyone'})});}
+    return {url:data.webViewLink||('https://drive.google.com/file/d/'+data.id+'/view'),id:data.id||'',name:fname};
+  }catch(e){console.error(e);return{url:'',id:''};}}
+
+function Notif({msg,type,onClose}){
+  useEffect(()=>{const t=setTimeout(onClose,4500);return()=>clearTimeout(t);},[]);
+  return <div className={'notif '+type} onClick={onClose}>{msg}</div>;
+}
+
+function DriveUploader({empName,jobName,calendarIds,calEventTitle,folders,onUploaded,notify}){
+  const [selFolder,setSelFolder]=useState(null);
+  const [uploading,setUploading]=useState(false);
+  const fileRef=useRef();const camRef=useRef();
+  const hasFolders=folders&&folders.length>0;
+  async function handleFile(f){
+    if(!f)return;
+    if(hasFolders&&!selFolder){notify('Choisis un dossier d\'abord!','warn');return;}
+    setUploading(true);notify('⏳ Upload...','warn');
+    const folderId=selFolder?selFolder.id:null;
+    const result=await uploadToDrive(f,empName,jobName,folderId);
+    setUploading(false);
+    if(!result.url){notify('Erreur upload Drive','err');return;}
+    let calAttached=false;
+    if(calEventTitle&&calendarIds&&result.id){
+      const evtRef=await findCalendarEventByTitle(calendarIds,calEventTitle);
+      if(evtRef)calAttached=await attachFileToCalendarEvent(evtRef.calendarId,evtRef.eventId,result.id,result.name,f.type);
+    }
+    onUploaded(result.url);
+    const msg='📎 '+(selFolder?'['+selFolder.name+'] ':'')+'Uploadé!'+(calAttached?' · 📅 Agenda!':'');
+    notify(msg,'success');
+  }
+  return(
+    <div>
+      {hasFolders&&(
+        <div style={{marginBottom:'0.5rem'}}>
+          <div className="csec">Dossier Drive</div>
+          <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap'}}>
+            {folders.map(f=>(
+              <div key={f.id} onClick={()=>setSelFolder(selFolder&&selFolder.id===f.id?null:f)}
+                style={{padding:'0.25rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',fontWeight:selFolder&&selFolder.id===f.id?700:400,background:selFolder&&selFolder.id===f.id?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(selFolder&&selFolder.id===f.id?'var(--accent)':'var(--border)'),color:selFolder&&selFolder.id===f.id?'var(--accent)':'var(--muted)'}}>
+                {f.name}
+              </div>
+            ))}
+          </div>
+          {!selFolder&&<div style={{fontSize:10,color:'var(--warning)',marginTop:3}}>Sélectionne un dossier avant d'envoyer</div>}
+        </div>
+      )}
+      <div className="file-add-row">
+        <div className="file-zone" style={hasFolders&&!selFolder?{opacity:0.4,cursor:'not-allowed'}:{}} onClick={()=>{if(!hasFolders||selFolder)fileRef.current&&fileRef.current.click();}}>
+          <div>{uploading?'⏳':'📎'}</div><div style={{fontSize:10,color:'var(--muted)'}}>Fichier</div>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:'none'}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';}}/>
+        </div>
+        <div className="file-zone" style={hasFolders&&!selFolder?{opacity:0.4,cursor:'not-allowed'}:{}} onClick={()=>{if(!hasFolders||selFolder)camRef.current&&camRef.current.click();}}>
+          <div>{uploading?'⏳':'📷'}</div><div style={{fontSize:10,color:'var(--muted)'}}>Photo</div>
+          <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';}}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinPad({empName,empCouleur,empCode,label,onSubmit,onCancel}){
+  const [pin,setPin]=useState('');
+  const keys=['1','2','3','4','5','6','7','8','9','←','0','✓'];
+  const handle=k=>{
+    if(k==='←')setPin(p=>p.slice(0,-1));
+    else if(k==='✓'){if(pin.length===4){onSubmit(pin);setPin('');}}
+    else if(pin.length<4){const next=pin+k;setPin(next);if(next.length===4){onSubmit(next);setPin('');}}
+  };
+  return(
+    <div className="pin-wrap">
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:'0.75rem'}}>
+        <div className="emp-av" style={{background:empCouleur,width:34,height:34,fontSize:11}}>{empCode}</div>
+        <div><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.9rem'}}>{empName}</div>{label&&<div style={{fontSize:11,color:'var(--muted)'}}>{label}</div>}</div>
+      </div>
+      <div className="pin-display">{pin?'●'.repeat(pin.length):<span style={{color:'var(--muted)',fontSize:'0.75rem'}}>Entrez votre PIN (4 chiffres)</span>}</div>
+      <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:'0.5rem'}}>
+        {[0,1,2,3].map(i=>(<div key={i} style={{width:12,height:12,borderRadius:'50%',background:i<pin.length?'var(--accent)':'var(--border2)',transition:'background 0.15s'}}></div>))}
+      </div>
+      <div className="pin-grid">
+        {keys.map((k,i)=>(
+          <div key={i} className={'pin-key'+(k==='←'?' del':'')+(k==='0'?' zero':'')}
+            style={k==='✓'?{background:'linear-gradient(135deg,var(--accent),var(--accent2))',color:'#fff',border:'none',opacity:pin.length===4?1:0.4}:{}}
+            onClick={()=>handle(k)}>{k}</div>
+        ))}
+      </div>
+      {onCancel&&<button style={{background:'none',border:'none',color:'var(--muted)',fontSize:11,cursor:'pointer',marginTop:'0.55rem',textAlign:'center',width:'100%',textDecoration:'underline'}} onClick={onCancel}>← Retour</button>}
+    </div>
+  );
+}
+
+function TimePicker({label,value,onChange,color}){
+  const parts=(value||'00:00').split(':');
+  const h=parseInt(parts[0])||0;const m=parseInt(parts[1])||0;
+  const quart=Math.round(m/15)*15%60;const ampm=h>=12?'PM':'AM';const h12=h===0?12:h>12?h-12:h;
+  function setH(newH){onChange(String(newH).padStart(2,'0')+':'+String(quart).padStart(2,'0'));}
+  function setQ(q){onChange(String(h).padStart(2,'0')+':'+String(q).padStart(2,'0'));}
+  function toggleAMPM(){setH(h>=12?h-12:h+12);}
+  const c=color||'var(--accent)';
+  return(
+    <div style={{background:'var(--bg3)',borderRadius:12,padding:'0.75rem',marginBottom:'0.65rem'}}>
+      <div className="csec">{label}</div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'0.6rem'}}>
+        <div style={{textAlign:'center'}}>
+          <button className="dur-btn" onClick={()=>setH(h===0?23:h-1)}>−</button>
+          <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,color:c,margin:'0.2rem 0'}}>{String(h12).padStart(2,'0')}</div>
+          <button className="dur-btn" onClick={()=>setH(h===23?0:h+1)}>+</button>
+        </div>
+        <div style={{fontFamily:'var(--font-head)',fontSize:'1.3rem',color:'var(--muted)',paddingBottom:4}}>:</div>
+        <div style={{textAlign:'center'}}>
+          <button className="dur-btn" onClick={()=>setQ(quart===0?45:quart-15)}>−</button>
+          <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,color:c,margin:'0.2rem 0'}}>{String(quart).padStart(2,'0')}</div>
+          <button className="dur-btn" onClick={()=>setQ(quart===45?0:quart+15)}>+</button>
+        </div>
+        <div style={{textAlign:'center',paddingBottom:4}}>
+          <div style={{height:36}}></div>
+          <div style={{background:rgba(c,0.12),border:'1px solid '+c,borderRadius:8,padding:'0.25rem 0.5rem',fontFamily:'var(--font-head)',fontWeight:800,fontSize:'0.85rem',color:c,cursor:'pointer'}} onClick={toggleAMPM}>{ampm}</div>
+          <div style={{height:36}}></div>
+        </div>
+      </div>
+      <div style={{textAlign:'center',fontSize:11,color:'var(--muted)',marginTop:'0.25rem'}}>{String(h).padStart(2,'0')}:{String(quart).padStart(2,'0')}</div>
+    </div>
+  );
+}
+
+function PunchInScreen({emp,allEmps,selJob,selJobColor,onConfirm}){
+  const [time,setTime]=useState(nowTimeStr());
+  const [coequipiers,setCoequipiers]=useState([]);
+  const [note,setNote]=useState('');
+  const teammates=(allEmps||[]).filter(e=>e.nom!==emp.nom);
+  function toggleCoeq(nom){setCoequipiers(prev=>prev.includes(nom)?prev.filter(n=>n!==nom):[...prev,nom]);}
+  return(
+    <div style={{maxWidth:360,width:'100%',textAlign:'left'}}>
+      {selJob&&(<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.6rem'}}><div style={{width:10,height:10,borderRadius:'50%',background:selJobColor||'var(--accent)',flexShrink:0}}></div><div style={{fontSize:13,fontWeight:600}}>{selJob}</div></div>)}
+      <TimePicker label="Heure d'entrée" value={time} onChange={setTime} color="var(--accent)"/>
+      {teammates.length>0&&(
+        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}>
+          <div className="csec">Avec qui? (optionnel)</div>
+          <div className="teammate-list">
+            {teammates.map(t=>{const sel=coequipiers.includes(t.nom);return(<div key={t.nom} className={'teammate-chip'+(sel?' sel':'')} style={{borderColor:sel?t.couleur:'var(--border)',background:sel?rgba(t.couleur,0.15):'transparent'}} onClick={()=>toggleCoeq(t.nom)}><div className="emp-av" style={{background:t.couleur,width:18,height:18,fontSize:7}}>{t.code}</div><span style={{color:sel?t.couleur:'var(--muted)'}}>{t.nom}</span></div>);})}
+          </div>
+        </div>
+      )}
+      <div style={{marginBottom:'0.7rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: début de chantier..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
+      <button className="btn-p" style={{marginTop:0}} onClick={()=>onConfirm({customTime:time,job:selJob,jobColor:selJobColor,coequipiers,note})}>{'✓ Punch IN — '+time}</button>
+    </div>
+  );
+}
+
+function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,folders,calendarIds}){
+  const [selJobData,setSelJobData]=useState(null);
+  const [timeOut,setTimeOut]=useState(nowTimeStr());
+  const [diner,setDiner]=useState(false);
+  const [deplacement,setDeplacement]=useState(0);
+  const [note,setNote]=useState('');
+  const [fichiersURL,setFichiersURL]=useState([]);
+  const [coeqHeures,setCoeqHeures]=useState({});
+  const pts=ptsProp||[];
+  const travelOpts=[0,15,30,45,60,90];
+
+  const allIns=pts.filter(p=>p.type==='in');
+  const allOuts=pts.filter(p=>p.type==='out');
+  const openJobs=allIns.filter(pin=>{const inDt=new Date(pin.datetime);return !allOuts.some(po=>new Date(po.datetime)>inDt);});
+  const jobOptions=[...new Map(openJobs.map(p=>[(p.job||'__')+p.heure,{job:p.job||'',jobColor:p.jobColor||'#2f81f7',heure:p.heure,datetime:p.datetime,date:p.date,coequipiers:p.coequipiers||[]}])).values()].sort((a,b)=>new Date(b.datetime)-new Date(a.datetime));
+
+  function calcH(){
+    if(!selJobData||!selJobData.datetime)return 0;
+    const inTime=new Date(selJobData.datetime);
+    const parts=timeOut.split(':');const hh=parseInt(parts[0])||0;const mm=parseInt(parts[1])||0;
+    const outTime=new Date();outTime.setHours(hh,mm,0,0);
+    let h=Math.max(0,(outTime-inTime)/3600000);
+    if(diner)h=Math.max(0,h-0.5);
+    return Math.round(h*4)/4;
+  }
+  const totalH=calcH();const otH=Math.max(0,Math.round((totalH-8)*100)/100);
+  const coeqs=(selJobData&&selJobData.coequipiers)||[];
+  const coeqEmps=(allEmps||[]).filter(e=>coeqs.includes(e.nom));
+
+  function confirm(){onConfirm({customTime:timeOut,job:selJobData?selJobData.job:'',jobColor:selJobData?selJobData.jobColor:'',heures:totalH,deplacement,note,fichiersURL,coequipiers:coeqs,coeqHeures:Object.fromEntries(coeqEmps.map(e=>[e.nom,coeqHeures[e.nom]!==undefined?coeqHeures[e.nom]:totalH]))});}
+
+  if(!selJobData)return(
+    <div style={{maxWidth:420,width:'100%',textAlign:'left'}}>
+      <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',marginBottom:'0.85rem'}}>Sur quel job tu termines?</div>
+      {pts.length===0&&<div style={{fontSize:11,color:'var(--warning)',marginBottom:'0.5rem'}}>⚠️ Aucune donnée chargée</div>}
+      {pts.length>0&&<div style={{fontSize:10,color:'var(--muted)',marginBottom:'0.5rem'}}>{pts.length} entrées · {openJobs.length} IN ouvert(s)</div>}
+      {jobOptions.length===0&&<div style={{color:'var(--muted)',fontSize:13,marginBottom:'0.85rem',background:'var(--bg3)',borderRadius:8,padding:'0.75rem'}}>Aucun punch IN ouvert.</div>}
+      {jobOptions.map((j,i)=>(<div key={i} className="job-btn" style={{borderLeftWidth:4,borderLeftColor:j.jobColor||'var(--accent)',marginBottom:'0.4rem'}} onClick={()=>setSelJobData(j)}><div style={{width:10,height:10,borderRadius:'50%',background:j.jobColor||'var(--accent)',flexShrink:0}}></div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{j.job||'Sans job'}</div><div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{j.date} — IN à {j.heure}{j.coequipiers&&j.coequipiers.length>0?' · 👥 '+j.coequipiers.join(', '):''}</div></div></div>))}
+      <button className="btn-s" style={{width:'100%',marginTop:'0.5rem',fontSize:12}} onClick={()=>setSelJobData({job:'',jobColor:'',heure:'',datetime:new Date().toISOString(),coequipiers:[]})}>Autre / Sans job</button>
+    </div>
+  );
+
+  return(
+    <div style={{maxWidth:380,width:'100%',textAlign:'left'}}>
+      {selJobData.job&&(<div style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.6rem'}}><div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:10,height:10,borderRadius:'50%',background:selJobData.jobColor||'var(--accent)',flexShrink:0}}></div><div style={{fontSize:13,fontWeight:600,flex:1}}>{selJobData.job}</div></div>{selJobData.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,marginLeft:18}}>{'IN à '+selJobData.heure}</div>}{coeqs.length>0&&<div style={{fontSize:11,color:'var(--muted)',marginLeft:18}}>{'👥 Avec: '+coeqs.join(', ')}</div>}</div>)}
+      <TimePicker label="Heure de sortie" value={timeOut} onChange={setTimeOut} color="var(--danger)"/>
+      <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.5rem'}}>
+          <div><div className="csec" style={{marginBottom:2}}>Heures totales</div><div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.4rem',color:otH>0?'var(--warning)':'var(--success)'}}>{totalH}h{diner&&<span style={{fontSize:12,color:'var(--danger)',marginLeft:6}}>(-30min)</span>}</div></div>
+          {otH>0&&<div style={{background:'rgba(210,153,34,0.15)',color:'var(--warning)',borderRadius:8,padding:'0.3rem 0.65rem',fontSize:12,fontWeight:700}}>{'+'+otH+'h OT'}</div>}
+        </div>
+        <button style={{background:diner?'rgba(248,81,73,0.15)':'var(--bg2)',border:'1px solid '+(diner?'var(--danger)':'var(--border)'),borderRadius:8,padding:'0.32rem 0.75rem',color:diner?'var(--danger)':'var(--muted)',fontSize:12,cursor:'pointer',fontWeight:diner?700:400}} onClick={()=>setDiner(d=>!d)}>{diner?'✓ −30min dîner':'− 30 min dîner'}</button>
+      </div>
+      <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}>
+        <div className="csec">Déplacement (minutes)</div>
+        <div className="travel-opts">{travelOpts.map(v=>(<div key={v} className={'travel-opt'+(deplacement===v?' sel':'')} onClick={()=>setDeplacement(v)}><div className="tv">{v}</div><div className="tl">min</div></div>))}</div>
+      </div>
+      {coeqEmps.length>0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}><div className="csec">Heures coéquipiers</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'flex',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',color:'var(--accent)',minWidth:38,textAlign:'center'}}>{val}h</div><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
+      <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: travail terminé..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
+      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((u,i)=>(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><span>📎</span><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{'Fichier '+(i+1)}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>))}</div>)}
+      <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
+      <button className="btn-p" style={{marginTop:'0.65rem'}} onClick={confirm}>{'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')}</button>
+    </div>
+  );
+}
+
+function DurationForm({emp,allEmps,jobName,jobColor,isOut,onConfirm,onBack,notify,folders,calendarIds}){
+  const [heures,setHeures]=useState(0);const [quarts,setQuarts]=useState(0);const [deplacement,setDeplacement]=useState(0);
+  const [note,setNote]=useState('');const [fichiersURL,setFichiersURL]=useState([]);const [coequipiers,setCoequipiers]=useState([]);
+  const [coeqHeures,setCoeqHeures]=useState({});
+  const travelOpts=[0,15,30,45,60,90];const totalH=heures+quarts*0.25;const otH=Math.max(0,Math.round((totalH-8)*10)/10);
+  const teammates=(allEmps||[]).filter(e=>e.nom!==emp.nom);
+  function toggleCoeq(nom){setCoequipiers(prev=>{const next=prev.includes(nom)?prev.filter(n=>n!==nom):[...prev,nom];if(!prev.includes(nom))setCoeqHeures(p=>({...p,[nom]:totalH}));return next;});}
+  useEffect(()=>{setCoeqHeures(p=>{const u={...p};coequipiers.forEach(n=>{if(u[n]===undefined)u[n]=totalH;});return u;});},[totalH]);
+  function confirm(){if(totalH===0){notify('Entrez les heures!','err');return;}const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,deplacement,note,fichiersURL,coequipiers,coeqHeures:ch});}
+  const coeqEmps=teammates.filter(t=>coequipiers.includes(t.nom));
+  return(
+    <div className="dur-wrap">
+      {jobName&&(<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.45rem 0.7rem',marginBottom:'0.6rem'}}><div style={{width:10,height:10,borderRadius:'50%',background:jobColor||'var(--accent)',flexShrink:0}}></div><div style={{fontSize:13,fontWeight:600}}>{jobName}</div></div>)}
+      <div className="dur-section">
+        <div className="csec">Heures de la journée</div>
+        <div style={{display:'flex',gap:'0.65rem',alignItems:'center',justifyContent:'center',flexWrap:'wrap'}}>
+          <div style={{textAlign:'center'}}><div style={{fontSize:10,color:'var(--muted)',marginBottom:4}}>Heures</div><div className="dur-row"><button className="dur-btn" onClick={()=>setHeures(h=>Math.max(0,h-1))}>−</button><div className="dur-val">{heures}</div><button className="dur-btn" onClick={()=>setHeures(h=>Math.min(24,h+1))}>+</button></div></div>
+          <div style={{color:'var(--muted)',fontSize:'1.4rem',fontWeight:200,paddingTop:14}}>:</div>
+          <div style={{textAlign:'center'}}><div style={{fontSize:10,color:'var(--muted)',marginBottom:4}}>Quarts (15min)</div><div className="dur-row"><button className="dur-btn" onClick={()=>setQuarts(q=>Math.max(0,q-1))}>−</button><div className="dur-val">{quarts}</div><button className="dur-btn" onClick={()=>setQuarts(q=>Math.min(3,q+1))}>+</button></div></div>
+          <div style={{textAlign:'center',paddingTop:14}}><div style={{fontSize:10,color:'var(--muted)'}}>Total</div><div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem',color:'var(--success)'}}>{totalH}h</div>{otH>0&&<div style={{fontSize:9,color:'var(--warning)'}}>+{otH}h OT</div>}</div>
+        </div>
+      </div>
+      <div className="dur-section"><div className="csec">Déplacement (minutes)</div><div className="travel-opts">{travelOpts.map(v=>(<div key={v} className={'travel-opt'+(deplacement===v?' sel':'')} onClick={()=>setDeplacement(v)}><div className="tv">{v}</div><div className="tl">min</div></div>))}</div></div>
+      {teammates.length>0&&(
+        <div className="dur-section">
+          <div className="csec">Coéquipiers</div>
+          <div className="teammate-list">{teammates.map(t=>{const sel=coequipiers.includes(t.nom);return(<div key={t.nom} className={'teammate-chip'+(sel?' sel':'')} style={{borderColor:sel?t.couleur:'var(--border)',background:sel?rgba(t.couleur,0.15):'transparent'}} onClick={()=>toggleCoeq(t.nom)}><div className="emp-av" style={{background:t.couleur,width:18,height:18,fontSize:7}}>{t.code}</div><span style={{color:sel?t.couleur:'var(--muted)'}}>{t.nom}</span></div>);})}</div>
+          {coeqEmps.length>0&&(<div style={{marginTop:'0.65rem',borderTop:'1px solid var(--border)',paddingTop:'0.65rem'}}><div className="csec">Heures par coéquipier</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'flex',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',color:'var(--accent)',minWidth:38,textAlign:'center'}}>{val}h</div><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
+        </div>
+      )}
+      <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: matériel manquant..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
+      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((u,i)=>(<div key={i} className="file-item"><div style={{fontSize:'1.1rem'}}>📎</div><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>Fichier {i+1}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>))}</div>)}
+      <DriveUploader empName={emp.nom} jobName={jobName||'punch'} calendarIds={calendarIds} calEventTitle={jobName||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
+      <button className="btn-p" style={{marginTop:'0.4rem'}} disabled={totalH===0} onClick={confirm}>✓ Confirmer la job</button>
+    </div>
+  );
+}
+
+
+// ── PROJETS ──────────────────────────────────────────────────────────────────
+const CODES_CONTRACTEURS=['PAY','CRS','ASC','GGP','SAR'];
+
+function getCodeContracteur(titre){
+  if(!titre)return 'PARTICULIER';
+  const prefix=(titre.trim().slice(0,3)).toUpperCase();
+  return CODES_CONTRACTEURS.includes(prefix)?prefix:'PARTICULIER';
+}
+
+// Group calendar jobs + pointages into projects by code + address
+function buildProjets(calJobs,pts){
+  const map={};
+  // From calendar jobs
+  for(const job of calJobs){
+    const code=getCodeContracteur(job.title);
+    const adresse=(job.location||'').trim();
+    const key=code+'||'+(adresse||job.title);
+    if(!map[key]){
+      map[key]={
+        key,code,adresse,
+        nom:code==='PARTICULIER'?(adresse||job.title):(code+' — '+(adresse||job.title)),
+        jobs:[],po:'',dateDebut:job.start?job.start.slice(0,10):'',
+        couleur:job.gcalColor||'#2f81f7'
+      };
+    }
+    if(!map[key].jobs.includes(job.title))map[key].jobs.push(job.title);
+    if(job.start&&job.start<(map[key].dateDebut||'9999'))map[key].dateDebut=job.start.slice(0,10);
+  }
+  // Also from pointages (jobs punched that may not be in calendar)
+  for(const p of pts){
+    if(!p.job)continue;
+    const code=getCodeContracteur(p.job);
+    // Try to match existing project by job name
+    let matched=false;
+    for(const k of Object.keys(map)){
+      if(map[k].jobs.includes(p.job)){matched=true;break;}
+    }
+    if(!matched){
+      const key=code+'||'+p.job;
+      if(!map[key]){map[key]={key,code,adresse:p.job,nom:code==='PARTICULIER'?p.job:(code+' — '+p.job),jobs:[p.job],po:'',dateDebut:p.date||'',couleur:p.jobColor||'#2f81f7'};}
+    }
+  }
+  return Object.values(map).sort((a,b)=>a.nom.localeCompare(b.nom));
+}
+
+async function savePO(sid,projKey,po,existingPOs){
+  // Store PO numbers in a simple key-value in Projets sheet
+  // Find if row exists
+  try{
+    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Projets!A2:B'});
+    const rows=res.result.values||[];
+    const idx=rows.findIndex(r=>r[0]===projKey);
+    if(idx>=0){
+      await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'Projets!B'+(idx+2),valueInputOption:'RAW',resource:{values:[[po]]}});
+    }else{
+      await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'Projets!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',resource:{values:[[projKey,po]]}});
+    }
+  }catch(e){console.error(e);}
+}
+
+async function getPOs(sid){
+  try{
+    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Projets!A2:B'});
+    const map={};
+    for(const r of (res.result.values||[]))if(r[0])map[r[0]]=r[1]||'';
+    return map;
+  }catch{return{};}
+}
+function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify}){
+  const [search,setSearch]=useState('');
+  const [filterCode,setFilterCode]=useState('');
+  const [filterPerson,setFilterPerson]=useState('');
+  const [selProj,setSelProj]=useState(null);
+  const [poMap,setPoMap]=useState({});
+  const [editPO,setEditPO]=useState(null);
+  const [newPO,setNewPO]=useState('');
+
+  useEffect(()=>{
+    getPOs(sid).then(setPoMap);
+  },[]);
+
+  const projets=buildProjets(calJobs||[],pts||[]);
+
+  function getProjPts(proj){
+    return (pts||[]).filter(p=>p.job&&proj.jobs.some(j=>p.job.toLowerCase()===j.toLowerCase()));
+  }
+
+  function getProjStats(proj){
+    const pp=getProjPts(proj);
+    const heures=Math.round(calcH(pp)*10)/10;
+    const personnes=[...new Set(pp.map(p=>p.nom))];
+    const fichiers=pp.flatMap(p=>p.fichiersURL||[]).filter(Boolean);
+    const deps=Math.round(pp.reduce((s,p)=>s+(p.deplacement||0),0));
+    return{heures,personnes,fichiers,deps,pp};
+  }
+
+  const allCodes=['PARTICULIER',...CODES_CONTRACTEURS];
+
+  const filtered=projets.filter(p=>{
+    const po=poMap[p.key]||'';
+    if(search){
+      const s=search.toLowerCase();
+      if(!p.nom.toLowerCase().includes(s)&&!po.toLowerCase().includes(s)&&!p.adresse.toLowerCase().includes(s))return false;
+    }
+    if(filterCode&&p.code!==filterCode)return false;
+    if(filterPerson){const pp=getProjPts(p);if(!pp.some(x=>x.nom===filterPerson))return false;}
+    return true;
+  });
+
+  // Detail view
+  if(selProj){
+    const stats=getProjStats(selProj);
+    const combined=combinePts(stats.pp);
+    const po=poMap[selProj.key]||'';
+    return(
+      <div style={{maxWidth:600,width:'100%'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.85rem'}}>
+          <button className="btn-s" style={{flexShrink:0}} onClick={()=>setSelProj(null)}>← Retour</button>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'0.95rem'}}>{selProj.nom}</div>
+            {selProj.adresse&&<div style={{fontSize:11,color:'var(--muted)'}}>📍 {selProj.adresse}</div>}
+          </div>
+          <span style={{background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:8,padding:'0.2rem 0.6rem',fontSize:11,fontWeight:700,flexShrink:0}}>{selProj.code}</span>
+        </div>
+
+        {/* PO */}
+        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.75rem',marginBottom:'0.65rem',display:'flex',alignItems:'center',gap:8}}>
+          {editPO===selProj.key?(
+            <>
+              <input placeholder="PO-2024-001" value={newPO} onChange={e=>setNewPO(e.target.value)}
+                style={{flex:1,background:'var(--bg2)',border:'1px solid var(--accent)',borderRadius:6,padding:'0.3rem 0.55rem',color:'var(--text)',fontSize:12,outline:'none'}}/>
+              <button className="btn-p" style={{marginTop:0,width:'auto',padding:'0.3rem 0.75rem',fontSize:12}} onClick={async()=>{
+                await savePO(sid,selProj.key,newPO,poMap);
+                setPoMap(m=>({...m,[selProj.key]:newPO}));
+                setEditPO(null);notify('✅ N° PO sauvegardé','success');
+              }}>✓</button>
+              <button className="btn-s" style={{padding:'0.3rem 0.55rem',fontSize:12}} onClick={()=>setEditPO(null)}>✕</button>
+            </>
+          ):(
+            <>
+              <div style={{flex:1,fontSize:12}}>{po?<span style={{fontWeight:600,color:'var(--accent)'}}>PO # {po}</span>:<span style={{color:'var(--muted)'}}>Pas de numéro PO</span>}</div>
+              {isAdmin&&<button className="btn-icon edit" onClick={()=>{setEditPO(selProj.key);setNewPO(po);}}>✏️ {po?'Modifier':'Ajouter'} PO</button>}
+            </>
+          )}
+        </div>
+
+        <div className="stats-grid" style={{marginBottom:'0.75rem'}}>
+          <div className="stat-box"><div className="val">{stats.heures}h</div><div className="lbl">Heures</div></div>
+          <div className="stat-box"><div className="val">{stats.personnes.length}</div><div className="lbl">Employés</div></div>
+          <div className="stat-box"><div className="val">{stats.deps}m</div><div className="lbl">Dépl.</div></div>
+          <div className="stat-box"><div className="val">{stats.fichiers.length}</div><div className="lbl">Fichiers</div></div>
+        </div>
+
+        {selProj.jobs.length>0&&(
+          <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.75rem',marginBottom:'0.65rem'}}>
+            <div className="csec">Jobs ({selProj.jobs.length})</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:'0.3rem'}}>
+              {selProj.jobs.map((j,i)=>(
+                <span key={i} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.2rem 0.55rem',fontSize:11}}>{j}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {stats.personnes.length>0&&(
+          <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.75rem',marginBottom:'0.65rem'}}>
+            <div className="csec">Employés</div>
+            <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap'}}>
+              {stats.personnes.map(nom=>{
+                const e=emps.find(x=>x.nom===nom);
+                const h=Math.round(calcH(stats.pp.filter(p=>p.nom===nom))*10)/10;
+                return(<div key={nom} style={{display:'flex',alignItems:'center',gap:5,background:'var(--bg2)',borderRadius:8,padding:'0.25rem 0.6rem'}}>
+                  {e&&<div className="emp-av" style={{background:e.couleur,width:16,height:16,fontSize:7}}>{e.code}</div>}
+                  <span style={{fontSize:11}}>{nom}</span>
+                  <span style={{fontSize:10,color:'var(--accent)',fontWeight:700}}>{h}h</span>
+                </div>);
+              })}
+            </div>
+          </div>
+        )}
+
+        {stats.fichiers.length>0&&(
+          <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.75rem',marginBottom:'0.65rem'}}>
+            <div className="csec">Fichiers ({stats.fichiers.length})</div>
+            {stats.fichiers.map((u,i)=>(
+              <a key={i} href={u} target="_blank" rel="noreferrer"
+                style={{display:'flex',alignItems:'center',gap:8,color:'var(--accent)',fontSize:12,marginBottom:'0.3rem'}}>
+                <span>📎</span>Fichier {i+1}
+              </a>
+            ))}
+          </div>
+        )}
+
+        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.75rem'}}>
+          <div className="csec">Pointages ({combined.length})</div>
+          {combined.length===0?<div style={{color:'var(--muted)',fontSize:12}}>Aucun pointage associé</div>:
+          combined.map((l,i)=>(
+            <div key={i} className="hist-line" style={{borderLeftColor:l.jobColor||'var(--border2)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600}}>{l.date} — {l.nom}</div>
+                  <div style={{fontSize:11,color:'var(--muted)'}}>{l.heure}{l.heureOut?' → '+l.heureOut:''}{l.heures!==null?' ('+l.heures+'h)':''}</div>
+                  {l.job&&l.job!==selProj.nom&&<div style={{fontSize:10,color:'var(--muted)'}}>{l.job}</div>}
+                </div>
+                {l.deplacement>0&&<span style={{fontSize:10,color:'var(--warning)'}}>🚗{l.deplacement}m</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{maxWidth:620,width:'100%'}}>
+      <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',marginBottom:'0.75rem'}}>
+        Projets <span style={{fontSize:11,color:'var(--muted)',fontWeight:400}}>({filtered.length})</span>
+      </div>
+
+      {/* Filters */}
+      <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap',marginBottom:'0.65rem'}}>
+        <input placeholder="🔍 Adresse, nom, PO..." value={search} onChange={e=>setSearch(e.target.value)}
+          style={{flex:1,minWidth:140,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'0.38rem 0.65rem',color:'var(--text)',fontSize:12,outline:'none'}}/>
+        <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap'}}>
+          {allCodes.map(c=>(
+            <div key={c} onClick={()=>setFilterCode(filterCode===c?'':c)}
+              style={{padding:'0.28rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',fontWeight:filterCode===c?700:400,
+                background:filterCode===c?'rgba(47,129,247,0.18)':'var(--bg3)',
+                border:'1px solid '+(filterCode===c?'var(--accent)':'var(--border)'),
+                color:filterCode===c?'var(--accent)':'var(--muted)',transition:'all 0.15s'}}>
+              {c}
+            </div>
+          ))}
+        </div>
+        {isAdmin&&emps.length>0&&(
+          <select value={filterPerson} onChange={e=>setFilterPerson(e.target.value)}
+            style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'0.38rem 0.55rem',color:filterPerson?'var(--text)':'var(--muted)',fontSize:12}}>
+            <option value="">Tous employés</option>
+            {emps.map(e=><option key={e.nom} value={e.nom}>{e.nom}</option>)}
+          </select>
+        )}
+      </div>
+
+      {filtered.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'2rem',fontSize:13}}>Aucun projet trouvé</div>}
+
+      {filtered.map((proj,i)=>{
+        const stats=getProjStats(proj);
+        const po=poMap[proj.key]||'';
+        return(
+          <div key={i} style={{background:'var(--bg2)',border:'1px solid var(--border)',borderLeft:'4px solid '+(proj.couleur||'var(--accent)'),borderRadius:12,padding:'0.8rem',marginBottom:'0.4rem',cursor:'pointer',transition:'all 0.15s'}}
+            onClick={()=>setSelProj(proj)}>
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8}}>
+              <div style={{flex:1}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:'0.2rem'}}>
+                  <span style={{background:proj.code==='PARTICULIER'?'rgba(110,64,201,0.15)':'rgba(47,129,247,0.15)',color:proj.code==='PARTICULIER'?'var(--accent2)':'var(--accent)',borderRadius:6,padding:'1px 7px',fontSize:10,fontWeight:700}}>{proj.code}</span>
+                  <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.88rem'}}>{proj.adresse||proj.nom}</div>
+                  {po&&<span style={{background:'rgba(63,185,80,0.12)',color:'var(--success)',borderRadius:6,padding:'1px 6px',fontSize:10,fontWeight:600}}>PO #{po}</span>}
+                </div>
+                <div style={{display:'flex',gap:10,fontSize:11,color:'var(--muted)'}}>
+                  <span>⏱ {stats.heures}h</span>
+                  <span>👷 {stats.personnes.length}</span>
+                  {stats.fichiers.length>0&&<span>📎 {stats.fichiers.length}</span>}
+                  {stats.deps>0&&<span>🚗 {stats.deps}m</span>}
+                  <span style={{fontSize:10}}>({proj.jobs.length} job{proj.jobs.length!==1?'s':''})</span>
+                </div>
+              </div>
+              <div style={{display:'flex',alignItems:'center',gap:4,flexShrink:0}}>
+                {stats.personnes.map(nom=>{
+                  const e=emps.find(x=>x.nom===nom);
+                  return e?<div key={nom} className="emp-av" style={{background:e.couleur,width:18,height:18,fontSize:7}} title={nom}>{e.code}</div>:null;
+                })}
+                <span style={{color:'var(--muted)',fontSize:16,marginLeft:2}}>›</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── JOB SELECTOR ─────────────────────────────────────────────────────────────
+function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
+  const [showCreate,setShowCreate]=useState(false);
+  const [newJobTitle,setNewJobTitle]=useState('');
+  const [newJobDate,setNewJobDate]=useState(new Date().toISOString().split('T')[0]);
+  const [filterMine,setFilterMine]=useState(false); // filter by emp code/color
+  const today=localDateStr();
+
+  function matches(job){
+    const txt=(job.title+' '+(job.description||'')).toLowerCase();
+    return txt.includes(emp.code.toLowerCase())||txt.includes(emp.nom.toLowerCase());
+  }
+  function colorMatch(job){return colorDist(job.gcalColor,emp.couleur)<90;}
+
+  // Sort: code/name match first, then color match, then rest
+  const sorted=[...jobs].sort((a,b)=>{
+    const am=matches(a),bm=matches(b);
+    if(am&&!bm)return -1;if(!am&&bm)return 1;
+    return colorDist(a.gcalColor,emp.couleur)-colorDist(b.gcalColor,emp.couleur);
+  });
+
+  const filtered=filterMine?sorted.filter(j=>matches(j)||colorMatch(j)):sorted;
+
+  return(
+    <div className="job-wrap">
+      <div className="section-head">
+        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.92rem'}}>Sélectionner un job</div>
+        <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap'}}>
+          <button
+            style={{display:'flex',alignItems:'center',gap:5,padding:'0.22rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',border:'1px solid '+(filterMine?emp.couleur:'var(--border2)'),background:filterMine?rgba(emp.couleur,0.15):'transparent',color:filterMine?emp.couleur:'var(--muted)',fontWeight:filterMine?700:400}}
+            onClick={()=>setFilterMine(f=>!f)}>
+            <div style={{width:8,height:8,borderRadius:'50%',background:emp.couleur}}></div>
+            {emp.code}
+          </button>
+          <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem'}} onClick={()=>setShowCreate(!showCreate)}>+ Créer</button>
+          <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem'}} onClick={onSkip}>Sans job</button>
+        </div>
+      </div>
+      {showCreate&&(
+        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.65rem',border:'1px solid var(--border2)'}}>
+          <div className="fg" style={{marginBottom:'0.4rem'}}><label>Nom du job</label><input placeholder="Ex: Chantier St-Laurent" value={newJobTitle} onChange={e=>{const v=e.target.value;setNewJobTitle(v);}}/></div>
+          <div className="fg" style={{marginBottom:'0.55rem'}}><label>Date</label><input type="date" value={newJobDate} onChange={e=>{const v=e.target.value;setNewJobDate(v);}}/></div>
+          <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate})}>Créer dans l'agenda</button>
+        </div>
+      )}
+      {filterMine&&<div style={{fontSize:11,color:emp.couleur,marginBottom:'0.5rem',fontWeight:500}}>Filtré par {emp.code} — {filtered.length} job{filtered.length!==1?'s':''}</div>}
+      <div className="scroll-area" style={{maxHeight:300}}>
+        {filtered.map(job=>{
+          const isToday=localDateStr(new Date(job.start))===today;
+          const isMatch=matches(job);
+          const isCMatch=!isMatch&&colorMatch(job);
+          return(
+            <div key={job.id} className="job-btn"
+              style={{borderColor:isMatch?emp.couleur:'var(--border)',borderWidth:isMatch?2:1,borderLeftWidth:4,borderLeftColor:job.gcalColor,background:isMatch?rgba(emp.couleur,0.06):'var(--bg2)'}}
+              onClick={()=>onSelect(job.title,job.gcalColor)}>
+              <div className="job-color-bar" style={{background:job.gcalColor}}></div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                  {job.title}
+                  {isMatch&&<span style={{background:rgba(emp.couleur,0.25),color:emp.couleur,fontSize:9,padding:'1px 4px',borderRadius:4,fontWeight:700}}>{'👤'+emp.code}</span>}
+                  {isCMatch&&<span style={{background:rgba(job.gcalColor,0.2),color:job.gcalColor,fontSize:9,padding:'1px 4px',borderRadius:4}}>●</span>}
+                </div>
+                <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>{new Date(job.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}{job.location?' · '+job.location:''}</div>
+              </div>
+              {isToday&&<span style={{background:'rgba(63,185,80,0.15)',color:'var(--success)',fontSize:9,padding:'1px 5px',borderRadius:5,fontWeight:700,flexShrink:0}}>Auj.</span>}
+            </div>
+          );
+        })}
+        {filtered.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>{filterMine?'Aucun job assigné à '+emp.code:'Aucun job dans les 14 prochains jours'}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── EMPLOYEE HISTORY ──────────────────────────────────────────────────────────
+function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
+  const [pts,setPts]=useState([]);
+  const [tab,setTab]=useState('semaine');
+  const [loading,setLoading]=useState(true);
+  const [editLine,setEditLine]=useState(null);
+  const [editData,setEditData]=useState({});
+  const fileRef=useRef();
+  const camRef=useRef();
+  const [addFileLine,setAddFileLine]=useState(null);
+  const [uploading,setUploading]=useState(false);
+
+  const today=localDateStr();
+  const curWeek=getWeek(new Date());
+  const curMois=getMois(new Date());
+
+  useEffect(()=>{load();},[]);
+
+  async function load(){setLoading(true);const p=await getPointages(sid,{nom:emp.nom});setPts(p);setLoading(false);}
+
+  function getFiltered(){
+    if(tab==='today')return pts.filter(p=>p.date===today);
+    if(tab==='semaine')return pts.filter(p=>p.semaine===curWeek);
+    if(tab==='mois')return pts.filter(p=>p.mois===curMois);
+    return pts;
+  }
+
+  const lines=combinePts(getFiltered());
+  const totalH=calcH(getFiltered());
+  const totalDep=Math.round(getFiltered().filter(p=>p.type==='in'||p.type==='confirm').reduce((s,p)=>s+(p.deplacement||0),0));
+  const totalOT=Math.round(lines.reduce((s,l)=>s+(l.ot||0),0)*10)/10;
+
+  async function startEdit(line){
+    setEditLine(line);
+    setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});
+  }
+
+  async function saveEdit(){
+    try{
+      if(editLine.inRow)await updatePointageData(sid,editLine.inRow,{...editData,fichiersURL:editLine.fichiersURL,coequipiers:editLine.coequipiers});
+      await addMessage(sid,emp.nom,'Modification',editLine.date+' — '+editData.job+', '+editData.heures+'h');
+      notify('✅ Modifié — Admin notifié','success');
+      setEditLine(null);await load();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+  }
+
+  async function handleDelete(line){
+    if(!confirm('Supprimer cette entrée?'))return;
+    try{
+      if(line.outRow)await deletePointageRow(sid,line.outRow);
+      if(line.inRow)await deletePointageRow(sid,line.inRow);
+      await addMessage(sid,emp.nom,'Suppression',line.date+' — '+(line.job||'—')+', '+(line.heures||'?')+'h');
+      notify('Supprimé — Admin notifié','success');await load();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+  }
+
+  async function handleAddFile(line,f){
+    if(!f)return;
+    setAddFileLine(line);setUploading(true);
+    const result=await uploadToDrive(f,emp.nom,line.job||'punch',null);
+    setUploading(false);setAddFileLine(null);
+    if(result&&result.url){
+      const urls=[...(line.fichiersURL||[]),result.url];
+      const row=line.inRow||line.outRow;
+      if(row)await updatePointageFichiers(sid,row,urls);
+      await addMessage(sid,emp.nom,'Fichier ajouté',line.date+' — '+(line.job||'—'));
+      notify('📎 Fichier ajouté!','success');await load();
+    }else notify('Erreur upload','err');
+  }
+
+  return(
+    <div style={{maxWidth:560,width:'100%',textAlign:'left'}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'1rem'}}>
+        <div className="emp-av" style={{background:emp.couleur,width:36,height:36,fontSize:12}}>{emp.code}</div>
+        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>Mes heures — {emp.nom}</div>
+      </div>
+      <div className="stats-grid" style={{marginBottom:'1rem'}}>
+        <div className="stat-box"><div className="val">{totalH}h</div><div className="lbl">Heures</div></div>
+        <div className="stat-box"><div className="val" style={{color:'var(--warning)'}}>{totalOT}h</div><div className="lbl">Overtime</div></div>
+        <div className="stat-box"><div className="val">{totalDep}m</div><div className="lbl">Dépl.</div></div>
+        <div className="stat-box"><div className="val">{lines.length}</div><div className="lbl">Journées</div></div>
+      </div>
+      <div className="tabs">
+        {[['today','Auj.'],['semaine','Semaine'],['mois','Mois'],['all','Tout']].map(([k,l])=>(
+          <div key={k} className={'tab'+(tab===k?' active':'')} onClick={()=>setTab(k)}>{l}</div>
+        ))}
+      </div>
+      {loading?<div style={{color:'var(--muted)',textAlign:'center',padding:'2rem'}}>⏳</div>:(
+        <div className="scroll-area" style={{maxHeight:'calc(100vh - 380px)'}}>
+          {lines.map((line,i)=>(
+            <div key={i} className={'hist-line'+(line.ot>0?' has-ot':'')} style={{borderLeftColor:line.jobColor||'var(--border2)'}}>
+              {editLine===line?(
+                <div className="hist-edit-form">
+                  <div className="fg" style={{marginBottom:'0.45rem'}}><label>Job</label><input value={editData.job} onChange={e=>{const v=e.target.value;setEditData(p=>({...p,job:v}));}}/></div>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.45rem',marginBottom:'0.45rem'}}>
+                    <div className="fg" style={{marginBottom:0}}>
+                      <label>Heures</label>
+                      <input type="number" value={editData.heures} onChange={e=>{const v=parseFloat(e.target.value)||0;setEditData(p=>({...p,heures:v}));}}/>
+                    </div>
+                    <div className="fg" style={{marginBottom:0}}>
+                      <label>Dépl. (min)</label>
+                      <input type="number" value={editData.deplacement} onChange={e=>{const v=parseInt(e.target.value)||0;setEditData(p=>({...p,deplacement:v}));}}/>
+                    </div>
+                  </div>
+                  <div className="fg" style={{marginBottom:'0.45rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>{const v=e.target.value;setEditData(p=>({...p,note:v}));}}/></div>
+                  <div style={{display:'flex',gap:'0.4rem'}}>
+                    <button className="btn-p" style={{marginTop:0,flex:1}} onClick={saveEdit}>✓ Sauvegarder</button>
+                    <button className="btn-s" onClick={()=>setEditLine(null)}>Annuler</button>
+                  </div>
+                </div>
+              ):(
+                <>
+                  <div className="hist-header">
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                        {line.date}
+                        {line.type==='confirm'?<span className="badge badge-conf">Confirmé</span>:
+                          line.heures!==null?<span className="badge badge-in">{line.heures}h</span>:<span className="badge badge-pend">En cours</span>}
+                        {line.ot>0&&<span className="badge" style={{background:'rgba(210,153,34,0.15)',color:'var(--warning)'}}>+{line.ot}h OT</span>}
+                      </div>
+                      {line.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.heure}{line.heureOut?' → '+line.heureOut:''}</div>}
+                      {line.job&&<div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--muted)',marginTop:2}}>{line.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:line.jobColor}}></div>}{line.job}</div>}
+                      {line.coequipiers&&line.coequipiers.length>0&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{'👥 '+line.coequipiers.join(', ')}</div>}
+                      {line.note&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,fontStyle:'italic'}}>"{line.note}"</div>}
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,flexShrink:0}}>
+                      {line.deplacement>0&&<span style={{fontSize:10,color:'var(--warning)'}}>{'🚗'+line.deplacement+'m'}</span>}
+                      {line.fichiersURL&&line.fichiersURL.length>0&&(
+                        <div>{line.fichiersURL.map((u,fi)=><a key={fi} href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:10,marginLeft:3}}>📎</a>)}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="hist-actions">
+                    <button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>startEdit(line)}>✏️ Modifier</button>
+                    <button className="btn-sm btn-deny" onClick={()=>handleDelete(line)}>🗑 Supprimer</button>
+                  </div>
+                  {/* Ajouter fichier à cette entrée */}
+                  <div style={{marginTop:'0.4rem'}}>
+                    <DriveUploader
+                      empName={emp.nom}
+                      jobName={line.job||'punch'}
+                      calendarIds={calendarIds}
+                      calEventTitle={line.job||null}
+                      folders={folders||[]}
+                      onUploaded={async url=>{
+                        const urls=[...(line.fichiersURL||[]),url];
+                        const row=line.inRow||line.outRow;
+                        if(row)await updatePointageFichiers(sid,row,urls);
+                        await addMessage(sid,emp.nom,'Fichier ajouté',line.date+' — '+(line.job||'—'));
+                        notify('📎 Fichier ajouté!','success');load();
+                      }}
+                      notify={notify}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+          {lines.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'2rem',fontSize:13}}>Aucune entrée pour cette période</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── WELCOME SCREEN ────────────────────────────────────────────────────────────
+function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders}){
+  const now=useClock();
+  const [step,setStep]=useState('emps');
+  // steps: emps > mode > job > punch-in > pin > result
+  //                    > duration-out > pin-out > result
+  //                    > confirm > pin-confirm > result
+  //                    > history
+  const [selEmp,setSelEmp]=useState(null);
+  const [mode,setMode]=useState('in');
+  const [selJob,setSelJob]=useState('');
+  const [selJobColor,setSelJobColor]=useState('');
+  const [jobs,setJobs]=useState([]);
+  const [result,setResult]=useState(null);
+  const punchDataRef=useRef({});
+  const ptsRef=useRef([]);
+  const [ptsForOut,setPtsForOut]=useState([]);
+
+  const pad=n=>String(n).padStart(2,'0');
+  const days=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const today=localDateStr(now);
+  const curWeek=getWeek(now);
+  const curMois=getMois(now);
+
+  // Live statut from emps list (not stale copy)
+  const liveEmp=selEmp?emps.find(e=>e.nom===selEmp.nom)||selEmp:null;
+  const empStatut=liveEmp?liveEmp.statut:'out';
+
+  useEffect(()=>{
+    if(calendarIds&&calendarIds.length)getCalendarJobs(calendarIds).then(setJobs);
+  },[calendarIds?calendarIds.join(','):'']);
+
+  useEffect(()=>{
+    if(step==='emps')setNavBack(null);
+    else setNavBack(()=>goBack);
+  },[step]);
+
+  function goBack(){
+    if(step==='mode')setStep('emps');
+    else if(step==='job')setStep('mode');
+    else if(step==='punch-in'||step==='confirm')setStep('job');
+    else if(step==='duration-out')setStep('mode');
+    else if(step==='pin'||step==='pin-out'||step==='pin-confirm'){
+      if(mode==='out')setStep('duration-out');
+      else if(mode==='confirm')setStep('confirm');
+      else setStep('punch-in');
+    }
+    else if(step==='history'||step==='projets')setStep('mode');
+    else setStep('emps');
+  }
+
+  function reset(){
+    setStep('emps');setSelEmp(null);setSelJob('');
+    setSelJobColor('');punchDataRef.current={};setMode('in');setResult(null);
+  }
+
+  async function handlePunch(pin,type){
+    const emp=selEmp;
+    if(!emp)return;
+    if(String(emp.pin).trim()!==String(pin).trim()){
+      setResult({err:true});
+      setTimeout(()=>setResult(null),2500);
+      return;
+    }
+    const data={...punchDataRef.current,job:selJob||'',jobColor:selJobColor||''};
+    try{
+      if(type==='confirm'){
+        await addPointage(sid,emp,'confirm',data);
+        if(data.coeqHeures){
+          for(const [nom,h] of Object.entries(data.coeqHeures)){
+            const ce=emps.find(e=>e.nom===nom);
+            if(ce&&h>0)await addPointage(sid,ce,'confirm',{job:data.job,jobColor:data.jobColor,heures:h,deplacement:data.deplacement||0,note:(data.note||'')+'[via '+emp.nom+']',fichiersURL:data.fichiersURL||[],coequipiers:[emp.nom]});
+          }
+        }
+      }else{
+        await addPointage(sid,emp,type,data);
+        await updateStatus(sid,emp.row,type);
+        if(type==='out'&&data.coeqHeures){
+          for(const [nom,h] of Object.entries(data.coeqHeures)){
+            const ce=emps.find(e=>e.nom===nom);
+            if(ce&&h>0)await addPointage(sid,ce,'confirm',{job:data.job,jobColor:data.jobColor,heures:h,deplacement:data.deplacement||0,note:(data.note||'')+'[via '+emp.nom+']',fichiersURL:data.fichiersURL||[],coequipiers:[emp.nom]});
+          }
+        }
+        if(type==='out'){
+          const curW=getWeek(new Date());
+          const semPts=await getPointages(sid,{nom:emp.nom,semaine:curW});
+          const total=calcH(semPts);
+          if(total>40){
+            const extra=Math.round((total-40)*10)/10;
+            const bq=await getHeuresBanque(sid);
+            if(!bq.some(b=>b.nom===emp.nom&&b.semaine===curW)){
+              await addHeuresBanque(sid,emp.nom,curW,extra);
+              notify('🏦 '+emp.nom+' — '+extra+'h en banque!','warn');
+            }
+          }
+        }
+      }
+      // Load fresh pts - if fails, build from what we just wrote
+      let allPts=[];
+      try{allPts=await getPointages(sid,{nom:emp.nom});}catch(e){console.warn('Reload pts failed:',e);}
+      // If reload failed or empty, inject the punch we just made so PunchOut can see it
+      if(allPts.length===0&&type==='in'){
+        const now3=new Date();
+        const inDt=data.customTime?new Date(now3.getFullYear(),now3.getMonth(),now3.getDate(),parseInt((data.customTime.split(':')[0])||0),parseInt((data.customTime.split(':')[1])||0)):now3;
+        allPts=[{nom:emp.nom,type:'in',datetime:inDt.toISOString(),date:localDateStr(inDt),heure:data.customTime||localDateStr(inDt),job:data.job||'',jobColor:data.jobColor||'',deplacement:0,heures:0,note:'',fichiersURL:[],coequipiers:[],row:999}];
+      }
+      ptsRef.current=allPts;
+      setPtsForOut(allPts);
+      setResult({ok:true,nom:emp.nom,type,
+        heure:data.customTime||now.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}),
+        couleur:emp.couleur,code:emp.code,pts:allPts,
+        job:selJob,jobColor:selJobColor,
+        dep:data.deplacement||0,heures:data.heures||0,
+        coeqs:data.coequipiers||[]});
+      setStep('result');
+      setNavBack(null);
+      onRefresh();
+    }catch(e){
+      notify('Erreur punch: '+e.message,'err');
+      console.error(e);
+    }
+  }
+
+  const TimeHeader=()=>(
+    <><div className="w-time">{pad(now.getHours())}:{pad(now.getMinutes())}</div>
+    <div className="w-date">{days[now.getDay()]} {now.getDate()} {months[now.getMonth()]} {now.getFullYear()}</div></>
+  );
+
+  // ── RESULT ──
+  if(step==='result'&&result&&result.ok){
+    const rpts=result.pts||[];
+    return(
+      <div className="welcome">
+        <div className="punch-result ok">
+          <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:8}}>
+            <div className="emp-av" style={{background:result.couleur,width:38,height:38,fontSize:12}}>{result.code}</div>
+            <div style={{fontFamily:'var(--font-head)',fontSize:'1.05rem',fontWeight:800}}>{result.nom}</div>
+          </div>
+          <span className={'pbadge '+(result.type==='confirm'?'confirm':result.type)}>{result.type==='in'?'✅ Punch IN':result.type==='out'?'🔴 Punch OUT':'✅ Job confirmée'}</span>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1.1rem',margin:'4px 0'}}>{result.heure}</div>
+          {result.job&&<div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,marginBottom:4}}><div style={{width:8,height:8,borderRadius:'50%',background:result.jobColor||'var(--accent)'}}></div><span style={{fontSize:11,color:'var(--muted)'}}>{result.job}</span></div>}
+          {result.coeqs&&result.coeqs.length>0&&<div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>{'👥 '+result.coeqs.join(', ')}</div>}
+          {result.dep>0&&<span className="pbadge travel">{'🚗 '+result.dep+'min'}</span>}
+          {result.heures>0&&<span className="pbadge in">{'⏱ '+result.heures+'h'}</span>}
+          <div className="punch-stats">
+            <div className="ps"><div className="v">{calcH(rpts.filter(p=>p.date===today))}h</div><div className="l">Auj.</div></div>
+            <div className="ps"><div className="v">{calcH(rpts.filter(p=>p.semaine===curWeek))}h</div><div className="l">Sem.</div></div>
+            <div className="ps"><div className="v">{calcH(rpts.filter(p=>p.mois===curMois))}h</div><div className="l">Mois</div></div>
+            <div className="ps"><div className="v">{Math.round(rpts.filter(p=>p.semaine===curWeek&&(p.type==='in'||p.type==='confirm')).reduce((s,p)=>s+(p.deplacement||0),0))}m</div><div className="l">Dépl.</div></div>
+          </div>
+          <button className="btn-s" style={{marginTop:'0.75rem',width:'100%'}} onClick={reset}>← Retour à l'accueil</button>
+        </div>
+      </div>
+    );
+  }
+  if(step==='result'&&result&&result.err)return(<div className="welcome"><div className="punch-result err"><div style={{fontSize:'1.8rem',marginBottom:8}}>❌</div><div style={{fontFamily:'var(--font-head)',fontWeight:700}}>PIN incorrect</div><button style={{background:'none',border:'none',color:'var(--muted)',fontSize:11,cursor:'pointer',marginTop:'0.55rem',textDecoration:'underline'}} onClick={reset}>← Retour</button></div></div>);
+
+  // ── PIN PADS ──
+  if(step==='pin')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch IN" onSubmit={pin=>handlePunch(pin,'in')} onCancel={goBack}/></div>);
+  if(step==='pin-out')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch OUT" onSubmit={pin=>handlePunch(pin,'out')} onCancel={goBack}/></div>);
+  if(step==='pin-confirm')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Confirmer la job" onSubmit={pin=>handlePunch(pin,'confirm')} onCancel={goBack}/></div>);
+
+  // ── PUNCH IN ──
+  if(step==='punch-in')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+      <TimeHeader/>
+      <PunchInScreen emp={selEmp} allEmps={emps} selJob={selJob} selJobColor={selJobColor}
+        onConfirm={d=>{punchDataRef.current=d;setStep('pin');}} onBack={goBack}/>
+    </div>
+  );
+
+  // ── PUNCH OUT ──
+  if(step==='duration-out')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+      <TimeHeader/>
+      <PunchOutScreen emp={selEmp} allEmps={emps} pts={ptsForOut} sid={sid}
+        onConfirm={d=>{punchDataRef.current=d;setSelJob(d.job||'');setSelJobColor(d.jobColor||'');setStep('pin-out');}}
+        onBack={goBack} notify={notify} folders={folders} calendarIds={calendarIds}/>
+    </div>
+  );
+
+  // ── CONFIRM JOB ──
+  if(step==='confirm')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+      <TimeHeader/>
+      <DurationForm emp={selEmp} allEmps={emps} jobName={selJob} jobColor={selJobColor} isOut={false}
+        onConfirm={d=>{punchDataRef.current=d;setStep('pin-confirm');}}
+        onBack={goBack} notify={notify} folders={folders} calendarIds={calendarIds}/>
+    </div>
+  );
+
+  // ── JOB SELECTOR ──
+  if(step==='job')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+      <TimeHeader/>
+      <JobSelector jobs={jobs} emp={selEmp}
+        onSelect={(t,c)=>{setSelJob(t);setSelJobColor(c);
+          if(mode==='out')setStep('duration-out');
+          else if(mode==='confirm')setStep('confirm');
+          else setStep('punch-in');
+        }}
+        onCreateJob={async(nj)=>{
+          const calId=calendarIds&&calendarIds[0]||'primary';
+          const gcalColor=selEmp?selEmp.couleur:'#2f81f7';
+          await createCalendarEvent(calId,nj.title,nj.date,gcalColor);
+          notify('✅ Job "'+nj.title+'" créé!','success');
+          getCalendarJobs(calendarIds).then(setJobs);
+          setSelJob(nj.title);setSelJobColor(gcalColor);
+          if(mode==='out')setStep('duration-out');
+          else if(mode==='confirm')setStep('confirm');
+          else setStep('punch-in');
+        }}
+        onSkip={()=>{setSelJob('');setSelJobColor('');
+          if(mode==='out')setStep('duration-out');
+          else if(mode==='confirm')setStep('confirm');
+          else setStep('punch-in');
+        }}/>
+    </div>
+  );
+
+  // ── HISTORY ──
+  if(step==='history')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+      <EmployeeHistory emp={selEmp} sid={sid} notify={notify} folders={folders} calendarIds={calendarIds}/>
+    </div>
+  );
+
+  if(step==='projets'){
+    // Load all pts if not already loaded
+    const allPts=ptsForOut.length?ptsForOut:ptsRef.current;
+    return(
+      <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+        <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={jobs} isAdmin={false} notify={notify}/>
+      </div>
+    );
+  }
+
+  // ── MODE SELECTION ──
+  if(step==='mode'&&selEmp)return(
+    <div className="welcome">
+      <TimeHeader/>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'1.25rem'}}>
+        <div className="emp-av" style={{background:selEmp.couleur,width:36,height:36,fontSize:12}}>{selEmp.code}</div>
+        <div style={{fontFamily:'var(--font-head)',fontWeight:700}}>{selEmp.nom}</div>
+        <span className={'badge '+(empStatut==='in'?'badge-in':'badge-out')} style={{marginLeft:'auto'}}>{empStatut==='in'?'En cours':'Absent'}</span>
+      </div>
+      <div className="mode-wrap">
+        {empStatut==='in'?(
+          <div className="mode-btn" onClick={async()=>{
+            setMode('out');
+            notify('⏳ Chargement...','warn');
+            let p=[];
+            try{p=await getPointages(sid,{nom:selEmp.nom});}catch(e){console.error(e);}
+            // If reload failed, use what we have from last punch
+            if(p.length===0&&ptsRef.current.length>0)p=ptsRef.current;
+            ptsRef.current=p;
+            setPtsForOut(p);
+            setStep('duration-out');
+          }}>
+            <div className="mode-icon">🔴</div>
+            <div><div className="mode-title">Punch OUT</div><div className="mode-desc">Terminer — heures, dépl., fichiers</div></div>
+          </div>
+        ):(
+          <div className="mode-btn" onClick={()=>{setMode('in');setStep('job');}}>
+            <div className="mode-icon">🟢</div>
+            <div><div className="mode-title">Punch IN</div><div className="mode-desc">Commencer sur un job</div></div>
+          </div>
+        )}
+        <div className="mode-btn" onClick={()=>{setMode('confirm');setStep('job');}}>
+          <div className="mode-icon">✅</div>
+          <div><div className="mode-title">Confirmer une job</div><div className="mode-desc">Heures, dépl., coéquipiers, fichiers</div></div>
+        </div>
+        <div className="mode-btn" onClick={()=>setStep('history')}>
+          <div className="mode-icon">📋</div>
+          <div><div className="mode-title">Mes heures</div><div className="mode-desc">Consulter, modifier, ajouter fichiers</div></div>
+        </div>
+        <div className="mode-btn" onClick={()=>setStep('projets')}>
+          <div className="mode-icon">📁</div>
+          <div><div className="mode-title">Projets</div><div className="mode-desc">Jobs en cours, heures, fichiers</div></div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── EMP GRID ──
+  return(
+    <div className="welcome">
+      <TimeHeader/>
+      {emps.length===0?(
+        <div style={{color:'var(--muted)',textAlign:'center',maxWidth:320}}>
+          <div style={{fontSize:'1.8rem',marginBottom:'0.55rem'}}>👷</div>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:700,marginBottom:'0.3rem'}}>Aucun employé</div>
+          <div style={{fontSize:13}}>Connectez-vous en tant qu'administrateur.</div>
+        </div>
+      ):(
+        <>
+          <div style={{fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.1em',color:'var(--muted)',marginBottom:'0.85rem'}}>Sélectionnez votre nom</div>
+          <div className="emp-grid">
+            {emps.map(emp=>(
+              <div key={emp.nom} className="emp-card"
+                style={{borderColor:emp.statut==='in'?emp.couleur:'var(--border)',boxShadow:emp.statut==='in'?'0 0 0 1px '+emp.couleur:''}}
+                onClick={()=>{setSelEmp(emp);setStep('mode');}}>
+                <div className="emp-av-lg" style={{background:emp.couleur}}>{emp.code}</div>
+                <div style={{fontSize:12,fontWeight:600}}>{emp.nom}</div>
+                <div style={{fontSize:10,color:emp.statut==='in'?emp.couleur:'var(--muted)',marginTop:2}}>{emp.statut==='in'?'● En cours':'○ Absent'}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── SETTINGS MENU ─────────────────────────────────────────────────────────────
+function SettingsMenu({userEmail,isBoss,onSwitch,onEditCfg,onReset}){
+  const [open,setOpen]=useState(false);
+  const [settings,setSettings]=useState(()=>{try{return JSON.parse(localStorage.getItem('pp_settings')||'{}');}catch{return{};}});
+  const ref=useRef();
+  useEffect(()=>{const h=e=>{if(ref.current&&!ref.current.contains(e.target))setOpen(false);};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h);},[]);
+  function toggle(key){const n={...settings,[key]:!settings[key]};setSettings(n);localStorage.setItem('pp_settings',JSON.stringify(n));}
+  return(
+    <div className="settings-wrap" ref={ref}>
+      <button className="settings-btn" onClick={()=>setOpen(o=>!o)}>⚙</button>
+      {open&&(
+        <div className="settings-menu">
+          <div className="ssec">Compte</div>
+          <div className="acct-card">
+            <div style={{fontSize:11,color:'var(--text)',fontWeight:500,display:'flex',alignItems:'center',gap:5}}>
+              <span style={{width:6,height:6,borderRadius:'50%',background:userEmail?'var(--success)':'var(--muted)',display:'inline-block'}}></span>
+              {userEmail||'Non connecté'}
+            </div>
+            <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{userEmail?(isBoss?'🔐 Administrateur':'👷 Employés'):'—'}</div>
+          </div>
+          <button className="si" onClick={()=>{setOpen(false);onSwitch();}}><span className="ico">🔄</span>Changer de compte</button>
+          <div className="sdiv"/>
+          <div className="ssec">Application</div>
+          <button className="si" onClick={()=>{setOpen(false);onEditCfg();}}><span className="ico">🔑</span>Paramètres API</button>
+          <button className="si" onClick={()=>{setOpen(false);window.open('https://docs.google.com/spreadsheets','_blank');}}><span className="ico">📊</span>Google Sheets</button>
+          <button className="si" onClick={()=>{setOpen(false);window.open('https://calendar.google.com','_blank');}}><span className="ico">📅</span>Google Agenda</button>
+          <button className="si" onClick={()=>{setOpen(false);window.open('https://drive.google.com','_blank');}}><span className="ico">🗂️</span>Google Drive</button>
+          <div className="sdiv"/>
+          <div className="ssec">Fonctionnalités (à venir)</div>
+          <div className="toggle-row"><span style={{fontSize:12,color:'var(--muted)'}}>📴 Mode offline</span><div className={'toggle'+(settings.offline?' on':'')} onClick={()=>toggle('offline')}><div className="toggle-knob"></div></div></div>
+          <div style={{fontSize:10,color:'var(--muted)',padding:'0 0.6rem 0.35rem',fontStyle:'italic'}}>Sync auto quand reconnecté</div>
+          <div className="toggle-row"><span style={{fontSize:12,color:'var(--muted)'}}>📧 Rapport hebdo</span><div className={'toggle'+(settings.rapportHebdo?' on':'')} onClick={()=>toggle('rapportHebdo')}><div className="toggle-knob"></div></div></div>
+          <div style={{fontSize:10,color:'var(--muted)',padding:'0 0.6rem 0.35rem',fontStyle:'italic'}}>Email auto le vendredi</div>
+          <div className="sdiv"/>
+          <button className="si danger" onClick={()=>{setOpen(false);onReset();}}><span className="ico">🗑️</span>Réinitialiser</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── CONFIG MODAL ──────────────────────────────────────────────────────────────
+function ConfigModal({initial,onSave}){
+  const [cfg,setCfg]=useState(initial||{apiKey:'',clientId:'',spreadsheetId:'',calendarIds:'',driveFolders:''});
+  // driveFolders format: "Factures:ID1, Plans:ID2, Photos:ID3"
+  const ok=cfg.apiKey&&cfg.clientId&&cfg.spreadsheetId;
+  return(
+    <div className="overlay">
+      <div className="modal">
+        <div className="modal-title">⚡ PunchPro</div>
+        <div className="modal-sub">Configuration — Saran Électrique</div>
+        <div className="fg"><label>Google API Key</label><input placeholder="AIzaSy..." value={cfg.apiKey} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,apiKey:v}));}}/></div>
+        <div className="fg"><label>OAuth 2.0 Client ID</label><input placeholder="123...apps.googleusercontent.com" value={cfg.clientId} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,clientId:v}));}}/></div>
+        <div className="fg"><label>Google Spreadsheet ID</label><input placeholder="144Ub45GKP6bvMEd2Zda9JIhfwYpkKMNm" value={cfg.spreadsheetId} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,spreadsheetId:v}));}}/></div>
+        <div className="fg"><label>Calendriers (séparés par virgules)</label><input placeholder="saranelectrique@gmail.com, info@saranelectrique.com" value={cfg.calendarIds} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,calendarIds:v}));}}/><small>Emails des comptes Google Agenda</small></div>
+        <div className="fg">
+          <label>Dossiers Drive partagé</label>
+          <textarea placeholder={"Factures:1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms\nPlans:1DuQHFcVNlPWECa4yEpVqEQqIhSB1234\nPhotos:1AbCdEfGhIjKlMnOpQrStUv5678"} value={cfg.driveFolders||''} style={{minHeight:90}} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,driveFolders:v}));}}/>
+          <small>Format: NomDossier:ID_Google_Drive — un par ligne. L'ID se trouve dans l'URL du dossier Drive.</small>
+        </div>
+        <button className="btn-p" disabled={!ok} onClick={()=>ok&&onSave(cfg)}>Enregistrer →</button>
+      </div>
+    </div>
+  );
+}
+
+
+// ── ADMIN VIEW ────────────────────────────────────────────────────────────────
+function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
+  const [tab,setTab]=useState('dashboard');
+  const [emps,setEmps]=useState([]);
+  const [pts,setPts]=useState([]);
+  const [banque,setBanque]=useState([]);
+  const [jobs,setJobs]=useState([]);
+  const [msgs,setMsgs]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showAdd,setShowAdd]=useState(false);
+  const [editEmp,setEditEmp]=useState(null);
+  const [newEmp,setNewEmp]=useState({nom:'',pin:'',code:'',couleur:EMP_COLORS[0],email:'',telephone:'',heuresBanque:0});
+  const [selEmp,setSelEmp]=useState('');
+  const [histTab,setHistTab]=useState('semaine');
+
+  const today=localDateStr();
+  const curWeek=getWeek(new Date());
+  const curMois=getMois(new Date());
+
+  useEffect(()=>{
+    setLoading(true);
+    Promise.all([getEmployees(sid),getPointages(sid,{}),getHeuresBanque(sid),getCalendarJobs(calendarIds),getMessages(sid)])
+      .then(([e,p,b,j,m])=>{setEmps(e);setPts(p);setBanque(b);setJobs(j);setMsgs(m);setLoading(false);});
+  },[refreshKey]);
+
+  const pending=banque.filter(b=>b.statut==='pending');
+  const unread=msgs.filter(m=>!m.lu);
+  const eMap=Object.fromEntries(emps.map(e=>[e.nom,e]));
+
+  async function handleAdd(){
+    if(!newEmp.nom||!newEmp.pin){notify('Remplis le nom et le PIN!','err');return;}
+    try{
+      const emp={...newEmp,code:newEmp.code||newEmp.nom.substring(0,2).toUpperCase()};
+      notify('⏳ Sauvegarde...','warn');
+      await saveEmployee(sid,emp);
+      const updated=await getEmployees(sid);setEmps(updated);
+      setNewEmp({nom:'',pin:'',code:'',couleur:EMP_COLORS[updated.length%EMP_COLORS.length],email:'',telephone:'',heuresBanque:0});
+      setShowAdd(false);notify('✅ '+emp.nom+' ajouté!','success');onRefresh();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+  }
+
+  async function handleUpdateEmp(){
+    if(!editEmp||!editEmp.nom||!editEmp.pin){notify('Remplis tous les champs!','err');return;}
+    try{
+      await updateEmployee(sid,editEmp.row,editEmp);
+      const updated=await getEmployees(sid);setEmps(updated);
+      setEditEmp(null);notify('✅ Employé modifié!','success');onRefresh();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+  }
+
+  async function handleDel(emp){
+    if(!confirm('Supprimer '+emp.nom+'?'))return;
+    await deleteEmployee(sid,emp.row);notify('Supprimé','success');
+    const u=await getEmployees(sid);setEmps(u);onRefresh();
+  }
+
+  async function handleBanque(b,statut){
+    await updateBanqueStatus(sid,b.row,statut);
+    notify(statut==='approved'?'✅ '+b.heures+'h approuvées':'Refusé','success');
+    setBanque(await getHeuresBanque(sid));
+  }
+
+  async function handleMarkRead(msg){
+    await markMessageRead(sid,msg.row);
+    setMsgs(m=>m.map(x=>x.row===msg.row?{...x,lu:true}:x));
+  }
+
+  function getHist(){
+    let p=selEmp?pts.filter(x=>x.nom===selEmp):pts;
+    if(histTab==='today')p=p.filter(x=>x.date===today);
+    else if(histTab==='semaine')p=p.filter(x=>x.semaine===curWeek);
+    else if(histTab==='mois')p=p.filter(x=>x.mois===curMois);
+    const empNames=[...new Set(p.map(x=>x.nom))];
+    const lines=[];
+    for(const nom of empNames){
+      const combined=combinePts(p.filter(x=>x.nom===nom));
+      combined.forEach(l=>lines.push({...l,nom}));
+    }
+    return lines.sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,80);
+  }
+
+  function getJobStats(){
+    const map={};
+    for(const p of pts){
+      if(!p.job||(p.type!=='in'&&p.type!=='confirm'))continue;
+      if(!map[p.job])map[p.job]={job:p.job,color:p.jobColor||'#2f81f7',heures:0,deplacement:0,count:0,fichiers:[]};
+      if(p.type==='confirm')map[p.job].heures+=p.heures||0;
+      else{const matchOut=pts.find(o=>o.nom===p.nom&&o.type==='out'&&new Date(o.datetime)>new Date(p.datetime));if(matchOut)map[p.job].heures+=Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/360000)/10;}
+      map[p.job].deplacement+=p.deplacement||0;map[p.job].count++;
+      if(p.fichiersURL)p.fichiersURL.forEach(u=>map[p.job].fichiers.push(u));
+    }
+    return Object.values(map).map(x=>({...x,heures:Math.round(x.heures*10)/10})).sort((a,b)=>b.heures-a.heures);
+  }
+
+  function getAssignees(job){
+    const txt=(job.title+' '+(job.description||'')).toLowerCase();
+    return emps.filter(e=>txt.includes(e.nom.toLowerCase())||txt.includes(e.code.toLowerCase()));
+  }
+
+  if(loading)return <div style={{textAlign:'center',color:'var(--muted)',padding:'3rem',fontSize:13}}>⏳ Chargement...</div>;
+
+  const totalToday=Math.round(emps.reduce((s,e)=>s+calcH(pts.filter(p=>p.nom===e.nom&&p.date===today)),0)*10)/10;
+  const totalWeek=Math.round(emps.reduce((s,e)=>s+calcH(pts.filter(p=>p.nom===e.nom&&p.semaine===curWeek)),0)*10)/10;
+  const totalDep=Math.round(pts.filter(p=>p.semaine===curWeek&&(p.type==='in'||p.type==='confirm')).reduce((s,p)=>s+(p.deplacement||0),0));
+
+  const EmpForm=({data,setData,onSave,onCancel,isEdit})=>(
+    <div className="add-form" style={isEdit?{border:'1px solid var(--accent)'}:{}}>
+      {isEdit&&<div style={{fontSize:11,color:'var(--accent)',marginBottom:'0.55rem',fontWeight:600}}>✏️ Modifier l'employé</div>}
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:'0.38rem',marginBottom:'0.5rem'}}>
+        <div><span className="fl">Nom complet</span><input placeholder="Jean Tremblay" value={data.nom} onChange={e=>{const v=e.target.value;setData(p=>({...p,nom:v}));}}/></div>
+        <div><span className="fl">Code</span><input maxLength={3} placeholder="JT" value={data.code} onChange={e=>{const v=e.target.value.toUpperCase();setData(p=>({...p,code:v}));}}/></div>
+        <div><span className="fl">PIN</span><input maxLength={6} placeholder="1234" value={data.pin} onChange={e=>{const v=e.target.value;setData(p=>({...p,pin:v}));}}/></div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.38rem',marginBottom:'0.5rem'}}>
+        <div><span className="fl">Email</span><input type="email" placeholder="jean@email.com" value={data.email||''} onChange={e=>{const v=e.target.value;setData(p=>({...p,email:v}));}}/></div>
+        <div><span className="fl">Téléphone</span><input type="tel" placeholder="514-555-0000" value={data.telephone||''} onChange={e=>{const v=e.target.value;setData(p=>({...p,telephone:v}));}}/></div>
+      </div>
+      {isEdit&&(
+        <div style={{marginBottom:'0.5rem'}}>
+          <span className="fl">Heures en banque</span>
+          <input type="number" value={data.heuresBanque||0} onChange={e=>{const v=parseFloat(e.target.value)||0;setData(p=>({...p,heuresBanque:v}));}} style={{width:'120px'}}/>
+          <span style={{fontSize:11,color:'var(--muted)',marginLeft:8}}>heures accumulées</span>
+        </div>
+      )}
+      <div style={{marginBottom:'0.55rem'}}>
+        <span className="fl">Couleur</span>
+        <div className="color-row">{EMP_COLORS.map(c=><div key={c} className="cswatch" style={{background:c,border:'2px solid '+(data.couleur===c?'#fff':'transparent')}} onClick={()=>setData(p=>({...p,couleur:c}))}/>)}</div>
+      </div>
+      <div style={{display:'flex',gap:'0.4rem'}}>
+        <button className="btn-p" style={{marginTop:0,flex:1}} onClick={onSave}>✓ Sauvegarder</button>
+        {onCancel&&<button className="btn-s" onClick={onCancel}>Annuler</button>}
+      </div>
+    </div>
+  );
+
+  return(
+    <div>
+      <div className="tabs">
+        {[['dashboard','📊 Dashboard'],['employes','👷 Employés'],['projets','📁 Projets'],['historique','📋 Historique'],['jobs-stats','📍 Par job'],['banque','🏦 Banque'],['messages','💬 Messages'],['agenda','📅 Agenda']].map(([k,l])=>(
+          <div key={k} className={'tab'+(tab===k?' active':'')} onClick={()=>setTab(k)} style={{position:'relative'}}>
+            {l}
+            {k==='banque'&&pending.length>0&&<span className="nav-badge">{pending.length}</span>}
+            {k==='messages'&&unread.length>0&&<span className="nav-badge">{unread.length}</span>}
+          </div>
+        ))}
+      </div>
+
+      {tab==='dashboard'&&(
+        <div className="admin-grid">
+          <div className="card">
+            <div className="csec">Aperçu du jour</div>
+            <div className="stats-grid" style={{marginBottom:'1rem'}}>
+              <div className="stat-box"><div className="val" style={{color:'var(--success)'}}>{emps.filter(e=>e.statut==='in').length}</div><div className="lbl">Sur place</div></div>
+              <div className="stat-box"><div className="val">{totalToday}h</div><div className="lbl">Auj.</div></div>
+              <div className="stat-box"><div className="val">{totalWeek}h</div><div className="lbl">Sem.</div></div>
+              <div className="stat-box"><div className="val">{totalDep}m</div><div className="lbl">Dépl.</div></div>
+            </div>
+            <div className="csec">Statut temps réel</div>
+            <div className="status-grid">
+              {emps.map(emp=>(
+                <div key={emp.nom} className="semp">
+                  <div style={{width:8,height:8,borderRadius:'50%',background:emp.statut==='in'?emp.couleur:'var(--muted)',boxShadow:emp.statut==='in'?'0 0 4px '+emp.couleur:'none',flexShrink:0}}></div>
+                  <div>
+                    <div style={{fontSize:11,fontWeight:500,display:'flex',alignItems:'center',gap:4}}>
+                      <span style={{background:rgba(emp.couleur,0.2),color:emp.couleur,borderRadius:4,padding:'0 3px',fontSize:9,fontWeight:700}}>{emp.code}</span>{emp.nom}
+                    </div>
+                    <div style={{fontSize:10,color:'var(--muted)'}}>{emp.statut==='in'?'✓ Présent':'Absent'}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card">
+            <div className="csec">Heures semaine</div>
+            {emps.map(emp=>{
+              const h=calcH(pts.filter(p=>p.nom===emp.nom&&p.semaine===curWeek));
+              const dep=Math.round(pts.filter(p=>p.nom===emp.nom&&p.semaine===curWeek&&(p.type==='in'||p.type==='confirm')).reduce((s,p)=>s+(p.deplacement||0),0));
+              return(
+                <div key={emp.nom} className="wbar-wrap">
+                  <div className="wbar-label">
+                    <span style={{display:'flex',alignItems:'center',gap:5}}>
+                      <span style={{width:7,height:7,borderRadius:'50%',background:emp.couleur,display:'inline-block'}}></span>
+                      {emp.nom} <span style={{fontSize:9,background:rgba(emp.couleur,0.2),color:emp.couleur,padding:'0 3px',borderRadius:3}}>{emp.code}</span>
+                    </span>
+                    <span style={{display:'flex',gap:6,color:h>40?'var(--warning)':'var(--muted)',fontSize:11}}>
+                      <span>{h}h{h>40?' (+'+Math.round((h-40)*10)/10+'h)':''}</span>
+                      {dep>0&&<span style={{color:'var(--warning)'}}>{'🚗'+dep+'m'}</span>}
+                    </span>
+                  </div>
+                  <div className="wbar"><div className={'wbar-fill'+(h>40?' ot':'')} style={{width:Math.min(100,(h/40)*100)+'%',background:h>40?undefined:emp.couleur}}></div></div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {tab==='employes'&&(
+        <div className="card" style={{maxWidth:580}}>
+          <div className="section-head">
+            <div className="card-title" style={{marginBottom:0}}>Employés ({emps.length})</div>
+            <button className="btn-s" onClick={()=>{setShowAdd(!showAdd);setEditEmp(null);}}>+ Ajouter</button>
+          </div>
+          {showAdd&&!editEmp&&<EmpForm data={newEmp} setData={setNewEmp} onSave={handleAdd} isEdit={false}/>}
+          {editEmp&&<EmpForm data={editEmp} setData={setEditEmp} onSave={handleUpdateEmp} onCancel={()=>setEditEmp(null)} isEdit={true}/>}
+          <div style={{marginTop:'0.7rem'}}>
+            {emps.map(emp=>(
+              <div key={emp.nom} className="emp-row">
+                <div className="emp-av" style={{background:emp.couleur}}>{emp.code}</div>
+                <div style={{flex:1,marginLeft:'0.55rem'}}>
+                  <div style={{fontSize:12,fontWeight:500}}>{emp.nom}</div>
+                  <div style={{fontSize:10,color:'var(--muted)',fontFamily:'monospace'}}>
+                    PIN: {emp.pin} · {emp.code}
+                    {emp.email&&' · '+emp.email}
+                    {emp.telephone&&' · '+emp.telephone}
+                  </div>
+                  {emp.heuresBanque>0&&<div style={{fontSize:10,color:'var(--warning)'}}>🏦 {emp.heuresBanque}h en banque</div>}
+                </div>
+                <span className={'badge '+(emp.statut==='in'?'badge-in':'badge-out')}>{emp.statut==='in'?'Présent':'Absent'}</span>
+                <button className="btn-icon edit" onClick={()=>{setEditEmp({...emp});setShowAdd(false);}}>✏️</button>
+                <button className="btn-icon" onClick={()=>handleDel(emp)}>✕</button>
+              </div>
+            ))}
+            {emps.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>Aucun employé — cliquez "+ Ajouter"</div>}
+          </div>
+        </div>
+      )}
+
+      {tab==='projets'&&(
+        <div className="card">
+          <ProjectsView sid={sid} pts={pts} emps={emps} calJobs={jobs} isAdmin={true} notify={notify}/>
+        </div>
+      )}
+
+      {tab==='historique'&&(
+        <div className="card">
+          <div style={{display:'flex',gap:'0.55rem',alignItems:'center',flexWrap:'wrap',marginBottom:'0.75rem'}}>
+            <select value={selEmp} onChange={e=>setSelEmp(e.target.value)} style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem 0.55rem',color:'var(--text)',fontSize:12}}>
+              <option value="">Tous</option>
+              {emps.map(e=><option key={e.nom} value={e.nom}>{e.nom}</option>)}
+            </select>
+            <div className="tabs" style={{margin:0}}>
+              {[['today','Auj.'],['semaine','Semaine'],['mois','Mois'],['all','Tout']].map(([k,l])=>(
+                <div key={k} className={'tab'+(histTab===k?' active':'')} onClick={()=>setHistTab(k)}>{l}</div>
+              ))}
+            </div>
+          </div>
+          <div style={{overflowX:'auto'}}>
+            <table className="htable" style={{minWidth:600}}>
+              <thead><tr><th>Employé</th><th>Date</th><th>Entrée</th><th>Sortie</th><th>Heures</th><th>OT</th><th>Job</th><th>Dépl.</th><th>Coéq.</th><th>Fichiers</th></tr></thead>
+              <tbody>
+                {getHist().map((l,i)=>{
+                  const emp=eMap[l.nom];
+                  return(
+                    <tr key={i}>
+                      <td><div style={{display:'flex',alignItems:'center',gap:5}}>{emp&&<div className="emp-av" style={{background:emp.couleur,width:18,height:18,fontSize:7}}>{emp.code}</div>}{l.nom}</div></td>
+                      <td style={{whiteSpace:'nowrap'}}>{l.date}</td>
+                      <td style={{fontSize:11}}>{l.heure||<span className="badge badge-conf">Conf.</span>}</td>
+                      <td style={{fontSize:11}}>{l.heureOut||'—'}</td>
+                      <td>{l.heures!==null?<strong>{l.heures}h</strong>:'—'}</td>
+                      <td style={{fontSize:11,color:'var(--warning)'}}>{l.ot>0?'+'+l.ot+'h':'—'}</td>
+                      <td><div style={{display:'flex',alignItems:'center',gap:4}}>{l.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:l.jobColor,flexShrink:0}}></div>}<span style={{fontSize:11,maxWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.job||'—'}</span></div></td>
+                      <td style={{fontSize:11}}>{l.deplacement>0?'🚗'+l.deplacement+'m':'—'}</td>
+                      <td style={{fontSize:11,maxWidth:70,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.coequipiers&&l.coequipiers.length>0?l.coequipiers.join(', '):'—'}</td>
+                      <td>{l.fichiersURL&&l.fichiersURL.length>0?l.fichiersURL.map((u,fi)=><a key={fi} href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:3}}>📎</a>):'—'}</td>
+                    </tr>
+                  );
+                })}
+                {getHist().length===0&&<tr><td colSpan={10} style={{textAlign:'center',color:'var(--muted)',padding:'1rem'}}>Aucun pointage</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab==='jobs-stats'&&(
+        <div className="card">
+          <div className="card-title">Heures par job / chantier</div>
+          <table className="htable">
+            <thead><tr><th>Job</th><th>Heures</th><th>Déplacements</th><th>Punchages</th><th>Fichiers</th></tr></thead>
+            <tbody>
+              {getJobStats().map((j,i)=>(
+                <tr key={i}>
+                  <td><div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:9,height:9,borderRadius:'50%',background:j.color,flexShrink:0}}></div><span style={{fontWeight:500}}>{j.job}</span></div></td>
+                  <td><strong>{j.heures}h</strong></td>
+                  <td>{j.deplacement>0?'🚗 '+j.deplacement+'m':'—'}</td>
+                  <td>{j.count}</td>
+                  <td>{j.fichiers.length>0?j.fichiers.map((u,fi)=><a key={fi} href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:4}}>📎</a>):'—'}</td>
+                </tr>
+              ))}
+              {getJobStats().length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--muted)',padding:'1rem'}}>Aucune donnée</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab==='banque'&&(
+        <div>
+          {pending.length>0&&(
+            <div className="card" style={{marginBottom:'0.85rem',borderColor:'rgba(210,153,34,0.3)'}}>
+              <div className="card-title">⚠️ En attente ({pending.length})</div>
+              {pending.map(b=>{
+                const emp=eMap[b.nom];
+                return(
+                  <div key={b.row} className="bank-row">
+                    <div style={{display:'flex',alignItems:'center',gap:7}}>
+                      {emp&&<div className="emp-av" style={{background:emp.couleur}}>{emp.code}</div>}
+                      <div><div style={{fontWeight:500,fontSize:12}}>{b.nom}</div><div style={{fontSize:10,color:'var(--muted)'}}>Sem. {b.semaine}</div></div>
+                    </div>
+                    <div style={{fontFamily:'var(--font-head)',fontWeight:700,color:'var(--warning)'}}>+{b.heures}h</div>
+                    <div style={{display:'flex',gap:4}}>
+                      <button className="btn-sm btn-approve" onClick={()=>handleBanque(b,'approved')}>✓</button>
+                      <button className="btn-sm btn-deny" onClick={()=>handleBanque(b,'denied')}>✕</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div className="card">
+            <div className="card-title">Historique heures en banque</div>
+            <table className="htable">
+              <thead><tr><th>Employé</th><th>Semaine</th><th>Heures</th><th>Statut</th><th>Date</th></tr></thead>
+              <tbody>
+                {banque.map((b,i)=>(
+                  <tr key={i}><td>{b.nom}</td><td>{b.semaine}</td><td>+{b.heures}h</td>
+                    <td><span className={'badge '+(b.statut==='approved'?'badge-in':b.statut==='pending'?'badge-pend':'badge-out')}>{b.statut==='approved'?'Approuvé':b.statut==='pending'?'En attente':'Refusé'}</span></td>
+                    <td>{b.date}</td></tr>
+                ))}
+                {banque.length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--muted)',padding:'1rem'}}>Aucune</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab==='messages'&&(
+        <div className="card">
+          <div className="section-head">
+            <div className="card-title" style={{marginBottom:0}}>Messages {unread.length>0&&<span style={{background:'var(--danger)',color:'#fff',borderRadius:8,padding:'1px 7px',fontSize:11,marginLeft:6}}>{unread.length}</span>}</div>
+            {unread.length>0&&<button className="btn-s" style={{fontSize:11}} onClick={async()=>{for(const m of unread)await markMessageRead(sid,m.row);setMsgs(ms=>ms.map(x=>({...x,lu:true})));notify('Tout lu','success');}}>Tout lire</button>}
+          </div>
+          {msgs.length===0?<div style={{color:'var(--muted)',fontSize:13}}>Aucun message.</div>:
+          msgs.map((msg,i)=>(
+            <div key={i} className={'msg-card'+(msg.lu?' read':'')}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:600}}>{msg.de} — <span style={{color:'var(--warning)'}}>{msg.action}</span></div>
+                  <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{msg.details}</div>
+                  <div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>{new Date(msg.datetime).toLocaleDateString('fr-CA')} {new Date(msg.datetime).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}</div>
+                </div>
+                {!msg.lu&&<button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0}} onClick={()=>handleMarkRead(msg)}>✓</button>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab==='agenda'&&(
+        <div className="card">
+          <div className="card-title">Agenda — 14 prochains jours</div>
+          {jobs.length===0?<div style={{color:'var(--muted)',fontSize:13}}>Aucun événement.</div>:
+          jobs.map(j=>{
+            const ass=getAssignees(j);
+            return(
+              <div key={j.id} className="job-item" style={{borderLeftColor:j.gcalColor}}>
+                <div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:9,height:9,borderRadius:'50%',background:j.gcalColor,flexShrink:0}}></div><div style={{fontWeight:600,fontSize:13}}>{j.title}</div></div>
+                <div style={{fontSize:11,color:'var(--muted)',marginTop:2,marginLeft:16}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'long',month:'long',day:'numeric'})} {j.location?' · '+j.location:''}</div>
+                {ass.length>0&&<div style={{marginTop:4,marginLeft:16}}>{ass.map(a=><span key={a.nom} className="achip" style={{background:rgba(a.couleur,0.2),color:a.couleur}}><span style={{width:6,height:6,borderRadius:'50%',background:a.couleur,display:'inline-block'}}></span>{a.nom}</span>)}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MAIN APP ──────────────────────────────────────────────────────────────────
+function App(){
+  const [cfg,setCfg]=useState(()=>{try{return JSON.parse(localStorage.getItem('pp_cfg')||'null');}catch{return null;}});
+  const [showCfg,setShowCfg]=useState(!cfg);
+  const [authed,setAuthed]=useState(false);
+  const [userEmail,setUserEmail]=useState('');
+  const [isBoss,setIsBoss]=useState(false);
+  const [view,setView]=useState('punch');
+  const [emps,setEmps]=useState([]);
+  const [refreshKey,setRefreshKey]=useState(0);
+  const [notif,setNotif]=useState(null);
+  const [authLoading,setAuthLoading]=useState(false);
+  const [libsReady,setLibsReady]=useState(false);
+  const [unreadCount,setUnreadCount]=useState(0);
+  const [navBack,setNavBack]=useState(null);
+
+  function notify(msg,type){setNotif({msg,type:type||'success',id:Date.now()});}
+  function onRefresh(){setRefreshKey(k=>k+1);}
+
+  function getCalendarIds(){
+    if(!cfg||!cfg.calendarIds)return['primary'];
+    const ids=cfg.calendarIds.split(',').map(e=>e.trim()).filter(Boolean);
+    return ids.length?ids:['primary'];
+  }
+
+  function getDriveFolders(){
+    return parseDriveFolders(cfg&&cfg.driveFolders||'');
+  }
+
+  async function onToken(resp){
+    if(resp.error){
+      // Ignore errors from silent refresh attempts
+      if(authLoading){setAuthLoading(false);notify('Erreur: '+resp.error,'err');}
+      return;
+    }
+    // Silent refresh — just update token, don't reset UI
+    if(authed){
+      console.log('Token refreshed silently');
+      return;
+    }
+    // Full login flow
+    let email='';
+    try{
+      const token=gapi.client.getToken();
+      if(token&&token.access_token){
+        const r=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{'Authorization':'Bearer '+token.access_token}});
+        const d=await r.json();
+        email=(d.email||'').toLowerCase().trim();
+      }
+    }catch(e){console.error(e);}
+    const boss=BOSS_EMAILS.includes(email);
+    setUserEmail(email||'connecté');setIsBoss(boss);setView('punch');
+    let cur;try{cur=JSON.parse(localStorage.getItem('pp_cfg')||'null');}catch{cur=cfg;}
+    await ensureStructure(cur.spreadsheetId);
+    setEmps(await getEmployees(cur.spreadsheetId));
+    if(boss){const m=await getMessages(cur.spreadsheetId);setUnreadCount(m.filter(x=>!x.lu).length);}
+    setAuthed(true);setAuthLoading(false);
+    notify('✅ '+email+(boss?' 👑 Admin':''),'success');
+    onRefresh();
+  }
+
+  async function loadLibs(config){
+    try{await initLibs(config,onToken);setLibsReady(true);}
+    catch(e){console.error(e);notify('Erreur APIs Google','err');}
+  }
+
+  useEffect(()=>{if(cfg)loadLibs(cfg);},[cfg]);
+  useEffect(()=>{if(authed&&cfg)getEmployees(cfg.spreadsheetId).then(setEmps);},[refreshKey,authed]);
+
+  // Refresh OAuth token silently every 45 min to avoid timeout
+  useEffect(()=>{
+    if(!authed||!tokenClient)return;
+    const interval=setInterval(()=>{
+      try{
+        tokenClient.requestAccessToken({prompt:''});
+      }catch(e){console.log('Token refresh skipped:',e);}
+    },45*60*1000);
+    return()=>clearInterval(interval);
+  },[authed]);
+
+  function handleAuth(){
+    if(!libsReady){notify('APIs en chargement...','warn');return;}
+    setAuthLoading(true);tokenClient.requestAccessToken({prompt:'select_account'});
+  }
+  function handleSaveCfg(config){
+    localStorage.setItem('pp_cfg',JSON.stringify(config));
+    setCfg(config);setShowCfg(false);setAuthed(false);setLibsReady(false);tokenClient=null;loadLibs(config);
+  }
+  function handleSwitch(){
+    setAuthed(false);setUserEmail('');setIsBoss(false);setAuthLoading(true);
+    tokenClient.requestAccessToken({prompt:'select_account'});
+  }
+  function handleReset(){
+    if(!confirm('Réinitialiser?'))return;
+    localStorage.removeItem('pp_cfg');setCfg(null);setAuthed(false);setShowCfg(true);setLibsReady(false);tokenClient=null;
+  }
+
+  return(
+    <div className="app-wrap">
+      {showCfg&&<ConfigModal initial={cfg} onSave={handleSaveCfg}/>}
+      {notif&&<Notif key={notif.id} msg={notif.msg} type={notif.type} onClose={()=>setNotif(null)}/>}
+      <div className="topbar">
+        <div className="topbar-left">
+          {navBack
+            ?<button className="back-btn" onClick={navBack}>← Retour</button>
+            :<div className="logo">⚡ Saran Électrique</div>
+          }
+          <span style={{fontSize:9,color:'var(--muted)',fontFamily:'monospace',marginLeft:4}}>{APP_VERSION}</span>
+        </div>
+        <div className="topbar-right">
+          {authed?(
+            <>
+              <div className="online-badge"><div className="online-dot"></div><span style={{maxWidth:75,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{userEmail.split('@')[0]}</span></div>
+              <div className="nav-tabs">
+                <div className={'nav-tab'+(view==='punch'?' active':'')} onClick={()=>setView('punch')}>Punch</div>
+                {isBoss&&(
+                  <div className={'nav-tab admin'+(view==='admin'?' active':'')} onClick={()=>setView('admin')} style={{position:'relative'}}>
+                    Admin{unreadCount>0&&<span className="nav-badge">{unreadCount}</span>}
+                  </div>
+                )}
+              </div>
+              <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.5rem'}} onClick={onRefresh}>↻</button>
+            </>
+          ):(
+            <button className="btn-p" style={{width:'auto',padding:'0.38rem 0.9rem',fontSize:12,marginTop:0}} onClick={handleAuth} disabled={authLoading||!libsReady}>
+              {authLoading?'⏳':'🔐 Connexion'}
+            </button>
+          )}
+          <SettingsMenu userEmail={userEmail} isBoss={isBoss} onSwitch={handleSwitch} onEditCfg={()=>setShowCfg(true)} onReset={handleReset}/>
+        </div>
+      </div>
+      {!authed?(
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flex:1,padding:'2.5rem 1.5rem',textAlign:'center'}}>
+          <div style={{fontSize:'2.8rem',marginBottom:'0.55rem'}}>⚡</div>
+          <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,marginBottom:'0.2rem'}}>Saran Électrique</div>
+          <div style={{color:'var(--muted)',fontSize:'0.85rem',marginBottom:'1.75rem'}}>Système de gestion du temps</div>
+          <button className="btn-p" style={{width:'auto',padding:'0.65rem 1.75rem',marginTop:0}} onClick={handleAuth} disabled={authLoading||!libsReady}>
+            {authLoading?'⏳ Connexion...':'🔐 Se connecter avec Google'}
+          </button>
+          {!libsReady&&cfg&&<div style={{color:'var(--muted)',fontSize:11,marginTop:'0.75rem'}}>⏳ Chargement APIs...</div>}
+        </div>
+      ):(
+        <>
+          {view==='punch'&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={getCalendarIds()} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} folders={getDriveFolders()}/>}
+          {view==='admin'&&isBoss&&<div className="content"><AdminView sid={cfg.spreadsheetId} calendarIds={getCalendarIds()} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh}/></div>}
+        </>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
