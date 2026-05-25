@@ -44,7 +44,7 @@ button{font-family:var(--font-body)}
 .app-wrap{min-height:100vh;display:flex;flex-direction:column}
 /* ── TOPBAR ─────────────────────────────────────────────────────────── */
 .topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 1rem;height:var(--topbar-h);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
-.logo{font-family:var(--font-head);font-size:0.88rem;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px}
+.logo{font-family:var(--font-head);font-size:0.85rem;font-weight:800;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent;white-space:nowrap;overflow:visible;max-width:none}
 .topbar-left{display:flex;align-items:center;gap:0.4rem;min-width:0;flex:1}
 .topbar-right{display:flex;align-items:center;gap:0.4rem;flex-shrink:0}
 .back-btn{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.28rem 0.65rem;color:var(--muted);cursor:pointer;font-size:12px;transition:all 0.2s}
@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v76';
+const APP_VERSION='v77';
 
 const { useState, useEffect, useRef } = React;
 
@@ -791,14 +791,39 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
           <button className="btn-s" style={{fontSize:11,marginTop:'0.3rem'}} onClick={()=>setShowCalJobs(false)}>← Retour</button>
         </div>
       )}
-      {jobOptions.map((j,i)=>(<div key={i} className="job-btn" style={{borderLeftWidth:4,borderLeftColor:j.jobColor||'var(--accent)',marginBottom:'0.4rem'}} onClick={()=>setSelJobData(j)}><div style={{width:10,height:10,borderRadius:'50%',background:j.jobColor||'var(--accent)',flexShrink:0}}></div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{j.job||'Sans job'}</div><div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{j.date} — IN à {j.heure}{j.coequipiers&&j.coequipiers.length>0?' · 👥 '+j.coequipiers.join(', '):''}</div></div></div>))}
+      {jobOptions.map((j,i)=>{
+        // Build display coequipiers: exclude current employee, include original puncher if different
+        const displayCoeqs=[
+          ...(j.coequipiers||[]).filter(n=>n!==emp.nom),
+          ...(j.nom&&j.nom!==emp.nom?[j.nom]:[])
+        ];
+        return(
+          <div key={i} className="job-btn" style={{borderLeftWidth:4,borderLeftColor:j.jobColor||'var(--accent)',marginBottom:'0.4rem'}} onClick={()=>setSelJobData(j)}>
+            <div style={{width:10,height:10,borderRadius:'50%',background:j.jobColor||'var(--accent)',flexShrink:0}}></div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:600}}>{j.job||'Sans job'}</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>
+                {j.date} — IN à {j.heure}
+                {displayCoeqs.length>0?' · 👥 '+displayCoeqs.join(', '):''}
+              </div>
+            </div>
+          </div>
+        );
+      })}
       <button className="btn-s" style={{width:'100%',marginTop:'0.5rem',fontSize:12}} onClick={()=>setSelJobData({job:'',jobColor:'',heure:'',datetime:new Date().toISOString(),coequipiers:[]})}>Autre / Sans job</button>
     </div>
   );
 
   return(
     <div style={{maxWidth:380,width:'100%',textAlign:'left'}}>
-      {selJobData.job&&(<div style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.6rem'}}><div style={{display:'flex',alignItems:'center',gap:8}}><div style={{width:10,height:10,borderRadius:'50%',background:selJobData.jobColor||'var(--accent)',flexShrink:0}}></div><div style={{fontSize:13,fontWeight:600,flex:1}}>{selJobData.job}</div></div>{selJobData.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,marginLeft:18}}>{'IN à '+selJobData.heure}</div>}{coeqs.length>0&&<div style={{fontSize:11,color:'var(--muted)',marginLeft:18}}>{'👥 Avec: '+coeqs.join(', ')}</div>}</div>)}
+      {selJobData.job&&(<div style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.6rem'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <div style={{width:10,height:10,borderRadius:'50%',background:selJobData.jobColor||'var(--accent)',flexShrink:0}}></div>
+          <div style={{fontSize:13,fontWeight:600,flex:1}}>{selJobData.job}</div>
+        </div>
+        {selJobData.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,marginLeft:18}}>{'IN à '+selJobData.heure}</div>}
+        {coeqs.filter(n=>n!==emp.nom).length>0&&<div style={{fontSize:11,color:'var(--muted)',marginLeft:18}}>{'👥 Avec: '+coeqs.filter(n=>n!==emp.nom).join(', ')}</div>}
+      </div>)}
       <TimePicker label="Heure de sortie" value={timeOut} onChange={setTimeOut} color="var(--danger)"/>
       <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.5rem'}}>
@@ -2351,8 +2376,12 @@ function App(){
         </div>
         <div className="topbar-right">
           {!authed&&(
-            <button className="btn-p" style={{width:'auto',padding:'0.38rem 0.9rem',fontSize:12,marginTop:0,touchAction:'manipulation'}} onClick={handleAuth} disabled={authLoading||!libsReady}>
-              {authLoading?'⏳':'🔐 Connexion'}
+            <button onClick={handleAuth} disabled={authLoading||!libsReady}
+              style={{background:'#fff',border:'none',borderRadius:8,padding:'0.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',width:34,height:34,flexShrink:0,touchAction:'manipulation',opacity:authLoading?0.5:1}}>
+              {authLoading
+                ?<span style={{fontSize:14}}>⏳</span>
+                :<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/><path fill="none" d="M0 0h48v48H0z"/></svg>
+              }
             </button>
           )}
           <button style={{background:'none',border:'1px solid var(--border)',borderRadius:8,padding:'0.3rem 0.6rem',color:'var(--text)',cursor:'pointer',fontSize:16,touchAction:'manipulation',display:'flex',alignItems:'center',justifyContent:'center',width:34,height:34,flexShrink:0}} onClick={()=>setShowSidebar(true)}>
