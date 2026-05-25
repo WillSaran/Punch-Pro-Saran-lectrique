@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v79';
+const APP_VERSION='v80';
 
 const { useState, useEffect, useRef } = React;
 
@@ -715,15 +715,17 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
 
   const allIns=pts.filter(p=>p.type==='in');
   const allOuts=pts.filter(p=>p.type==='out');
+  const now=new Date();
   const openJobs=allIns.filter(pin=>{
     const inDt=new Date(pin.datetime);
+    // Only consider punch INs from the last 24 hours
+    if(now-inDt>86400000)return false;
     const empNom=emp.nom;
     const hasOut=allOuts.some(po=>{
       if(po.nom!==empNom)return false;
       if((po.job||'')!==(pin.job||''))return false;
       const outDt=new Date(po.datetime);
-      // OUT must be after IN and within 2 days
-      return outDt>inDt&&(outDt-inDt)<172800000;
+      return outDt>inDt;
     });
     return !hasOut;
   });
@@ -1692,8 +1694,9 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
             setMode('out');
             notify('⏳ Chargement...','warn');
             let p=[];
-            try{p=await getPointages(sid,{nom:selEmp.nom});}catch(e){console.error(e);}
-            if(p.length===0&&ptsRef.current.length>0)p=ptsRef.current;
+            // Only load today's pointages for punch OUT
+            try{p=await getPointages(sid,{nom:selEmp.nom,date:localDateStr()});}catch(e){console.error(e);}
+            if(p.length===0&&ptsRef.current.length>0)p=ptsRef.current.filter(x=>x.date===localDateStr());
             ptsRef.current=p;
             setPtsForOut(p);
             setStep('duration-out');
