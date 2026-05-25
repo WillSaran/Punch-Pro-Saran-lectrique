@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v82';
+const APP_VERSION='v83';
 
 const { useState, useEffect, useRef } = React;
 
@@ -1428,7 +1428,12 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
 function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders}){
   const now=useClock();
   const [step,setStep]=useState('emps');
-  useEffect(()=>{window.scrollTo(0,0);},[step]);
+  useEffect(()=>{
+    // Only scroll to top if no text input is currently focused
+    const active=document.activeElement;
+    const isInput=active&&(active.tagName==='INPUT'||active.tagName==='TEXTAREA'||active.tagName==='SELECT');
+    if(!isInput)window.scrollTo(0,0);
+  },[step]);
   // steps: emps > mode > job > punch-in > pin > result
   //                    > duration-out > pin-out > result
   //                    > confirm > pin-confirm > result
