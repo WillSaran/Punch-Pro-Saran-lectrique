@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v78';
+const APP_VERSION='v79';
 
 const { useState, useEffect, useRef } = React;
 
@@ -717,14 +717,14 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
   const allOuts=pts.filter(p=>p.type==='out');
   const openJobs=allIns.filter(pin=>{
     const inDt=new Date(pin.datetime);
-    const empNom=emp.nom; // The employee doing the punch OUT
-    // Check if there's already an OUT for this employee on this job after this IN
-    // For coequipier rows (pin.nom !== emp.nom), check if emp has their own OUT
-    const hasOut=allOuts.some(po=>
-      po.nom===empNom &&
-      (po.job||'')===(pin.job||'') &&
-      new Date(po.datetime)>inDt
-    );
+    const empNom=emp.nom;
+    const hasOut=allOuts.some(po=>{
+      if(po.nom!==empNom)return false;
+      if((po.job||'')!==(pin.job||''))return false;
+      const outDt=new Date(po.datetime);
+      // OUT must be after IN and within 2 days
+      return outDt>inDt&&(outDt-inDt)<172800000;
+    });
     return !hasOut;
   });
   const jobOptions=[...new Map(openJobs.map(p=>[(p.job||'__')+p.heure,{job:p.job||'',jobColor:p.jobColor||'#2f81f7',heure:p.heure,datetime:p.datetime,date:p.date,coequipiers:p.coequipiers||[],nom:p.nom}])).values()].sort((a,b)=>new Date(b.datetime)-new Date(a.datetime));
@@ -1687,29 +1687,24 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
         <span className={'badge '+(empStatut==='in'?'badge-in':'badge-out')} style={{marginLeft:'auto'}}>{empStatut==='in'?'En cours':'Absent'}</span>
       </div>
       <div className="mode-wrap">
-        <div className="mode-btn" onClick={async()=>{
-          setMode('out');
-          notify('⏳ Chargement...','warn');
-          let p=[];
-          try{p=await getPointages(sid,{nom:selEmp.nom});}catch(e){console.error(e);}
-          if(p.length===0&&ptsRef.current.length>0)p=ptsRef.current;
-          ptsRef.current=p;
-          setPtsForOut(p);
-          setStep('duration-out');
-        }}>
-          <div className="mode-icon">🔴</div>
-          <div><div className="mode-title">Punch OUT</div><div className="mode-desc">Terminer — heures, dépl., fichiers</div></div>
-        </div>
-        {empStatut!=='in'&&(
+        {empStatut==='in'?(
+          <div className="mode-btn" onClick={async()=>{
+            setMode('out');
+            notify('⏳ Chargement...','warn');
+            let p=[];
+            try{p=await getPointages(sid,{nom:selEmp.nom});}catch(e){console.error(e);}
+            if(p.length===0&&ptsRef.current.length>0)p=ptsRef.current;
+            ptsRef.current=p;
+            setPtsForOut(p);
+            setStep('duration-out');
+          }}>
+            <div className="mode-icon">🔴</div>
+            <div><div className="mode-title">Punch OUT</div><div className="mode-desc">Terminer — heures, dépl., fichiers</div></div>
+          </div>
+        ):(
           <div className="mode-btn" onClick={()=>{setMode('in');setStep('job');}}>
             <div className="mode-icon">🟢</div>
             <div><div className="mode-title">Punch IN</div><div className="mode-desc">Commencer sur un job</div></div>
-          </div>
-        )}
-        {empStatut==='in'&&(
-          <div className="mode-btn" onClick={()=>{setMode('in');setStep('job');}}>
-            <div className="mode-icon">🟢</div>
-            <div><div className="mode-title">Nouveau Punch IN</div><div className="mode-desc">Commencer une autre job</div></div>
           </div>
         )}
         <div className="mode-btn" onClick={()=>{setMode('confirm');setStep('job');}}>
