@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v85';
+const APP_VERSION='v86';
 
 const { useState, useEffect, useRef } = React;
 
@@ -1428,14 +1428,6 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
 function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders}){
   const now=useClock();
   const [step,setStep]=useState('emps');
-  const prevStep=useRef('emps');
-  useEffect(()=>{
-    // Only scroll if step actually changed to a different page (not just re-render)
-    if(step!==prevStep.current){
-      prevStep.current=step;
-      setTimeout(()=>window.scrollTo({top:0,behavior:'instant'}),50);
-    }
-  },[step]);
   // steps: emps > mode > job > punch-in > pin > result
   //                    > duration-out > pin-out > result
   //                    > confirm > pin-confirm > result
@@ -1471,7 +1463,6 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
   },[step]);
 
   function goBack(){
-    window.scrollTo(0,0);
     if(step==='mode')setStep('emps');
     else if(step==='job')setStep('mode');
     else if(step==='punch-in'||step==='confirm')setStep('job');
