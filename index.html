@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v80';
+const APP_VERSION='v81';
 
 const { useState, useEffect, useRef } = React;
 
@@ -741,8 +741,8 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
     return Math.round(h*4)/4;
   }
   const totalH=calcH();const otH=Math.max(0,Math.round((totalH-8)*100)/100);
-  // Build full coequipier list: includes original coequipiers + original puncher if different employee
-  const baseCoeqs=(selJobData&&selJobData.coequipiers)||[];
+  // Build full coequipier list: excludes current employee, includes original puncher if different
+  const baseCoeqs=(selJobData&&selJobData.coequipiers||[]).filter(n=>n!==emp.nom);
   const origPuncher=(selJobData&&selJobData.nom&&selJobData.nom!==emp.nom)?selJobData.nom:null;
   const coeqs=origPuncher&&!baseCoeqs.includes(origPuncher)?[...baseCoeqs,origPuncher]:baseCoeqs;
   const coeqEmps=(allEmps||[]).filter(e=>coeqs.includes(e.nom));
