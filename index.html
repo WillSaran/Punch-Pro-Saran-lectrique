@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v91';
+const APP_VERSION='v92';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1586,12 +1586,15 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       }
       ptsRef.current=allPts;
       setPtsForOut(allPts);
+      const selJobInfo=jobs.find(j=>j.title===selJob)||null;
       setResult({ok:true,nom:emp.nom,type,
         heure:data.customTime||now.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}),
         couleur:emp.couleur,code:emp.code,pts:allPts,
         job:selJob,jobColor:selJobColor,
         dep:data.deplacement||0,heures:data.heures||0,
-        coeqs:data.coequipiers||[]});
+        coeqs:data.coequipiers||[],
+        description:selJobInfo?.description||'',
+        location:selJobInfo?.location||''});
       setStep('result');
       setNavBack(null);
       onRefresh();
@@ -1619,6 +1622,19 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
           <span className={'pbadge '+(result.type==='confirm'?'confirm':result.type)}>{result.type==='in'?'✅ Punch IN':result.type==='out'?'🔴 Punch OUT':'✅ Job confirmée'}</span>
           <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1.1rem',margin:'4px 0'}}>{result.heure}</div>
           {result.job&&<div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:5,marginBottom:4}}><div style={{width:8,height:8,borderRadius:'50%',background:result.jobColor||'var(--accent)'}}></div><span style={{fontSize:11,color:'var(--muted)'}}>{result.job}</span></div>}
+          {result.type==='in'&&result.description&&(
+            <div style={{background:'rgba(255,255,255,0.05)',borderRadius:8,padding:'0.45rem 0.65rem',margin:'6px 0',textAlign:'left',fontSize:11,color:'var(--muted)',lineHeight:1.4}}>{result.description}</div>
+          )}
+          {result.type==='in'&&result.location&&(
+            <div style={{display:'flex',alignItems:'center',gap:8,margin:'4px 0 8px',background:'rgba(255,255,255,0.05)',borderRadius:8,padding:'0.4rem 0.65rem'}}>
+              <span style={{fontSize:11,color:'var(--muted)',flex:1,textAlign:'left'}}>📍 {result.location}</span>
+              <a href={'https://maps.google.com/?q='+encodeURIComponent(result.location)}
+                target="_blank" rel="noreferrer"
+                style={{background:'rgba(47,129,247,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.22rem 0.6rem',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
+                🗺 Maps
+              </a>
+            </div>
+          )}
           {result.coeqs&&result.coeqs.length>0&&<div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>{'👥 '+result.coeqs.join(', ')}</div>}
           {result.dep>0&&<span className="pbadge travel">{'🚗 '+result.dep+'min'}</span>}
           {result.heures>0&&<span className="pbadge in">{'⏱ '+result.heures+'h'}</span>}
@@ -1760,6 +1776,39 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
           <div><div className="mode-title">Projets</div><div className="mode-desc">Jobs en cours, heures, fichiers</div></div>
         </div>
       </div>
+
+      {/* Résumé du jour */}
+      {(()=>{
+        const today=localDateStr();
+        const jobsAujourdhui=jobs.filter(j=>{
+          const d=new Date(j.start);
+          return d.toLocaleDateString('fr-CA')===today||j.start.slice(0,10)===today;
+        });
+        if(jobsAujourdhui.length===0)return null;
+        return(
+          <div style={{maxWidth:360,width:'100%',marginTop:'1rem'}}>
+            <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.8rem',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.5rem'}}>
+              📅 Résumé aujourd'hui
+            </div>
+            {jobsAujourdhui.map((j,i)=>(
+              <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',marginBottom:'0.4rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)')}}>
+                <div style={{fontWeight:600,fontSize:12,marginBottom:j.description||j.location?4:0}}>{j.title}</div>
+                {j.description&&<div style={{fontSize:11,color:'var(--muted)',marginBottom:j.location?3:0,lineHeight:1.4}}>{j.description}</div>}
+                {j.location&&(
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                    <span style={{fontSize:11,color:'var(--muted)',flex:1}}>📍 {j.location}</span>
+                    <a href={'https://maps.google.com/?q='+encodeURIComponent(j.location)}
+                      target="_blank" rel="noreferrer"
+                      style={{background:'rgba(47,129,247,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.18rem 0.5rem',fontSize:10,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
+                      🗺 Maps
+                    </a>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
     </div>
 
   // ── EMP GRID ──
