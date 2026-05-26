@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v87';
+const APP_VERSION='v90';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1848,6 +1848,39 @@ function ConfigModal({initial,onSave}){
 
 
 // ── ADMIN VIEW ────────────────────────────────────────────────────────────────
+
+function EmpForm({data,setData,onSave,onCancel,isEdit}){
+  return(
+    <div className="add-form" style={isEdit?{border:'1px solid var(--accent)'}:{}}>
+      {isEdit&&<div style={{fontSize:11,color:'var(--accent)',marginBottom:'0.55rem',fontWeight:600}}>✏️ Modifier l'employé</div>}
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:'0.38rem',marginBottom:'0.5rem'}}>
+        <div><span className="fl">Nom complet</span><input placeholder="Jean Tremblay" value={data.nom} onChange={e=>{const v=e.target.value;setData(p=>({...p,nom:v}));}}/></div>
+        <div><span className="fl">Code</span><input maxLength={3} placeholder="JT" value={data.code} onChange={e=>{const v=e.target.value.toUpperCase();setData(p=>({...p,code:v}));}}/></div>
+        <div><span className="fl">PIN</span><input maxLength={6} placeholder="1234" value={data.pin} onChange={e=>{const v=e.target.value;setData(p=>({...p,pin:v}));}}/></div>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.38rem',marginBottom:'0.5rem'}}>
+        <div><span className="fl">Email</span><input type="email" placeholder="jean@email.com" value={data.email||''} onChange={e=>{const v=e.target.value;setData(p=>({...p,email:v}));}}/></div>
+        <div><span className="fl">Téléphone</span><input type="tel" placeholder="514-555-0000" value={data.telephone||''} onChange={e=>{const v=e.target.value;setData(p=>({...p,telephone:v}));}}/></div>
+      </div>
+      {isEdit&&(
+        <div style={{marginBottom:'0.5rem'}}>
+          <span className="fl">Heures en banque</span>
+          <input type="number" value={data.heuresBanque||0} onChange={e=>{const v=parseFloat(e.target.value)||0;setData(p=>({...p,heuresBanque:v}));}} style={{width:'120px'}}/>
+          <span style={{fontSize:11,color:'var(--muted)',marginLeft:8}}>heures accumulées</span>
+        </div>
+      )}
+      <div style={{marginBottom:'0.55rem'}}>
+        <span className="fl">Couleur</span>
+        <div className="color-row">{EMP_COLORS.map(c=><div key={c} className="cswatch" style={{background:c,border:'2px solid '+(data.couleur===c?'#fff':'transparent')}} onClick={()=>setData(p=>({...p,couleur:c}))}/>)}</div>
+      </div>
+      <div style={{display:'flex',gap:'0.4rem'}}>
+        <button className="btn-p" style={{marginTop:0,flex:1}} onClick={onSave}>✓ Sauvegarder</button>
+        {onCancel&&<button className="btn-s" onClick={onCancel}>Annuler</button>}
+      </div>
+    </div>
+  );
+}
+
 function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
   const [tab,setTab]=useState('dashboard');
   const [emps,setEmps]=useState([]);
@@ -1953,37 +1986,6 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
   const totalDep=Math.round(pts.filter(p=>p.semaine===curWeek&&(p.type==='in'||p.type==='confirm')).reduce((s,p)=>s+(p.deplacement||0),0));
 
 // ── EMP FORM — defined outside AdminView to prevent focus loss on keystroke ───
-function EmpForm({data,setData,onSave,onCancel,isEdit}){
-  return(
-    <div className="add-form" style={isEdit?{border:'1px solid var(--accent)'}:{}}>
-      {isEdit&&<div style={{fontSize:11,color:'var(--accent)',marginBottom:'0.55rem',fontWeight:600}}>✏️ Modifier l'employé</div>}
-      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr',gap:'0.38rem',marginBottom:'0.5rem'}}>
-        <div><span className="fl">Nom complet</span><input placeholder="Jean Tremblay" value={data.nom} onChange={e=>{const v=e.target.value;setData(p=>({...p,nom:v}));}}/></div>
-        <div><span className="fl">Code</span><input maxLength={3} placeholder="JT" value={data.code} onChange={e=>{const v=e.target.value.toUpperCase();setData(p=>({...p,code:v}));}}/></div>
-        <div><span className="fl">PIN</span><input maxLength={6} placeholder="1234" value={data.pin} onChange={e=>{const v=e.target.value;setData(p=>({...p,pin:v}));}}/></div>
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.38rem',marginBottom:'0.5rem'}}>
-        <div><span className="fl">Email</span><input type="email" placeholder="jean@email.com" value={data.email||''} onChange={e=>{const v=e.target.value;setData(p=>({...p,email:v}));}}/></div>
-        <div><span className="fl">Téléphone</span><input type="tel" placeholder="514-555-0000" value={data.telephone||''} onChange={e=>{const v=e.target.value;setData(p=>({...p,telephone:v}));}}/></div>
-      </div>
-      {isEdit&&(
-        <div style={{marginBottom:'0.5rem'}}>
-          <span className="fl">Heures en banque</span>
-          <input type="number" value={data.heuresBanque||0} onChange={e=>{const v=parseFloat(e.target.value)||0;setData(p=>({...p,heuresBanque:v}));}} style={{width:'120px'}}/>
-          <span style={{fontSize:11,color:'var(--muted)',marginLeft:8}}>heures accumulées</span>
-        </div>
-      )}
-      <div style={{marginBottom:'0.55rem'}}>
-        <span className="fl">Couleur</span>
-        <div className="color-row">{EMP_COLORS.map(c=><div key={c} className="cswatch" style={{background:c,border:'2px solid '+(data.couleur===c?'#fff':'transparent')}} onClick={()=>setData(p=>({...p,couleur:c}))}/>)}</div>
-      </div>
-      <div style={{display:'flex',gap:'0.4rem'}}>
-        <button className="btn-p" style={{marginTop:0,flex:1}} onClick={onSave}>✓ Sauvegarder</button>
-        {onCancel&&<button className="btn-s" onClick={onCancel}>Annuler</button>}
-      </div>
-    </div>
-  );
-}
   return(
     <div>
       <div className="tabs">
