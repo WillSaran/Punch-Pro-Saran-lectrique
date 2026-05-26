@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v94';
+const APP_VERSION='v95';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -223,7 +223,7 @@ const EMP_COLORS=['#2f81f7','#6e40c9','#3fb950','#d29922','#f85149','#0ea5e9','#
   // Couleurs Google Agenda officielles
   '#7986cb','#33b679','#8e24aa','#e67c73','#f6c026','#f5511d','#039be5','#616161','#3f51b5','#0b8043','#d50000'];
 const GCAL_COLORS={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000','':'#2f81f7'};
-const BOSS_EMAILS=['info@saranelectrique.com'];
+const BOSS_EMAILS=['info@saranelectrique.com','saranelectrique@gmail.com'];
 const SCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email';
 const DISCOVERY=['https://sheets.googleapis.com/$discovery/rest?version=v4','https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'];
 let tokenClient=null;
@@ -1221,11 +1221,16 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
   }
   function colorMatch(job){return colorDist(job.gcalColor,emp.couleur)<90;}
 
-  // Sort: code/name match first, then color match, then rest
+  // Sort: couleur match FIRST, puis code/nom match, puis reste par date
   const sorted=[...jobs].sort((a,b)=>{
+    const acm=colorMatch(a),bcm=colorMatch(b);
     const am=matches(a),bm=matches(b);
-    if(am&&!bm)return -1;if(!am&&bm)return 1;
-    return colorDist(a.gcalColor,emp.couleur)-colorDist(b.gcalColor,emp.couleur);
+    // Priorité 1: couleur correspondante
+    if(acm&&!bcm)return -1; if(!acm&&bcm)return 1;
+    // Priorité 2: code/nom dans le titre
+    if(am&&!bm)return -1; if(!am&&bm)return 1;
+    // Priorité 3: date croissante
+    return new Date(a.start)-new Date(b.start);
   });
 
   const filtered=filterMine?sorted.filter(j=>matches(j)||colorMatch(j)):sorted;
