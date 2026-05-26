@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v93';
+const APP_VERSION='v94';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1618,7 +1618,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       <div className="welcome">
         <div className="punch-result ok">
           <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,marginBottom:8}}>
-            <div className="emp-av" style={{background:result.couleur,width:38,height:38,fontSize:12}}>{result.code}</div>
+            <div className="emp-av" style={{background:result.type==='in'&&result.jobColor?result.jobColor:result.couleur,width:38,height:38,fontSize:12}}>{result.code}</div>
             <div style={{fontFamily:'var(--font-head)',fontSize:'1.05rem',fontWeight:800}}>{result.nom}</div>
           </div>
           <span className={'pbadge '+(result.type==='confirm'?'confirm':result.type)}>{result.type==='in'?'✅ Punch IN':result.type==='out'?'🔴 Punch OUT':'✅ Job confirmée'}</span>
@@ -1749,7 +1749,6 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
             setMode('out');
             notify('⏳ Chargement...','warn');
             let p=[];
-            // Only load today's pointages for punch OUT
             try{p=await getPointages(sid,{nom:selEmp.nom,date:localDateStr()});}catch(e){console.error(e);}
             if(p.length===0&&ptsRef.current.length>0)p=ptsRef.current.filter(x=>x.date===localDateStr());
             ptsRef.current=p;
@@ -1760,10 +1759,12 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
             <div><div className="mode-title">Punch OUT</div><div className="mode-desc">Terminer — heures, dépl., fichiers</div></div>
           </div>
         ):(
-          <div className="mode-btn" onClick={()=>{setMode('in');setStep('job');}}>
-            <div className="mode-icon">🟢</div>
-            <div><div className="mode-title">Punch IN</div><div className="mode-desc">Commencer sur un job</div></div>
-          </div>
+          <>
+            <div className="mode-btn" onClick={()=>{setMode('in');setStep('job');}}>
+              <div className="mode-icon">🟢</div>
+              <div><div className="mode-title">Punch IN</div><div className="mode-desc">Choisir dans l'agenda</div></div>
+            </div>
+          </>
         )}
         <div className="mode-btn" onClick={()=>{setMode('confirm');setStep('job');}}>
           <div className="mode-icon">✅</div>
@@ -1779,30 +1780,35 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
         </div>
       </div>
 
-      {/* Résumé du jour */}
+      {/* Résumé du jour — intelligent selon l'heure */}
       {(()=>{
-        const today=localDateStr();
-        const jobsAujourdhui=jobs.filter(j=>{
-          // Handle both dateTime (2026-05-26T07:00:00-04:00) and date (2026-05-26) formats
-          const startStr=j.start||'';
-          return startStr.slice(0,10)===today;
-        });
+        const now=new Date();
+        const heure=now.getHours();
+        // Après 15h → afficher les jobs de demain, avant 15h → aujourd'hui
+        const afficherDemain=heure>=15;
+        const dateRef=new Date(now);
+        if(afficherDemain)dateRef.setDate(dateRef.getDate()+1);
+        const dateStr=localDateStr(dateRef);
+        const label=afficherDemain?'demain':'aujourd\'hui';
+
+        const jobsDuJour=(jobs||[]).filter(j=>(j.start||'').slice(0,10)===dateStr);
+
         if(!jobs||jobs.length===0)return(
           <div style={{maxWidth:360,width:'100%',marginTop:'1rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>
             Chargement de l'agenda...
           </div>
         );
-        if(jobsAujourdhui.length===0)return(
+        if(jobsDuJour.length===0)return(
           <div style={{maxWidth:360,width:'100%',marginTop:'1rem',background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>
-            📅 Aucune job à l'agenda aujourd'hui
+            📅 Aucune job à l'agenda {label}
           </div>
         );
         return(
           <div style={{maxWidth:360,width:'100%',marginTop:'1rem'}}>
             <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.8rem',color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.5rem'}}>
-              📅 Résumé aujourd'hui ({jobsAujourdhui.length} job{jobsAujourdhui.length>1?'s':''})
+              📅 Jobs {label} ({jobsDuJour.length})
             </div>
-            {jobsAujourdhui.map((j,i)=>(
+            {jobsDuJour.map((j,i)=>(
               <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',marginBottom:'0.4rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)')}}>
                 <div style={{fontWeight:600,fontSize:12,marginBottom:j.description||j.location?4:0,color:'var(--text)'}}>{j.title}</div>
                 {j.description&&(
