@@ -215,9 +215,9 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v86';
+const APP_VERSION='v87';
 
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 
 const EMP_COLORS=['#2f81f7','#6e40c9','#3fb950','#d29922','#f85149','#0ea5e9','#ec4899','#a855f7','#22c55e','#f97316'];
 const GCAL_COLORS={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000','':'#2f81f7'};
@@ -2249,7 +2249,7 @@ function App(){
   const [showSidebar,setShowSidebar]=useState(false);
   const [navBack,setNavBack]=useState(null);
   const [unreadCount,setUnreadCount]=useState(0);
-  function notify(msg,type='info'){setNotif({id:Date.now(),msg,type});}
+  const notify=useMemo(()=>(msg,type='info')=>{setNotif({id:Date.now(),msg,type});},[]);
   function onRefresh(){setRefreshKey(k=>k+1);}
 
   function getCalendarIds(){
@@ -2261,6 +2261,8 @@ function App(){
   function getDriveFolders(){
     return parseDriveFolders(cfg&&cfg.driveFolders||'');
   }
+  const calendarIdsMemo=useMemo(()=>getCalendarIds(),[cfg]);
+  const foldersMemo=useMemo(()=>getDriveFolders(),[cfg]);
 
   async function onToken(resp){
     if(resp.error){
@@ -2425,8 +2427,8 @@ function App(){
         </div>
       ):(
         <>
-          {view==='punch'&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={getCalendarIds()} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} folders={getDriveFolders()}/>}
-          {view==='admin'&&isBoss&&<div className="content"><AdminView sid={cfg.spreadsheetId} calendarIds={getCalendarIds()} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh}/></div>}
+          {view==='punch'&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} folders={foldersMemo}/>}
+          {view==='admin'&&isBoss&&<div className="content"><AdminView sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh}/></div>}
         </>
       )}
     </div>
