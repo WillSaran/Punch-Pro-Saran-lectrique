@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v90';
+const APP_VERSION='v91';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -656,15 +656,15 @@ function TimePicker({label,value,onChange,color}){
       <div className="csec">{label}</div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'0.6rem'}}>
         <div style={{textAlign:'center'}}>
-          <button className="dur-btn" onClick={()=>setH(h===0?23:h-1)}>−</button>
-          <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,color:c,margin:'0.2rem 0'}}>{String(h12).padStart(2,'0')}</div>
           <button className="dur-btn" onClick={()=>setH(h===23?0:h+1)}>+</button>
+          <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,color:c,margin:'0.2rem 0'}}>{String(h12).padStart(2,'0')}</div>
+          <button className="dur-btn" onClick={()=>setH(h===0?23:h-1)}>−</button>
         </div>
         <div style={{fontFamily:'var(--font-head)',fontSize:'1.3rem',color:'var(--muted)',paddingBottom:4}}>:</div>
         <div style={{textAlign:'center'}}>
-          <button className="dur-btn" onClick={()=>setQ(quart===0?45:quart-15)}>−</button>
-          <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,color:c,margin:'0.2rem 0'}}>{String(quart).padStart(2,'0')}</div>
           <button className="dur-btn" onClick={()=>setQ(quart===45?0:quart+15)}>+</button>
+          <div style={{fontFamily:'var(--font-head)',fontSize:'1.5rem',fontWeight:800,color:c,margin:'0.2rem 0'}}>{String(quart).padStart(2,'0')}</div>
+          <button className="dur-btn" onClick={()=>setQ(quart===0?45:quart-15)}>−</button>
         </div>
         <div style={{textAlign:'center',paddingBottom:4}}>
           <div style={{height:36}}></div>
@@ -677,7 +677,7 @@ function TimePicker({label,value,onChange,color}){
   );
 }
 
-function PunchInScreen({emp,allEmps,selJob,selJobColor,onConfirm}){
+function PunchInScreen({emp,allEmps,selJob,selJobColor,selJobData,onConfirm}){
   const [time,setTime]=useState(nowTimeStr());
   const [coequipiers,setCoequipiers]=useState([]);
   const [note,setNote]=useState('');
@@ -685,7 +685,27 @@ function PunchInScreen({emp,allEmps,selJob,selJobColor,onConfirm}){
   function toggleCoeq(nom){setCoequipiers(prev=>prev.includes(nom)?prev.filter(n=>n!==nom):[...prev,nom]);}
   return(
     <div style={{maxWidth:360,width:'100%',textAlign:'left'}}>
-      {selJob&&(<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.6rem'}}><div style={{width:10,height:10,borderRadius:'50%',background:selJobColor||'var(--accent)',flexShrink:0}}></div><div style={{fontSize:13,fontWeight:600}}>{selJob}</div></div>)}
+      {selJob&&(
+        <div style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.6rem'}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <div style={{width:10,height:10,borderRadius:'50%',background:selJobColor||'var(--accent)',flexShrink:0}}></div>
+            <div style={{fontSize:13,fontWeight:600,flex:1}}>{selJob}</div>
+          </div>
+          {selJobData&&selJobData.description&&(
+            <div style={{fontSize:11,color:'var(--muted)',marginTop:'0.3rem',marginLeft:18}}>{selJobData.description}</div>
+          )}
+          {selJobData&&selJobData.location&&(
+            <div style={{display:'flex',alignItems:'center',gap:6,marginTop:'0.35rem',marginLeft:18}}>
+              <span style={{fontSize:11,color:'var(--muted)',flex:1}}>📍 {selJobData.location}</span>
+              <a href={'https://maps.google.com/?q='+encodeURIComponent(selJobData.location)}
+                target="_blank" rel="noreferrer"
+                style={{background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:6,padding:'0.2rem 0.55rem',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0}}>
+                🗺 Maps
+              </a>
+            </div>
+          )}
+        </div>
+      )}
       <TimePicker label="Heure d'entrée" value={time} onChange={setTime} color="var(--accent)"/>
       {teammates.length>0&&(
         <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}>
@@ -865,19 +885,19 @@ function DurationForm({emp,allEmps,jobName,jobColor,isOut,onConfirm,onBack,notif
         <div style={{display:'flex',gap:'0.65rem',alignItems:'center',justifyContent:'center',flexWrap:'wrap'}}>
           <div style={{textAlign:'center'}}>
             <div style={{fontSize:10,color:'var(--muted)',marginBottom:4}}>Heures</div>
-            <div className="dur-row">
-              <button className="dur-btn" onClick={()=>setHeures(h=>Math.max(0,h-1))}>−</button>
-              <div className="dur-val">{heures}</div>
+            <div className="dur-row" style={{flexDirection:'column',gap:4}}>
               <button className="dur-btn" onClick={()=>setHeures(h=>Math.min(24,h+1))}>+</button>
+              <div className="dur-val">{heures}</div>
+              <button className="dur-btn" onClick={()=>setHeures(h=>Math.max(0,h-1))}>−</button>
             </div>
           </div>
           <div style={{color:'var(--muted)',fontSize:'1.4rem',fontWeight:200,paddingTop:14}}>:</div>
           <div style={{textAlign:'center'}}>
             <div style={{fontSize:10,color:'var(--muted)',marginBottom:4}}>Minutes</div>
-            <div className="dur-row">
-              <button className="dur-btn" onClick={()=>setQuarts(q=>Math.max(0,q-1))}>−</button>
-              <div className="dur-val">{quarts*15}</div>
+            <div className="dur-row" style={{flexDirection:'column',gap:4}}>
               <button className="dur-btn" onClick={()=>setQuarts(q=>Math.min(3,q+1))}>+</button>
+              <div className="dur-val">{quarts*15}</div>
+              <button className="dur-btn" onClick={()=>setQuarts(q=>Math.max(0,q-1))}>−</button>
             </div>
           </div>
           <div style={{textAlign:'center',paddingTop:14,minWidth:60}}>
@@ -1625,6 +1645,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <TimeHeader/>
       <PunchInScreen emp={selEmp} allEmps={emps} selJob={selJob} selJobColor={selJobColor}
+        selJobData={jobs.find(j=>j.title===selJob)||null}
         onConfirm={d=>{punchDataRef.current=d;setStep('pin');}} onBack={goBack}/>
     </div>
 
