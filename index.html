@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v104';
+const APP_VERSION='v105';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -591,114 +591,126 @@ function Notif({msg,type,onClose}){
 }
 
 function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,folders,onUploaded,notify}){
-  const [selFolder,setSelFolder]=useState(null);
-  const [uploading,setUploading]=useState(false);
-  const [docType,setDocType]=useState(null); // 'AP' | 'OT' | null
+  // Une seule sélection active: soit docType (AP/OT), soit un dossier — jamais les deux
+  const [mode,setMode]=useState(null); // 'AP' | 'OT' | {folder object} | null
   const [titleInput,setTitleInput]=useState('');
-  const [adresseInput,setAdresseInput]=useState('');
+  const [adresseInput,setAdresseInput]=useState(jobLocation||'');
   const [pieceInput,setPieceInput]=useState('');
+  const [uploading,setUploading]=useState(false);
   const fileRef=useRef();const camRef=useRef();
   const PAD_ID='1CI-OuXIuiSKUksL7BUyGAN__tRPxbklB';
-  // Enlever PAD SERVICE, REF FACTURE, REF OT de la liste visible
   const visibleFolders=(folders||[]).filter(f=>!['PAD SERVICE À TRAITER','REF FACTURE','REF OT'].includes(f.name));
-  const hasFolders=visibleFolders.length>0;
+
+  const isDocMode=mode==='AP'||mode==='OT';
+  const selFolder=(mode&&typeof mode==='object')?mode:null;
   const isPlanEncastre=selFolder&&selFolder.name==='PLAN ENCASTRÉS';
   const isCompteurHQ=selFolder&&selFolder.name==='COMPTEUR HQ';
   const needsAddress=isPlanEncastre||isCompteurHQ;
 
-  async function doUpload(f){
-    // Déterminer le dossier cible
-    const folderId=docType?PAD_ID:(selFolder?selFolder.id:null);
-    if(!docType&&!selFolder){notify("Choisis un dossier d'abord!",'warn');return;}
-
-    // Construire le nom du fichier
-    let finalName='';
-    const ext=f.name.includes('.')?'.'+f.name.split('.').pop():'';
-    if(docType){
-      // AP ou OT: préfixe obligatoire + numéro entré
-      const num=titleInput.trim()||jobName||'';
-      finalName=docType+'_'+num+ext;
-    }else if(needsAddress){
-      // COMPTEUR HQ ou PLAN ENCASTRÉS: adresse + pièce (si PLAN ENCASTRÉS)
-      const addr=(adresseInput.trim()||jobLocation||'').replace(/[^a-zA-Z0-9\u00C0-\u024F\-_ ]/g,'').trim();
-      const piece=isPlanEncastre&&pieceInput.trim()?'_'+pieceInput.trim().replace(/[^a-zA-Z0-9\u00C0-\u024F\-_ ]/g,'').trim():'';
-      finalName=(addr||'sans-adresse')+piece+ext;
-    }else{
-      // Autre dossier: titre entré ou nom original
-      const t=titleInput.trim()||f.name.replace(/\.[^.]+$/,'');
-      finalName=t.replace(/[^a-zA-Z0-9\u00C0-\u024F\-_ ]/g,'').trim()+ext;
+  function selectMode(val){
+    setMode(prev=>prev===val?null:val);
+    setTitleInput('');
+    if(typeof val==='object'&&(val.name==='COMPTEUR HQ'||val.name==='PLAN ENCASTRÉS')){
+      setAdresseInput(jobLocation||'');
     }
+  }
 
+  function buildFileName(f){
+    const ext=f.name.includes('.')?'.'+f.name.split('.').pop():'';
+    const clean=s=>s.replace(/[^a-zA-Z0-9\u00C0-\u024F\-_ ]/g,'').trim();
+    if(isDocMode){
+      const num=titleInput.trim()||jobName||'sans-numero';
+      return mode+'_'+clean(num)+ext;
+    }
+    if(needsAddress){
+      const addr=clean(adresseInput.trim()||jobLocation||'sans-adresse');
+      const piece=isPlanEncastre&&pieceInput.trim()?'_'+clean(pieceInput.trim()):'';
+      return addr+piece+ext;
+    }
+    // Dossier normal: titre donné ou nom original sans extension
+    const t=titleInput.trim()||f.name.replace(/\.[^.]+$/,'');
+    return clean(t)+ext;
+  }
+
+  async function doUpload(f){
+    const folderId=isDocMode?PAD_ID:(selFolder?selFolder.id:null);
+    if(!isDocMode&&!selFolder){notify("Choisis un type ou un dossier d'abord!",'warn');return;}
+    const finalName=buildFileName(f);
     setUploading(true);notify('⏳ Upload...','warn');
     const renamed=new File([f],finalName,{type:f.type});
     const result=await uploadToDrive(renamed,empName,finalName.replace(/\.[^.]+$/,''),folderId);
     setUploading(false);
-    if(!result.url||!result.id){notify('Erreur upload: '+(result.error||'Vérifiez permissions Drive'),'err');return;}
+    if(!result.url||!result.id){notify('Erreur: '+(result.error||'Vérifiez permissions Drive'),'err');return;}
     let calAttached=false;
     if(calEventTitle&&calendarIds&&result.id){
       const evtRef=await findCalendarEventByTitle(calendarIds,calEventTitle);
-      if(evtRef)calAttached=await attachFileToCalendarEvent(evtRef.calendarId,evtRef.eventId,result.id,result.name,f.type);
+      if(evtRef)calAttached=await attachFileToCalendarEvent(evtRef.calendarId,evtRef.eventId,result.id,finalName,f.type);
     }
-    onUploaded(result.url);
-    const dossierLabel=docType?'PAD SERVICE':(selFolder?selFolder.name:'Drive');
+    // Enregistrer URL avec le nom du fichier comme clé pour affichage
+    onUploaded(result.url+'|'+finalName);
+    const dossierLabel=isDocMode?'PAD SERVICE':(selFolder?selFolder.name:'Drive');
     notify('📎 ['+dossierLabel+'] '+finalName+(calAttached?' · 📅':''),'success');
     setTitleInput('');
   }
 
-  const readyToUpload=docType||(selFolder&&(!needsAddress||(adresseInput.trim()||jobLocation)));
+  const ready=isDocMode||(selFolder&&(!needsAddress||(adresseInput.trim()||jobLocation)));
 
   return(
     <div>
-      {/* Boutons AP / OT */}
+      {/* AP / OT */}
       <div style={{marginBottom:'0.5rem'}}>
         <div className="csec" style={{marginBottom:'0.35rem'}}>Type de document</div>
-        <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap',marginBottom:'0.35rem'}}>
-          <div onClick={()=>setDocType(docType==='AP'?null:'AP')} style={{padding:'0.3rem 0.75rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:docType==='AP'?700:400,background:docType==='AP'?'rgba(63,185,80,0.15)':'var(--bg3)',border:'1px solid '+(docType==='AP'?'var(--success)':'var(--border)'),color:docType==='AP'?'var(--success)':'var(--muted)'}}>
-            📋 Appel de service
-          </div>
-          <div onClick={()=>setDocType(docType==='OT'?null:'OT')} style={{padding:'0.3rem 0.75rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:docType==='OT'?700:400,background:docType==='OT'?'rgba(210,153,34,0.15)':'var(--bg3)',border:'1px solid '+(docType==='OT'?'var(--warning)':'var(--border)'),color:docType==='OT'?'var(--warning)':'var(--muted)'}}>
-            🔧 Ordre de travail
-          </div>
+        <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap'}}>
+          {['AP','OT'].map(t=>(
+            <div key={t} onClick={()=>selectMode(t)} style={{padding:'0.3rem 0.75rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
+              fontWeight:mode===t?700:400,
+              background:mode===t?(t==='AP'?'rgba(63,185,80,0.15)':'rgba(210,153,34,0.15)'):'var(--bg3)',
+              border:'1px solid '+(mode===t?(t==='AP'?'var(--success)':'var(--warning)'):'var(--border)'),
+              color:mode===t?(t==='AP'?'var(--success)':'var(--warning)'):'var(--muted)'}}>
+              {t==='AP'?'📋 Appel de service':'🔧 Ordre de travail'}
+            </div>
+          ))}
         </div>
-        {docType&&(
-          <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <span style={{fontSize:11,fontWeight:700,color:docType==='AP'?'var(--success)':'var(--warning)',flexShrink:0}}>{docType}_</span>
+        {isDocMode&&(
+          <div style={{marginTop:'0.35rem',display:'flex',alignItems:'center',gap:6}}>
+            <span style={{fontSize:12,fontWeight:800,color:mode==='AP'?'var(--success)':'var(--warning)',flexShrink:0,fontFamily:'var(--font-head)'}}>{mode}_</span>
             <input value={titleInput} onChange={e=>setTitleInput(e.target.value)}
               placeholder="Numéro du document..."
               style={{flex:1,fontSize:11}}/>
           </div>
         )}
-        {docType&&<div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>→ Sauvegardé dans PAD SERVICE À TRAITER</div>}
+        {isDocMode&&<div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>→ PAD SERVICE À TRAITER</div>}
       </div>
 
       {/* Dossiers Drive */}
-      {hasFolders&&(
+      {visibleFolders.length>0&&(
         <div style={{marginBottom:'0.5rem'}}>
           <div className="csec" style={{marginBottom:'0.35rem'}}>Dossier Drive</div>
           <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap'}}>
             {visibleFolders.map(f=>(
-              <div key={f.id} onClick={()=>{setSelFolder(selFolder?.id===f.id?null:f);setTitleInput('');setAdresseInput('');setPieceInput('');}} style={{padding:'0.25rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:selFolder?.id===f.id?700:400,background:selFolder?.id===f.id?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(selFolder?.id===f.id?'var(--accent)':'var(--border)'),color:selFolder?.id===f.id?'var(--accent)':'var(--muted)'}}>
+              <div key={f.id} onClick={()=>selectMode(f)} style={{padding:'0.25rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
+                fontWeight:selFolder?.id===f.id?700:400,
+                background:selFolder?.id===f.id?'rgba(47,129,247,0.15)':'var(--bg3)',
+                border:'1px solid '+(selFolder?.id===f.id?'var(--accent)':'var(--border)'),
+                color:selFolder?.id===f.id?'var(--accent)':'var(--muted)'}}>
                 {f.name}
               </div>
             ))}
           </div>
-          {/* Champ titre pour dossiers normaux */}
+          {/* Champs selon le dossier sélectionné */}
           {selFolder&&!needsAddress&&(
-            <div style={{marginTop:'0.35rem'}}>
-              <input value={titleInput} onChange={e=>setTitleInput(e.target.value)}
-                placeholder={'Titre du fichier (optionnel)'}
-                style={{width:'100%',fontSize:11}}/>
-            </div>
+            <input value={titleInput} onChange={e=>setTitleInput(e.target.value)}
+              placeholder="Titre du fichier (optionnel)"
+              style={{width:'100%',fontSize:11,marginTop:'0.35rem'}}/>
           )}
-          {/* Champ adresse + pièce pour COMPTEUR HQ / PLAN ENCASTRÉS */}
           {needsAddress&&(
-            <div style={{marginTop:'0.35rem',display:'flex',flexDirection:'column',gap:'0.3rem'}}>
-              <input value={adresseInput||jobLocation||''} onChange={e=>setAdresseInput(e.target.value)}
+            <div style={{display:'flex',flexDirection:'column',gap:'0.3rem',marginTop:'0.35rem'}}>
+              <input value={adresseInput} onChange={e=>setAdresseInput(e.target.value)}
                 placeholder={isCompteurHQ?'Adresse du compteur...':'Adresse / Lieu...'}
                 style={{width:'100%',fontSize:11}}/>
               {isPlanEncastre&&(
                 <input value={pieceInput} onChange={e=>setPieceInput(e.target.value)}
-                  placeholder="Pièce (optionnel, ex: Sous-sol, Chambre 3)..."
+                  placeholder="Pièce (optionnel, ex: Sous-sol)"
                   style={{width:'100%',fontSize:11}}/>
               )}
             </div>
@@ -706,17 +718,17 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
         </div>
       )}
 
-      {/* Boutons fichier et photo */}
+      {/* Boutons upload */}
       <div className="file-add-row">
-        <div className="file-zone" style={!readyToUpload?{opacity:0.4,cursor:'not-allowed'}:{}}
-          onClick={()=>{if(readyToUpload)fileRef.current?.click();}}>
+        <div className="file-zone" style={!ready?{opacity:0.4,cursor:'not-allowed'}:{}}
+          onClick={()=>{if(ready)fileRef.current?.click();}}>
           <div>{uploading?'⏳':'📎'}</div>
-          <div style={{fontSize:10,color:'var(--muted)'}}>{docType||'Fichier'}</div>
+          <div style={{fontSize:10,color:'var(--muted)'}}>{isDocMode?mode:'Fichier'}</div>
           <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:'none'}}
             onChange={e=>{if(e.target.files[0])doUpload(e.target.files[0]);e.target.value='';}}/>
         </div>
-        <div className="file-zone" style={!readyToUpload?{opacity:0.4,cursor:'not-allowed'}:{}}
-          onClick={()=>{if(readyToUpload)camRef.current?.click();}}>
+        <div className="file-zone" style={!ready?{opacity:0.4,cursor:'not-allowed'}:{}}
+          onClick={()=>{if(ready)camRef.current?.click();}}>
           <div>{uploading?'⏳':'📷'}</div>
           <div style={{fontSize:10,color:'var(--muted)'}}>Photo</div>
           <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
@@ -726,6 +738,7 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
     </div>
   );
 }
+
 
 
 
@@ -883,7 +896,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
   const coeqs=origPuncher&&!baseCoeqs.includes(origPuncher)?[...baseCoeqs,origPuncher]:baseCoeqs;
   const coeqEmps=(allEmps||[]).filter(e=>coeqs.includes(e.nom));
 
-  function confirm(){onConfirm({customTime:timeOut,job:selJobData?selJobData.job:'',jobColor:selJobData?selJobData.jobColor:'',heures:totalH,deplacement,note,fichiersURL,coequipiers:coeqs,coeqHeures:Object.fromEntries(coeqEmps.map(e=>[e.nom,coeqHeures[e.nom]!==undefined?coeqHeures[e.nom]:totalH]))});}
+  function confirm(){onConfirm({customTime:timeOut,job:selJobData?selJobData.job:'',jobColor:selJobData?selJobData.jobColor:'',heures:totalH,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers:coeqs,coeqHeures:Object.fromEntries(coeqEmps.map(e=>[e.nom,coeqHeures[e.nom]!==undefined?coeqHeures[e.nom]:totalH]))});}
 
   if(!selJobData)return(
     <div style={{maxWidth:420,width:'100%',textAlign:'left'}}>
@@ -976,7 +989,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
       </div>
       {coeqEmps.length>0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}><div className="csec">Heures coéquipiers</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'flex',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',color:'var(--accent)',minWidth:38,textAlign:'center'}}>{val}h</div><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
       <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: travail terminé..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
-      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((u,i)=>{const lbl=u.includes('/AP_')||u.includes('%2FAP_')?'📋 AP':u.includes('/OT_')||u.includes('%2FOT_')?'🔧 OT':'📎 Fichier '+(i+1);return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
+      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:'📎 '+nom;return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} jobLocation={selJobData&&selJobData.location||''} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
       <button className="btn-p" style={{marginTop:'0.65rem'}} onClick={confirm}>{'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')}</button>
     </div>
@@ -991,7 +1004,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,isOut,onConfirm,
   const teammates=(allEmps||[]).filter(e=>e.nom!==emp.nom);
   function toggleCoeq(nom){setCoequipiers(prev=>{const next=prev.includes(nom)?prev.filter(n=>n!==nom):[...prev,nom];if(!prev.includes(nom))setCoeqHeures(p=>({...p,[nom]:totalH}));return next;});}
   useEffect(()=>{setCoeqHeures(p=>{const u={...p};coequipiers.forEach(n=>{if(u[n]===undefined)u[n]=totalH;});return u;});},[totalH]);
-  function confirm(){if(totalH===0){notify('Entrez les heures!','err');return;}const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,deplacement,note,fichiersURL,coequipiers,coeqHeures:ch});}
+  function confirm(){if(totalH===0){notify('Entrez les heures!','err');return;}const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch});}
   const coeqEmps=teammates.filter(t=>coequipiers.includes(t.nom));
   return(
     <div className="dur-wrap">
@@ -1032,7 +1045,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,isOut,onConfirm,
         </div>
       )}
       <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: matériel manquant..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
-      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((u,i)=>{const lbl=u.includes('/AP_')||u.includes('%2FAP_')?'📋 AP':u.includes('/OT_')||u.includes('%2FOT_')?'🔧 OT':'📎 Fichier '+(i+1);return(<div key={i} className="file-item"><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
+      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:'📎 '+nom;return(<div key={i} className="file-item"><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={jobName||'punch'} jobLocation={jobLocation||''} calendarIds={calendarIds} calEventTitle={jobName||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
       <button className="btn-p" style={{marginTop:'0.4rem'}} disabled={totalH===0} onClick={confirm}>✓ Confirmer la job</button>
     </div>
@@ -1561,7 +1574,8 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                       calendarIds={calendarIds}
                       calEventTitle={line.job||null}
                       folders={folders||[]}
-                      onUploaded={async url=>{
+                      onUploaded={async raw=>{
+                        const url=raw.split('|')[0];
                         const urls=[...(line.fichiersURL||[]),url];
                         const row=line.inRow||line.outRow;
                         if(row)await updatePointageFichiers(sid,row,urls);
@@ -1893,14 +1907,28 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
                 <div style={{fontWeight:600,fontSize:13,marginBottom:3}}>{p.job||'Sans job'}</div>
                 <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>{p.date} · {p.heure}</div>
                 {p.fichiersURL.filter(u=>u).map((u,j)=>{
-                  const isOT=u.toLowerCase().includes('ot_')||u.toLowerCase().includes('ot%5f');
-                  const isAP=u.toLowerCase().includes('ap_')||u.toLowerCase().includes('ap%5f');
-                  const label=isOT?'🔧 Ordre de travail':isAP?'📋 Appel de service':'📎 Fichier';
+                  const urlClean=u.split('|')[0];
+                  const isOT=u.toLowerCase().includes('ot_')||urlClean.toLowerCase().includes('ot_');
+                  const isAP=u.toLowerCase().includes('ap_')||urlClean.toLowerCase().includes('ap_');
+                  const nom=u.includes('|')?u.split('|')[1]:null;
+                  const label=isOT?'🔧 '+(nom||'Ordre de travail'):isAP?'📋 '+(nom||'Appel de service'):'📎 '+(nom||'Fichier');
                   return(
-                    <a key={j} href={u} target="_blank" rel="noreferrer"
-                      style={{display:'flex',alignItems:'center',gap:6,background:'rgba(47,129,247,0.1)',borderRadius:6,padding:'0.25rem 0.5rem',marginBottom:3,textDecoration:'none',color:'var(--accent)',fontSize:11}}>
-                      <span>{label}</span>
-                    </a>
+                    <div key={j} style={{display:'flex',alignItems:'center',gap:6,background:'rgba(47,129,247,0.1)',borderRadius:6,padding:'0.25rem 0.5rem',marginBottom:3}}>
+                      <a href={urlClean} target="_blank" rel="noreferrer"
+                        style={{textDecoration:'none',color:'var(--accent)',fontSize:11,flex:1}}>
+                        {label}
+                      </a>
+                      <button style={{background:'none',border:'none',color:'var(--danger)',cursor:'pointer',fontSize:11,padding:'0 2px',touchAction:'manipulation'}}
+                        onClick={async()=>{
+                          if(!confirm('Supprimer ce document?'))return;
+                          const newURLs=(p.fichiersURL||[]).filter((_,k)=>k!==j);
+                          const row=p.row;
+                          if(row){
+                            try{await updatePointageFichiers(sid,row,newURLs);notify('Document supprimé','success');}
+                            catch(e){notify('Erreur suppression','err');}
+                          }
+                        }}>✕</button>
+                    </div>
                   );
                 })}
               </div>
