@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v99';
+const APP_VERSION='v100';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -548,24 +548,40 @@ async function uploadToDrive(file, empName, jobName, folderId){
     if(!token||!token.access_token){console.error('No access token');return{url:'',id:''};}
     const fname=empName+'_'+(jobName||'punch')+'_'+new Date().toLocaleDateString('fr-CA')+'_'+file.name;
     const meta={name:fname,mimeType:file.type||'application/octet-stream'};
-    if(folderId)meta.parents=[folderId];
-    const form=new FormData();
-    form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
-    form.append('file',file);
-    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,name',
-      {method:'POST',headers:{'Authorization':'Bearer '+token.access_token},body:form});
-    const data=await res.json();
-    console.log('Drive upload response:',res.status,JSON.stringify(data).slice(0,200));
-    if(!res.ok||!data.id){
-      console.error('Drive upload failed:',data.error||data);
-      return{url:'',id:'',error:data.error?.message||'Upload failed ('+res.status+')'};
+
+    // Try with specified folder first, fallback to root if access denied
+    async function tryUpload(parentId){
+      const m={...meta};
+      if(parentId)m.parents=[parentId];
+      const form=new FormData();
+      form.append('metadata',new Blob([JSON.stringify(m)],{type:'application/json'}));
+      form.append('file',file);
+      const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,name',
+        {method:'POST',headers:{'Authorization':'Bearer '+token.access_token},body:form});
+      const data=await res.json();
+      return{ok:res.ok&&!!data.id,data,status:res.status};
     }
+
+    let result=await tryUpload(folderId);
+
+    // If folder access denied, upload to root Drive
+    if(!result.ok){
+      console.warn('Folder upload failed ('+result.status+'), trying root Drive...');
+      result=await tryUpload(null);
+    }
+
+    if(!result.ok||!result.data.id){
+      return{url:'',id:'',error:'Upload échoué ('+result.status+')'};
+    }
+
+    const data=result.data;
     // Make file publicly readable
     try{
       await fetch('https://www.googleapis.com/drive/v3/files/'+data.id+'/permissions',
         {method:'POST',headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},
         body:JSON.stringify({role:'reader',type:'anyone'})});
     }catch(e){console.warn('Permission set failed:',e);}
+
     return{url:data.webViewLink||('https://drive.google.com/file/d/'+data.id+'/view'),id:data.id,name:fname};
   }catch(e){console.error('uploadToDrive exception:',e);return{url:'',id:''};}}
 
