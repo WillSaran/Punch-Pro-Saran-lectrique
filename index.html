@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v102';
+const APP_VERSION='v103';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -593,30 +593,24 @@ function Notif({msg,type,onClose}){
 function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,folders,onUploaded,notify}){
   const [selFolder,setSelFolder]=useState(null);
   const [uploading,setUploading]=useState(false);
-  const [docType,setDocType]=useState(null); // 'AP' | 'OT' | null
-  const [customName,setCustomName]=useState('');
-  const [showNameInput,setShowNameInput]=useState(false);
+  const [docType,setDocType]=useState(null);
   const [pendingFile,setPendingFile]=useState(null);
   const [addressInput,setAddressInput]=useState('');
   const [showAddressInput,setShowAddressInput]=useState(false);
   const fileRef=useRef();const camRef=useRef();
-
-  // Dossiers filtrés — enlever REF FACTURE et REF OT
-  const filteredFolders=(folders||[]).filter(f=>!['REF FACTURE','REF OT'].includes(f.name));
-  const hasFolders=filteredFolders.length>0;
-
-  // Dossiers qui nécessitent une adresse comme titre
+  const PAD_SERVICE_ID='1CI-OuXIuiSKUksL7BUyGAN__tRPxbklB';
+  const visibleFolders=(folders||[]).filter(f=>!['PAD SERVICE À TRAITER','REF FACTURE','REF OT'].includes(f.name));
+  const hasFolders=visibleFolders.length>0;
   const needsAddress=selFolder&&['COMPTEUR HQ','PLAN ENCASTRÉS'].includes(selFolder.name);
+  const isDocMode=docType==='AP'||docType==='OT';
 
-  async function doUpload(f, prefix, name, folderId, titleOverride){
+  async function doUpload(f,prefix,titleName,folderId){
     setUploading(true);notify('⏳ Upload...','warn');
-    // Nom du fichier: prefix_name_date.ext
     const ext=f.name.includes('.')?'.'+f.name.split('.').pop():'';
-    const cleanName=(titleOverride||name||jobName||'punch').replace(/[^a-zA-Z0-9À-ÿ\-_ ]/g,'').trim();
-    const finalName=prefix?prefix+'_'+cleanName+ext:f.name;
-    // Créer un nouveau File avec le bon nom
-    const renamedFile=new File([f], finalName, {type:f.type});
-    const result=await uploadToDrive(renamedFile,empName,cleanName,folderId);
+    const clean=(titleName||jobName||'punch').replace(/[^a-zA-Z0-9\u00C0-\u024F\-_ ]/g,'').trim();
+    const finalName=prefix?prefix+'_'+clean+ext:clean+ext;
+    const renamed=new File([f],finalName,{type:f.type});
+    const result=await uploadToDrive(renamed,empName,clean,folderId);
     setUploading(false);
     if(!result.url||!result.id){notify('Erreur upload: '+(result.error||'Vérifiez permissions Drive'),'err');return;}
     let calAttached=false;
@@ -625,63 +619,47 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
       if(evtRef)calAttached=await attachFileToCalendarEvent(evtRef.calendarId,evtRef.eventId,result.id,result.name,f.type);
     }
     onUploaded(result.url);
-    notify('📎 ['+(selFolder?selFolder.name:'Drive')+'] '+result.name+(calAttached?' · 📅':''),'success');
+    notify('📎 ['+(prefix||selFolder?.name||'Drive')+'] '+finalName+(calAttached?' · 📅':''),'success');
   }
 
   async function handleFile(f){
     if(!f)return;
-    if(hasFolders&&!selFolder){notify('Choisis un dossier d\'abord!','warn');return;}
-    const folderId=selFolder?selFolder.id:null;
-
-    // Si dossier nécessite adresse et pas encore fournie
+    if(isDocMode){await doUpload(f,docType,jobName,PAD_SERVICE_ID);setDocType(null);return;}
+    if(!selFolder){notify("Choisis un dossier d'abord!",'warn');return;}
     if(needsAddress){
-      const addr=jobLocation||'';
-      if(!addr){
-        // Demander l'adresse
-        setPendingFile(f);
-        setAddressInput('');
-        setShowAddressInput(true);
-        return;
-      }else{
-        // Utiliser l'adresse de la job directement
-        await doUpload(f, null, addr, folderId, addr);
-        return;
-      }
-    }
-
-    // Si type doc choisi (AP ou OT)
-    if(docType){
-      await doUpload(f, docType, customName||jobName, folderId);
+      if(jobLocation){await doUpload(f,null,jobLocation,selFolder.id);}
+      else{setPendingFile(f);setAddressInput('');setShowAddressInput(true);}
       return;
     }
-
-    // Sinon upload normal
-    await doUpload(f, null, f.name, folderId);
+    await doUpload(f,null,f.name.replace(/\.[^.]+$/,''),selFolder.id);
   }
 
   async function confirmAddress(){
     if(!addressInput.trim()){notify('Entrez une adresse','warn');return;}
-    const f=pendingFile;
-    setPendingFile(null);setShowAddressInput(false);
-    await doUpload(f, null, addressInput.trim(), selFolder?.id, addressInput.trim());
+    const f=pendingFile;setPendingFile(null);setShowAddressInput(false);
+    await doUpload(f,null,addressInput.trim(),selFolder.id);
   }
-
-  const canUpload=!hasFolders||selFolder;
 
   return(
     <div>
-      {/* Choix de dossier */}
-      {hasFolders&&(
+      <div style={{marginBottom:'0.5rem'}}>
+        <div className="csec" style={{marginBottom:'0.35rem'}}>Type de document</div>
+        <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap'}}>
+          <div onClick={()=>setDocType(docType==='AP'?null:'AP')} style={{padding:'0.3rem 0.75rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:docType==='AP'?700:400,background:docType==='AP'?'rgba(63,185,80,0.15)':'var(--bg3)',border:'1px solid '+(docType==='AP'?'var(--success)':'var(--border)'),color:docType==='AP'?'var(--success)':'var(--muted)'}}>
+            📋 Appel de service
+          </div>
+          <div onClick={()=>setDocType(docType==='OT'?null:'OT')} style={{padding:'0.3rem 0.75rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:docType==='OT'?700:400,background:docType==='OT'?'rgba(210,153,34,0.15)':'var(--bg3)',border:'1px solid '+(docType==='OT'?'var(--warning)':'var(--border)'),color:docType==='OT'?'var(--warning)':'var(--muted)'}}>
+            🔧 Ordre de travail
+          </div>
+        </div>
+        {isDocMode&&<div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>→ Sauvegardé dans PAD SERVICE À TRAITER</div>}
+      </div>
+      {!isDocMode&&hasFolders&&(
         <div style={{marginBottom:'0.5rem'}}>
-          <div className="csec">Dossier Drive</div>
+          <div className="csec" style={{marginBottom:'0.35rem'}}>Dossier Drive</div>
           <div style={{display:'flex',gap:'0.35rem',flexWrap:'wrap'}}>
-            {filteredFolders.map(f=>(
-              <div key={f.id} onClick={()=>{setSelFolder(selFolder?.id===f.id?null:f);setShowAddressInput(false);setAddressInput('');}}
-                style={{padding:'0.25rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
-                  fontWeight:selFolder?.id===f.id?700:400,
-                  background:selFolder?.id===f.id?'rgba(47,129,247,0.15)':'var(--bg3)',
-                  border:'1px solid '+(selFolder?.id===f.id?'var(--accent)':'var(--border)'),
-                  color:selFolder?.id===f.id?'var(--accent)':'var(--muted)'}}>
+            {visibleFolders.map(f=>(
+              <div key={f.id} onClick={()=>{setSelFolder(selFolder?.id===f.id?null:f);setShowAddressInput(false);}} style={{padding:'0.25rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:selFolder?.id===f.id?700:400,background:selFolder?.id===f.id?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(selFolder?.id===f.id?'var(--accent)':'var(--border)'),color:selFolder?.id===f.id?'var(--accent)':'var(--muted)'}}>
                 {f.name}
               </div>
             ))}
@@ -689,77 +667,37 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
           {!selFolder&&<div style={{fontSize:10,color:'var(--warning)',marginTop:3}}>Sélectionne un dossier avant d'envoyer</div>}
         </div>
       )}
-
-      {/* Adresse pour COMPTEUR HQ / PLAN ENCASTRÉS */}
       {needsAddress&&!showAddressInput&&(
         <div style={{fontSize:10,color:'var(--muted)',marginBottom:'0.4rem'}}>
-          {jobLocation?'📍 Adresse: '+jobLocation:'⚠️ Aucune adresse — tu devras l\'entrer manuellement'}
+          {jobLocation?'📍 Titre: '+jobLocation:"⚠️ Aucune adresse — sera demandée à l'upload"}
         </div>
       )}
-
-      {/* Input adresse manuel */}
       {showAddressInput&&(
         <div style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem',marginBottom:'0.5rem'}}>
-          <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>📍 Entrez l'adresse (sera le titre du fichier)</div>
-          <input value={addressInput} onChange={e=>setAddressInput(e.target.value)}
-            placeholder="Ex: 123 rue Principale, Montréal"
-            style={{width:'100%',marginBottom:'0.4rem'}}/>
+          <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>📍 {selFolder?.name==='COMPTEUR HQ'?'Adresse du compteur':'Lieu'} (titre du fichier)</div>
+          <input value={addressInput} onChange={e=>setAddressInput(e.target.value)} placeholder={selFolder?.name==='COMPTEUR HQ'?'Ex: 123 rue Principale, Montréal':'Ex: Sous-sol, Chambre 3'} style={{width:'100%',marginBottom:'0.4rem'}}/>
           <div style={{display:'flex',gap:'0.35rem'}}>
             <button className="btn-p" style={{flex:1,marginTop:0,fontSize:11}} onClick={confirmAddress}>✓ Confirmer</button>
             <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowAddressInput(false);setPendingFile(null);}}>Annuler</button>
           </div>
         </div>
       )}
-
-      {/* Boutons AP / OT */}
-      {canUpload&&!needsAddress&&(
-        <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.4rem'}}>
-          <div onClick={()=>setDocType(docType==='AP'?null:'AP')}
-            style={{padding:'0.25rem 0.7rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:docType==='AP'?700:400,
-              background:docType==='AP'?'rgba(63,185,80,0.15)':'var(--bg3)',
-              border:'1px solid '+(docType==='AP'?'var(--success)':'var(--border)'),
-              color:docType==='AP'?'var(--success)':'var(--muted)'}}>
-            📋 Appel de service
-          </div>
-          <div onClick={()=>setDocType(docType==='OT'?null:'OT')}
-            style={{padding:'0.25rem 0.7rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:docType==='OT'?700:400,
-              background:docType==='OT'?'rgba(210,153,34,0.15)':'var(--bg3)',
-              border:'1px solid '+(docType==='OT'?'var(--warning)':'var(--border)'),
-              color:docType==='OT'?'var(--warning)':'var(--muted)'}}>
-            🔧 Ordre de travail
-          </div>
-        </div>
-      )}
-
-      {/* Nom personnalisé si AP ou OT sélectionné */}
-      {canUpload&&(docType==='AP'||docType==='OT')&&!needsAddress&&(
-        <div style={{marginBottom:'0.4rem'}}>
-          <input value={customName} onChange={e=>setCustomName(e.target.value)}
-            placeholder={(docType==='AP'?'AP':'OT')+'_'+jobName+'  (modifier si besoin)'}
-            style={{width:'100%',fontSize:11}}/>
-        </div>
-      )}
-
-      {/* Boutons fichier et photo */}
       <div className="file-add-row">
-        <div className="file-zone" style={!canUpload?{opacity:0.4,cursor:'not-allowed'}:{}}
-          onClick={()=>{if(canUpload)fileRef.current?.click();}}>
+        <div className="file-zone" style={(!isDocMode&&!selFolder&&hasFolders)?{opacity:0.4,cursor:'not-allowed'}:{}} onClick={()=>{if(isDocMode||selFolder||!hasFolders)fileRef.current?.click();}}>
           <div>{uploading?'⏳':'📎'}</div>
-          <div style={{fontSize:10,color:'var(--muted)'}}>Fichier</div>
-          <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:'none'}}
-            onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';}}/>
+          <div style={{fontSize:10,color:'var(--muted)'}}>{isDocMode?docType:'Fichier'}</div>
+          <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:'none'}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';}}/>
         </div>
-        <div className="file-zone" style={!canUpload?{opacity:0.4,cursor:'not-allowed'}:{}}
-          onClick={()=>{if(canUpload)camRef.current?.click();}}>
+        <div className="file-zone" style={(!isDocMode&&!selFolder&&hasFolders)?{opacity:0.4,cursor:'not-allowed'}:{}} onClick={()=>{if(isDocMode||selFolder||!hasFolders)camRef.current?.click();}}>
           <div>{uploading?'⏳':'📷'}</div>
           <div style={{fontSize:10,color:'var(--muted)'}}>Photo</div>
-          <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
-            onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';}}/>
+          <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:'none'}} onChange={e=>{if(e.target.files[0])handleFile(e.target.files[0]);e.target.value='';}}/>
         </div>
       </div>
     </div>
   );
 }
+
 
 function PinPad({empName,empCouleur,empCode,label,onSubmit,onCancel}){
   const [pin,setPin]=useState('');
@@ -1645,7 +1583,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       else if(mode==='confirm')setStep('confirm');
       else setStep('punch-in');
     }
-    else if(step==='history'||step==='projets')setStep('mode');
+    else if(step==='history'||step==='projets'||step==='ordres-travail')setStep('mode');
     else setStep('emps');
   }
 
@@ -1875,16 +1813,55 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <EmployeeHistory emp={selEmp} sid={sid} notify={notify} folders={folders} calendarIds={calendarIds}/>
     </div>
-
   );
   if(step==='projets'){
-    // Load all pts if not already loaded
     const allPts=ptsForOut.length?ptsForOut:ptsRef.current;
     return(
       <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
         <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={jobs} isAdmin={false} notify={notify}/>
       </div>
-              );
+    );
+  }
+  if(step==='ordres-travail'){
+    // Charger les pts de cet employé pour trouver les OT
+    const allPts=[...ptsForOut,...ptsRef.current];
+    const otEntries=allPts.filter(p=>
+      p.nom===selEmp.nom&&
+      p.fichiersURL&&p.fichiersURL.some(u=>u&&u.includes('drive.google.com'))&&
+      (p.job||p.note)
+    );
+    return(
+      <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+        <div style={{maxWidth:420,width:'100%'}}>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',marginBottom:'0.75rem'}}>
+            🔧 Mes ordres de travail
+          </div>
+          {otEntries.length===0?(
+            <div style={{background:'var(--bg3)',borderRadius:10,padding:'1rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>
+              Aucun ordre de travail trouvé.
+            </div>
+          ):(
+            otEntries.map((p,i)=>(
+              <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.5rem',borderLeft:'3px solid var(--accent)'}}>
+                <div style={{fontWeight:600,fontSize:13,marginBottom:3}}>{p.job||'Sans job'}</div>
+                <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>{p.date} · {p.heure}</div>
+                {p.fichiersURL.filter(u=>u).map((u,j)=>{
+                  const isOT=u.toLowerCase().includes('ot_')||u.toLowerCase().includes('ot%5f');
+                  const isAP=u.toLowerCase().includes('ap_')||u.toLowerCase().includes('ap%5f');
+                  const label=isOT?'🔧 Ordre de travail':isAP?'📋 Appel de service':'📎 Fichier';
+                  return(
+                    <a key={j} href={u} target="_blank" rel="noreferrer"
+                      style={{display:'flex',alignItems:'center',gap:6,background:'rgba(47,129,247,0.1)',borderRadius:6,padding:'0.25rem 0.5rem',marginBottom:3,textDecoration:'none',color:'var(--accent)',fontSize:11}}>
+                      <span>{label}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    );
   }
 
   // ── MODE SELECTION ──
@@ -1930,6 +1907,10 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
         <div className="mode-btn" onClick={()=>setStep('projets')}>
           <div className="mode-icon">📁</div>
           <div><div className="mode-title">Projets</div><div className="mode-desc">Jobs en cours, heures, fichiers</div></div>
+        </div>
+        <div className="mode-btn" onClick={()=>setStep('ordres-travail')}>
+          <div className="mode-icon">🔧</div>
+          <div><div className="mode-title">Mes ordres de travail</div><div className="mode-desc">Voir les OT sauvegardés par job</div></div>
         </div>
       </div>
 
