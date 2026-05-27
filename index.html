@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v96';
+const APP_VERSION='v97';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2329,7 +2329,17 @@ function App(){
   const [cfg,setCfg]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem('pp_cfg')||'null');
-      return saved&&saved.apiKey?saved:DEFAULT_CFG;
+      if(saved&&saved.apiKey){
+        // Merge: hardcoded DEFAULT_CFG wins for driveFolders if saved is empty
+        return{
+          ...DEFAULT_CFG,
+          ...saved,
+          // Always use DEFAULT_CFG values for these hardcoded fields
+          driveFolders:DEFAULT_CFG.driveFolders||saved.driveFolders||'',
+          calendarIds:DEFAULT_CFG.calendarIds||saved.calendarIds||'',
+        };
+      }
+      return DEFAULT_CFG;
     }catch{return DEFAULT_CFG;}
   });
   const [showCfg,setShowCfg]=useState(false);
