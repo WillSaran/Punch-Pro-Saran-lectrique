@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v97';
+const APP_VERSION='v99';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -545,18 +545,29 @@ async function markMessageRead(sid,row){
 async function uploadToDrive(file, empName, jobName, folderId){
   try{
     const token=gapi.client.getToken();
-    if(!token||!token.access_token)return{url:'',id:''};
+    if(!token||!token.access_token){console.error('No access token');return{url:'',id:''};}
     const fname=empName+'_'+(jobName||'punch')+'_'+new Date().toLocaleDateString('fr-CA')+'_'+file.name;
-    const meta={name:fname,mimeType:file.type};
+    const meta={name:fname,mimeType:file.type||'application/octet-stream'};
     if(folderId)meta.parents=[folderId];
     const form=new FormData();
     form.append('metadata',new Blob([JSON.stringify(meta)],{type:'application/json'}));
     form.append('file',file);
-    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,name',{method:'POST',headers:{'Authorization':'Bearer '+token.access_token},body:form});
+    const res=await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink,name',
+      {method:'POST',headers:{'Authorization':'Bearer '+token.access_token},body:form});
     const data=await res.json();
-    if(data.id){await fetch('https://www.googleapis.com/drive/v3/files/'+data.id+'/permissions',{method:'POST',headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},body:JSON.stringify({role:'reader',type:'anyone'})});}
-    return {url:data.webViewLink||('https://drive.google.com/file/d/'+data.id+'/view'),id:data.id||'',name:fname};
-  }catch(e){console.error(e);return{url:'',id:''};}}
+    console.log('Drive upload response:',res.status,JSON.stringify(data).slice(0,200));
+    if(!res.ok||!data.id){
+      console.error('Drive upload failed:',data.error||data);
+      return{url:'',id:'',error:data.error?.message||'Upload failed ('+res.status+')'};
+    }
+    // Make file publicly readable
+    try{
+      await fetch('https://www.googleapis.com/drive/v3/files/'+data.id+'/permissions',
+        {method:'POST',headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},
+        body:JSON.stringify({role:'reader',type:'anyone'})});
+    }catch(e){console.warn('Permission set failed:',e);}
+    return{url:data.webViewLink||('https://drive.google.com/file/d/'+data.id+'/view'),id:data.id,name:fname};
+  }catch(e){console.error('uploadToDrive exception:',e);return{url:'',id:''};}}
 
 function Notif({msg,type,onClose}){
   useEffect(()=>{const t=setTimeout(onClose,4500);return()=>clearTimeout(t);},[]);
@@ -575,7 +586,7 @@ function DriveUploader({empName,jobName,calendarIds,calEventTitle,folders,onUplo
     const folderId=selFolder?selFolder.id:null;
     const result=await uploadToDrive(f,empName,jobName,folderId);
     setUploading(false);
-    if(!result.url){notify('Erreur upload Drive','err');return;}
+    if(!result.url||!result.id){notify('Erreur upload: '+(result.error||'Vérifiez les permissions Drive'),'err');return;}
     let calAttached=false;
     if(calEventTitle&&calendarIds&&result.id){
       const evtRef=await findCalendarEventByTitle(calendarIds,calEventTitle);
@@ -2330,13 +2341,14 @@ function App(){
     try{
       const saved=JSON.parse(localStorage.getItem('pp_cfg')||'null');
       if(saved&&saved.apiKey){
-        // Merge: hardcoded DEFAULT_CFG wins for driveFolders if saved is empty
         return{
-          ...DEFAULT_CFG,
           ...saved,
-          // Always use DEFAULT_CFG values for these hardcoded fields
-          driveFolders:DEFAULT_CFG.driveFolders||saved.driveFolders||'',
-          calendarIds:DEFAULT_CFG.calendarIds||saved.calendarIds||'',
+          // Ces valeurs sont toujours hardcodées — jamais écrasées par localStorage
+          driveFolders:DEFAULT_CFG.driveFolders,
+          calendarIds:DEFAULT_CFG.calendarIds,
+          spreadsheetId:DEFAULT_CFG.spreadsheetId,
+          apiKey:DEFAULT_CFG.apiKey,
+          clientId:DEFAULT_CFG.clientId,
         };
       }
       return DEFAULT_CFG;
