@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v108';
+const APP_VERSION='v109';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -627,17 +627,18 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
   function buildFileName(f){
     const ext=f.name.includes('.')?'.'+f.name.split('.').pop():'';
     const clean=s=>s.replace(/[^a-zA-Z0-9\u00C0-\u024F\-_ ]/g,'').trim();
+    const evtTitle=calEventTitle?'_'+clean(calEventTitle):'';
     if(isDocMode){
       const num=titleInput.trim()||'sans-numero';
-      return mode+'_'+clean(num)+ext;
+      return mode+'_'+clean(num)+evtTitle+ext;
     }
     if(needsAddress){
       const addr=clean(adresseInput.trim()||'sans-adresse');
       const piece=isPlanEncastre&&pieceInput.trim()?'_'+clean(pieceInput.trim()):'';
-      return addr+piece+ext;
+      return addr+piece+evtTitle+ext;
     }
     const t=titleInput.trim()||f.name.replace(/\.[^.]+$/,'');
-    return clean(t)+ext;
+    return clean(t)+evtTitle+ext;
   }
 
   async function doUpload(f){
