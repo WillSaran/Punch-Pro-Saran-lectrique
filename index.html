@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v106';
+const APP_VERSION='v107';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -592,16 +592,23 @@ function Notif({msg,type,onClose}){
 }
 
 function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,folders,onUploaded,notify}){
-  // Une seule sélection active: soit docType (AP/OT), soit un dossier — jamais les deux
-  const [mode,setMode]=useState(null); // 'AP' | 'OT' | {folder object} | null
+  // mode = 'AP' | 'OT' | {folder} | null
+  const [mode,setMode]=useState(null);
   const [titleInput,setTitleInput]=useState('');
   const [adresseInput,setAdresseInput]=useState(jobLocation||'');
   const [pieceInput,setPieceInput]=useState('');
   const [uploading,setUploading]=useState(false);
+  // pendingFile: photo/fichier pris avant de remplir les infos
+  const [pendingFile,setPendingFile]=useState(null);
   const fileRef=useRef();const camRef=useRef();
   const PAD_ID='1CI-OuXIuiSKUksL7BUyGAN__tRPxbklB';
-  const visibleFolders=(folders||[]).filter(f=>!['PAD SERVICE À TRAITER','REF FACTURE','REF OT'].includes(f.name));
 
+  // Met à jour adresseInput si jobLocation change (ex: après création d'un job)
+  useEffect(()=>{
+    if(jobLocation)setAdresseInput(jobLocation);
+  },[jobLocation]);
+
+  const visibleFolders=(folders||[]).filter(f=>!['PAD SERVICE À TRAITER','REF FACTURE','REF OT'].includes(f.name));
   const isDocMode=mode==='AP'||mode==='OT';
   const selFolder=(mode&&typeof mode==='object')?mode:null;
   const isPlanEncastre=selFolder&&selFolder.name==='PLAN ENCASTRÉS';
@@ -620,22 +627,21 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
     const ext=f.name.includes('.')?'.'+f.name.split('.').pop():'';
     const clean=s=>s.replace(/[^a-zA-Z0-9\u00C0-\u024F\-_ ]/g,'').trim();
     if(isDocMode){
-      const num=titleInput.trim()||jobName||'sans-numero';
+      const num=titleInput.trim()||'sans-numero';
       return mode+'_'+clean(num)+ext;
     }
     if(needsAddress){
-      const addr=clean(adresseInput.trim()||jobLocation||'sans-adresse');
+      const addr=clean(adresseInput.trim()||'sans-adresse');
       const piece=isPlanEncastre&&pieceInput.trim()?'_'+clean(pieceInput.trim()):'';
       return addr+piece+ext;
     }
-    // Dossier normal: titre donné ou nom original sans extension
     const t=titleInput.trim()||f.name.replace(/\.[^.]+$/,'');
     return clean(t)+ext;
   }
 
   async function doUpload(f){
     const folderId=isDocMode?PAD_ID:(selFolder?selFolder.id:null);
-    if(!isDocMode&&!selFolder){notify("Choisis un type ou un dossier d'abord!",'warn');return;}
+    if(!isDocMode&&!selFolder){notify("Choisis un type ou un dossier!",'warn');return;}
     const finalName=buildFileName(f);
     setUploading(true);notify('⏳ Upload...','warn');
     const renamed=new File([f],finalName,{type:f.type});
@@ -647,14 +653,32 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
       const evtRef=await findCalendarEventByTitle(calendarIds,calEventTitle);
       if(evtRef)calAttached=await attachFileToCalendarEvent(evtRef.calendarId,evtRef.eventId,result.id,finalName,f.type);
     }
-    // Enregistrer URL avec le nom du fichier comme clé pour affichage
     onUploaded(result.url+'|'+finalName);
     const dossierLabel=isDocMode?'PAD SERVICE':(selFolder?selFolder.name:'Drive');
     notify('📎 ['+dossierLabel+'] '+finalName+(calAttached?' · 📅':''),'success');
+    setPendingFile(null);
     setTitleInput('');
   }
 
+  // Quand un fichier est choisi — le stocker et demander les infos
+  function handleFilePicked(f){
+    if(!f)return;
+    if(!isDocMode&&!selFolder){notify("Choisis un type ou un dossier d'abord!",'warn');return;}
+    // Si c'est un dossier normal sans infos requises → upload direct
+    if(selFolder&&!needsAddress){
+      setPendingFile(f);
+      return;
+    }
+    // Sinon stocker et montrer le formulaire de confirmation
+    setPendingFile(f);
+  }
+
   const ready=isDocMode||(selFolder&&(!needsAddress||(adresseInput.trim()||jobLocation)));
+  const showConfirmForm=pendingFile&&(
+    isDocMode||
+    (selFolder&&!needsAddress)||
+    (needsAddress&&(adresseInput.trim()||jobLocation))
+  );
 
   return(
     <div>
@@ -672,14 +696,6 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
             </div>
           ))}
         </div>
-        {isDocMode&&(
-          <div style={{marginTop:'0.35rem',display:'flex',alignItems:'center',gap:6}}>
-            <span style={{fontSize:12,fontWeight:800,color:mode==='AP'?'var(--success)':'var(--warning)',flexShrink:0,fontFamily:'var(--font-head)'}}>{mode}_</span>
-            <input value={titleInput} onChange={e=>setTitleInput(e.target.value)}
-              placeholder="Numéro du document..."
-              style={{flex:1,fontSize:11}}/>
-          </div>
-        )}
         {isDocMode&&<div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>→ PAD SERVICE À TRAITER</div>}
       </div>
 
@@ -698,12 +714,6 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
               </div>
             ))}
           </div>
-          {/* Champs selon le dossier sélectionné */}
-          {selFolder&&!needsAddress&&(
-            <input value={titleInput} onChange={e=>setTitleInput(e.target.value)}
-              placeholder="Titre du fichier (optionnel)"
-              style={{width:'100%',fontSize:11,marginTop:'0.35rem'}}/>
-          )}
           {needsAddress&&(
             <div style={{display:'flex',flexDirection:'column',gap:'0.3rem',marginTop:'0.35rem'}}>
               <input value={adresseInput} onChange={e=>setAdresseInput(e.target.value)}
@@ -719,40 +729,69 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
         </div>
       )}
 
-      {/* Boutons upload — seulement si mode sélectionné */}
-      {ready&&(
-        <div style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem',marginBottom:'0.35rem'}}>
-          <div style={{fontSize:10,color:'var(--muted)',marginBottom:'0.35rem'}}>
-            📄 Nom du fichier: <strong style={{color:'var(--text)'}}>{
-              isDocMode?(mode+'_'+(titleInput.trim()||'...')):
-              needsAddress?((adresseInput.trim()||jobLocation||'...')+(isPlanEncastre&&pieceInput.trim()?'_'+pieceInput.trim():'')):
-              (titleInput.trim()||'nom-original')
-            }</strong>
+      {/* Formulaire de confirmation APRÈS avoir pris le fichier/photo */}
+      {pendingFile?(
+        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem',border:'1px solid var(--accent)',marginBottom:'0.35rem'}}>
+          <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.4rem'}}>
+            📷 <strong style={{color:'var(--text)'}}>{pendingFile.name}</strong> prêt
           </div>
-          <div className="file-add-row" style={{margin:0}}>
-            <div className="file-zone" onClick={()=>fileRef.current?.click()} style={{flex:1}}>
+          {/* Champ numéro/titre si AP, OT ou dossier normal */}
+          {(isDocMode||selFolder)&&!needsAddress&&(
+            <div style={{marginBottom:'0.4rem'}}>
+              {isDocMode?(
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:12,fontWeight:800,color:mode==='AP'?'var(--success)':'var(--warning)',flexShrink:0}}>{mode}_</span>
+                  <input value={titleInput} onChange={e=>setTitleInput(e.target.value)}
+                    placeholder="Numéro du document..."
+                    autoFocus
+                    style={{flex:1,fontSize:11}}/>
+                </div>
+              ):(
+                <input value={titleInput} onChange={e=>setTitleInput(e.target.value)}
+                  placeholder="Titre du fichier (optionnel)"
+                  autoFocus
+                  style={{width:'100%',fontSize:11}}/>
+              )}
+            </div>
+          )}
+          {/* Aperçu du nom final */}
+          <div style={{fontSize:10,color:'var(--muted)',marginBottom:'0.5rem'}}>
+            Nom final: <strong style={{color:'var(--text)'}}>{buildFileName(pendingFile)}</strong>
+          </div>
+          <div style={{display:'flex',gap:'0.4rem'}}>
+            <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} disabled={uploading}
+              onClick={()=>doUpload(pendingFile)}>
+              {uploading?'⏳ Upload...':'✓ Confirmer et envoyer'}
+            </button>
+            <button className="btn-s" style={{fontSize:11}} onClick={()=>setPendingFile(null)}>✕</button>
+          </div>
+        </div>
+      ):(
+        /* Boutons pour choisir fichier/photo */
+        <div>
+          {!mode&&<div style={{fontSize:10,color:'var(--warning)',marginBottom:'0.35rem'}}>⬆️ Sélectionne un type ou un dossier d'abord</div>}
+          <div className="file-add-row">
+            <div className="file-zone" style={!mode?{opacity:0.4,cursor:'not-allowed'}:{}}
+              onClick={()=>{if(mode)fileRef.current?.click();}}>
               <div>{uploading?'⏳':'📎'}</div>
               <div style={{fontSize:10,color:'var(--muted)'}}>{isDocMode?mode:'Fichier'}</div>
               <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx" style={{display:'none'}}
-                onChange={e=>{if(e.target.files[0])doUpload(e.target.files[0]);e.target.value='';}}/>
+                onChange={e=>{if(e.target.files[0])handleFilePicked(e.target.files[0]);e.target.value='';}}/>
             </div>
-            <div className="file-zone" onClick={()=>camRef.current?.click()} style={{flex:1}}>
+            <div className="file-zone" style={!mode?{opacity:0.4,cursor:'not-allowed'}:{}}
+              onClick={()=>{if(mode)camRef.current?.click();}}>
               <div>{uploading?'⏳':'📷'}</div>
               <div style={{fontSize:10,color:'var(--muted)'}}>Photo</div>
               <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
-                onChange={e=>{if(e.target.files[0])doUpload(e.target.files[0]);e.target.value='';}}/>
+                onChange={e=>{if(e.target.files[0])handleFilePicked(e.target.files[0]);e.target.value='';}}/>
             </div>
           </div>
-        </div>
-      )}
-      {!ready&&(
-        <div style={{fontSize:10,color:'var(--warning)',padding:'0.35rem 0'}}>
-          ⬆️ Sélectionne un type de document ou un dossier pour activer l'upload
         </div>
       )}
     </div>
   );
 }
+
 
 
 
