@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v107';
+const APP_VERSION='v108';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -547,7 +547,8 @@ async function uploadToDrive(file, empName, jobName, folderId){
   try{
     const token=gapi.client.getToken();
     if(!token||!token.access_token){console.error('No access token');return{url:'',id:''};}
-    const fname=empName+'_'+(jobName||'punch')+'_'+new Date().toLocaleDateString('fr-CA')+'_'+file.name;
+    // Utiliser le nom du fichier tel quel — déjà renommé par DriveUploader
+    const fname=file.name;
 
     async function tryUpload(parentId){
       const m={name:fname,mimeType:file.type||'application/octet-stream'};
@@ -1969,22 +1970,10 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
                   const nom=u.includes('|')?u.split('|')[1]:null;
                   const label=isOT?'🔧 '+(nom||'Ordre de travail'):isAP?'📋 '+(nom||'Appel de service'):'📎 '+(nom||'Fichier');
                   return(
-                    <div key={j} style={{display:'flex',alignItems:'center',gap:6,background:'rgba(47,129,247,0.1)',borderRadius:6,padding:'0.25rem 0.5rem',marginBottom:3}}>
-                      <a href={urlClean} target="_blank" rel="noreferrer"
-                        style={{textDecoration:'none',color:'var(--accent)',fontSize:11,flex:1}}>
-                        {label}
-                      </a>
-                      <button style={{background:'none',border:'none',color:'var(--danger)',cursor:'pointer',fontSize:11,padding:'0 2px',touchAction:'manipulation'}}
-                        onClick={async()=>{
-                          if(!confirm('Supprimer ce document?'))return;
-                          const newURLs=(p.fichiersURL||[]).filter((_,k)=>k!==j);
-                          const row=p.row;
-                          if(row){
-                            try{await updatePointageFichiers(sid,row,newURLs);notify('Document supprimé','success');}
-                            catch(e){notify('Erreur suppression','err');}
-                          }
-                        }}>✕</button>
-                    </div>
+                    <a key={j} href={urlClean} target="_blank" rel="noreferrer"
+                      style={{display:'flex',alignItems:'center',gap:6,background:'rgba(47,129,247,0.1)',borderRadius:6,padding:'0.25rem 0.5rem',marginBottom:3,textDecoration:'none',color:'var(--accent)',fontSize:11}}>
+                      {label}
+                    </a>
                   );
                 })}
               </div>
