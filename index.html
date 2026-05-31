@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v111';
+const APP_VERSION='v112';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -622,6 +622,7 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
     setMode(prev=>prev===val?null:val);
     setTitleInput('');
     if(typeof val==='object'&&(val.name==='COMPTEUR HQ'||val.name==='PLAN ENCASTRÉS')){
+      // Auto-fill address from job location
       setAdresseInput(jobLocation||'');
     }
   }
@@ -635,9 +636,10 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
       return mode+'_'+clean(num)+evtTitle+ext;
     }
     if(needsAddress){
-      const addr=clean(adresseInput.trim()||'sans-adresse');
+      const addr=clean(adresseInput.trim()||jobLocation||'sans-adresse');
       const piece=isPlanEncastre&&pieceInput.trim()?'_'+clean(pieceInput.trim()):'';
-      return addr+piece+evtTitle+ext;
+      const suffix=isPlanEncastre?'_PLANENC':'_COMPTEURHQ';
+      return addr+piece+suffix+ext;
     }
     const t=titleInput.trim()||f.name.replace(/\.[^.]+$/,'');
     return clean(t)+evtTitle+ext;
@@ -1062,7 +1064,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,isOut,onConfirm,
   const teammates=(allEmps||[]).filter(e=>e.nom!==emp.nom);
   function toggleCoeq(nom){setCoequipiers(prev=>{const next=prev.includes(nom)?prev.filter(n=>n!==nom):[...prev,nom];if(!prev.includes(nom))setCoeqHeures(p=>({...p,[nom]:totalH}));return next;});}
   useEffect(()=>{setCoeqHeures(p=>{const u={...p};coequipiers.forEach(n=>{if(u[n]===undefined)u[n]=totalH;});return u;});},[totalH]);
-  function confirm(){if(totalH===0){notify('Entrez les heures!','err');return;}const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch});}
+  function confirm(){const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch});}
   const coeqEmps=teammates.filter(t=>coequipiers.includes(t.nom));
   return(
     <div className="dur-wrap">
@@ -1658,16 +1660,51 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
 
 // ── WELCOME SCREEN ────────────────────────────────────────────────────────────
 // ── JOB SUMMARY ──────────────────────────────────────────────────────────────
-function JobSummary({jobs}){
+function JobSummary({jobs,emp}){
   const [activeTab,setActiveTab]=useState('today');
   const today=localDateStr();
   const tomorrow=localDateStr(new Date(Date.now()+86400000));
   const dateRef=activeTab==='today'?today:tomorrow;
   const label=activeTab==='today'?"aujourd'hui":'demain';
   const jobsDuJour=(jobs||[]).filter(j=>(j.start||'').slice(0,10)===dateRef);
+
+  // Séparer les jobs de l'employé vs les autres
+  function isEmpJob(j){
+    if(!emp)return false;
+    const t=(j.title||'').toLowerCase();
+    const code=(emp.code||'').toLowerCase();
+    const nom=(emp.nom||'').toLowerCase();
+    // Match si couleur correspond ou si code/nom dans le titre
+    const colorMatch=emp.couleur&&j.gcalColor&&colorDist(j.gcalColor,emp.couleur)<80;
+    const nameMatch=code&&t.includes(code)||nom.split(' ').some(n=>n.length>2&&t.includes(n.toLowerCase()));
+    return colorMatch||nameMatch;
+  }
+
+  const mesJobs=jobsDuJour.filter(j=>isEmpJob(j));
+  const autresJobs=jobsDuJour.filter(j=>!isEmpJob(j));
+
   if(!jobs||jobs.length===0)return(
     <div style={{maxWidth:360,width:'100%',marginTop:'1rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>Chargement de l'agenda...</div>
   );
+
+  function JobCard({j}){
+    return(
+      <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',marginBottom:'0.4rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)')}}>
+        <div style={{fontWeight:600,fontSize:12,color:'var(--text)',marginBottom:j.description||j.location?4:0}}>{j.title}</div>
+        {j.description&&<div style={{fontSize:11,color:'var(--muted)',lineHeight:1.4,marginBottom:j.location?3:0}}>{j.description}</div>}
+        {j.location&&(
+          <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+            <span style={{fontSize:11,color:'var(--muted)',flex:1}}>📍 {j.location}</span>
+            <a href={'https://maps.google.com/?q='+encodeURIComponent(j.location)} target="_blank" rel="noreferrer"
+              style={{background:'rgba(47,129,247,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.18rem 0.5rem',fontSize:10,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
+              🗺 Maps
+            </a>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return(
     <div style={{maxWidth:360,width:'100%',marginTop:'1rem'}}>
       <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.6rem'}}>
@@ -1680,21 +1717,25 @@ function JobSummary({jobs}){
       {jobsDuJour.length===0?(
         <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>Aucune job à l'agenda {label}</div>
       ):(
-        jobsDuJour.map((j,i)=>(
-          <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',marginBottom:'0.4rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)')}}>
-            <div style={{fontWeight:600,fontSize:12,color:'var(--text)',marginBottom:j.description||j.location?4:0}}>{j.title}</div>
-            {j.description&&<div style={{fontSize:11,color:'var(--muted)',lineHeight:1.4,marginBottom:j.location?3:0}}>{j.description}</div>}
-            {j.location&&(
-              <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
-                <span style={{fontSize:11,color:'var(--muted)',flex:1}}>📍 {j.location}</span>
-                <a href={'https://maps.google.com/?q='+encodeURIComponent(j.location)} target="_blank" rel="noreferrer"
-                  style={{background:'rgba(47,129,247,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.18rem 0.5rem',fontSize:10,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
-                  🗺 Maps
-                </a>
+        <>
+          {mesJobs.length>0&&(
+            <>
+              <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>
+                Mes jobs
               </div>
-            )}
-          </div>
-        ))
+              {mesJobs.map((j,i)=><JobCard key={i} j={j}/>)}
+            </>
+          )}
+          {autresJobs.length>0&&(
+            <>
+              {mesJobs.length>0&&<div style={{borderTop:'1px solid var(--border)',margin:'0.5rem 0'}}/>}
+              <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>
+                {mesJobs.length>0?'Autres jobs':'Toutes les jobs'}
+              </div>
+              {autresJobs.map((j,i)=><JobCard key={i} j={j}/>)}
+            </>
+          )}
+        </>
       )}
     </div>
   );
@@ -2081,7 +2122,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       </div>
 
       {/* Résumé jobs — onglets Aujourd'hui / Demain */}
-      <JobSummary jobs={jobs}/>
+      <JobSummary jobs={jobs} emp={selEmp}/>
     </div>
 
   // ── EMP GRID ──
