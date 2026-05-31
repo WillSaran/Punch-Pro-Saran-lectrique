@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v114';
+const APP_VERSION='v115';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -297,12 +297,29 @@ function nowTimeStr(){const n=new Date();return String(n.getHours()).padStart(2,
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
 async function getCalendarJobs(calendarIds){
   const now=new Date();
-  const start=new Date(now);start.setDate(start.getDate()-3); // 3 jours passés
+  const start=new Date(now);start.setDate(start.getDate()-3); // punch: 3 jours passés
   const end=new Date(now);end.setDate(end.getDate()+14);
   const all=[];
   for(const calId of (calendarIds||['primary'])){
     try{
       const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:50});
+      (res.result.items||[]).forEach(e=>{
+        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
+      });
+    }catch(e){console.error(e);}
+  }
+  return all.sort((a,b)=>new Date(a.start)-new Date(b.start));
+}
+
+// Charger tous les événements pour les projets (180 jours passés + 90 futurs)
+async function getAllCalendarJobs(calendarIds){
+  const now=new Date();
+  const start=new Date(now);start.setDate(start.getDate()-180);
+  const end=new Date(now);end.setDate(end.getDate()+90);
+  const all=[];
+  for(const calId of (calendarIds||['primary'])){
+    try{
+      const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:500});
       (res.result.items||[]).forEach(e=>{
         if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
       });
@@ -1185,6 +1202,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify}){
   const PREFIXES=['PAY','CRS','ASC','GGP','SAR'];
   const STORAGE_KEY='punchpro_projets_v3';
   const [projData,setProjData]=useState({});
+  const [selProj,setSelProj]=useState(null); // projet sélectionné pour détail
   const [editKey,setEditKey]=useState(null);
   const [editPO,setEditPO]=useState('');
   const [editTitre,setEditTitre]=useState('');
@@ -1193,82 +1211,167 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify}){
   const [filterPrefix,setFilterPrefix]=useState(null);
   const [search,setSearch]=useState('');
 
-  useEffect(()=>{
-    try{const s=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');setProjData(s);}catch{}
-  },[]);
-
+  useEffect(()=>{try{const s=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');setProjData(s);}catch{}},[]);
   function saveProjData(d){setProjData(d);localStorage.setItem(STORAGE_KEY,JSON.stringify(d));}
+  function getPrefix(t){const u=(t||'').toUpperCase();for(const p of PREFIXES)if(u.startsWith(p))return p;return 'PARTICULIER';}
 
-  function getPrefix(title){
-    const t=(title||'').toUpperCase();
-    for(const p of PREFIXES){if(t.startsWith(p))return p;}
-    return 'PARTICULIER';
-  }
-
-  // Grouper par adresse — titre = premier événement trouvé
   const projets=useMemo(()=>{
     const map={};
     (calJobs||[]).forEach(j=>{
       const addr=(j.location||'').trim();
       if(!addr)return;
       const key=addr.toLowerCase();
-      if(!map[key]){
-        // Premier événement = titre par défaut
-        map[key]={key,adresse:addr,premierTitre:j.title,jobs:[],heures:0,personnes:new Set()};
-      }
+      if(!map[key])map[key]={key,adresse:addr,premierTitre:j.title,jobs:[],heures:0,personnes:new Set()};
       map[key].jobs.push(j);
     });
     (pts||[]).forEach(p=>{
       if(!p.job)return;
-      const calJob=(calJobs||[]).find(j=>j.title===p.job);
-      if(!calJob||!calJob.location)return;
-      const key=(calJob.location||'').trim().toLowerCase();
+      const cj=(calJobs||[]).find(j=>j.title===p.job);
+      if(!cj||!cj.location)return;
+      const key=(cj.location||'').trim().toLowerCase();
       if(!map[key])return;
-      if(p.type==='out'||p.type==='confirm'){
-        map[key].heures+=parseFloat(p.heures)||0;
-        if(p.nom)map[key].personnes.add(p.nom);
-      }
+      if(p.type==='out'||p.type==='confirm'){map[key].heures+=parseFloat(p.heures)||0;if(p.nom)map[key].personnes.add(p.nom);}
     });
     return Object.values(map).map(p=>{
       const saved=projData[p.key]||{};
-      const defaultTitre=saved.titre||p.premierTitre||p.adresse;
-      return{
-        ...p,
-        personnes:[...p.personnes],
-        po:saved.po||'',
-        titre:defaultTitre,
-        statut:saved.statut||'ouvert',
-        prefix:getPrefix(defaultTitre),
-      };
-    }).sort((a,b)=>{
-      const order={ouvert:0,'en-cours':1,ferme:2};
-      return (order[a.statut]||0)-(order[b.statut]||0)||(a.titre.localeCompare(b.titre));
-    });
+      const titre=saved.titre||p.premierTitre||p.adresse;
+      return{...p,personnes:[...p.personnes],po:saved.po||'',titre,statut:saved.statut||'ouvert',prefix:getPrefix(titre)};
+    }).sort((a,b)=>{const o={ouvert:0,'en-cours':1,ferme:2};return(o[a.statut]||0)-(o[b.statut]||0)||(a.titre.localeCompare(b.titre));});
   },[calJobs,pts,projData]);
 
   const statuts={ouvert:{label:'Ouvert',color:'var(--success)',bg:'rgba(63,185,80,0.1)'},'en-cours':{label:'En cours',color:'var(--warning)',bg:'rgba(210,153,34,0.1)'},ferme:{label:'Fermé',color:'var(--muted)',bg:'var(--bg3)'}};
 
-  // Filtres actifs
   let actifs=projets.filter(p=>p.statut!=='ferme');
   if(filterPrefix)actifs=actifs.filter(p=>p.prefix===filterPrefix);
   if(search)actifs=actifs.filter(p=>(p.titre+p.adresse+p.po).toLowerCase().includes(search.toLowerCase()));
   const fermes=projets.filter(p=>p.statut==='ferme');
-
-  // Compter par préfixe pour les badges
   const prefixCounts={};
   projets.filter(p=>p.statut!=='ferme').forEach(p=>{prefixCounts[p.prefix]=(prefixCounts[p.prefix]||0)+1;});
 
-  function startEdit(p){setEditKey(p.key);setEditPO(p.po);setEditTitre(p.titre);setEditStatut(p.statut);}
-  function saveEdit(){
-    const updated={...projData,[editKey]:{...(projData[editKey]||{}),po:editPO,titre:editTitre,statut:editStatut}};
-    saveProjData(updated);setEditKey(null);
+  function startEdit(p,e){e&&e.stopPropagation();setEditKey(p.key);setEditPO(p.po);setEditTitre(p.titre);setEditStatut(p.statut);}
+  function saveEdit(){const u={...projData,[editKey]:{...(projData[editKey]||{}),po:editPO,titre:editTitre,statut:editStatut}};saveProjData(u);setEditKey(null);}
+
+  // ── VUE DÉTAIL PROJET ──
+  if(selProj){
+    const p=projets.find(x=>x.key===selProj)||selProj;
+    const today=new Date();
+
+    // Trier les événements par date
+    const sortedJobs=[...p.jobs].sort((a,b)=>new Date(a.start)-new Date(b.start));
+    const passedJobs=sortedJobs.filter(j=>new Date(j.start)<today);
+    const todayJobs=sortedJobs.filter(j=>new Date(j.start).toDateString()===today.toDateString());
+    const futureJobs=sortedJobs.filter(j=>new Date(j.start)>today&&new Date(j.start).toDateString()!==today.toDateString());
+
+    // Pointages associés à ce projet
+    const projPts=(pts||[]).filter(p2=>{
+      const cj=(calJobs||[]).find(j=>j.title===p2.job);
+      return cj&&(cj.location||'').trim().toLowerCase()===selProj;
+    });
+
+    const s=statuts[p.statut]||statuts.ouvert;
+
+    function EventCard({j,isPast}){
+      const evtPts=projPts.filter(p2=>p2.job===j.title);
+      const heures=evtPts.filter(p2=>p2.type==='out'||p2.type==='confirm').reduce((a,p2)=>a+(parseFloat(p2.heures)||0),0);
+      const fichiers=evtPts.flatMap(p2=>p2.fichiersURL||[]).filter(Boolean);
+      return(
+        <div style={{background:'var(--bg3)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)'),opacity:isPast?0.85:1}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+            <div>
+              <div style={{fontWeight:600,fontSize:12}}>{j.title}</div>
+              <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}</div>
+              {j.description&&<div style={{fontSize:11,color:'var(--muted)',marginTop:3,lineHeight:1.4}}>{j.description}</div>}
+            </div>
+            {heures>0&&<div style={{fontSize:11,color:'var(--success)',fontWeight:700,flexShrink:0}}>⏱{heures.toFixed(1)}h</div>}
+          </div>
+          {fichiers.length>0&&(
+            <div style={{marginTop:'0.35rem',display:'flex',flexWrap:'wrap',gap:'0.25rem'}}>
+              {fichiers.map((raw,i)=>{
+                const url=raw.split('|')[0];
+                const nom=raw.includes('|')?raw.split('|')[1]:('Fichier '+(i+1));
+                const isOT=nom.startsWith('OT_');const isAP=nom.startsWith('AP_');
+                return(<a key={i} href={url} target="_blank" rel="noreferrer" style={{fontSize:10,background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:5,padding:'1px 7px',textDecoration:'none'}}>
+                  {isOT?'🔧':isAP?'📋':'📎'} {nom}
+                </a>);
+              })}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return(
+      <div style={{maxWidth:620,width:'100%'}}>
+        <button className="btn-s" style={{marginBottom:'0.75rem',fontSize:11}} onClick={()=>setSelProj(null)}>← Retour aux projets</button>
+        <div style={{background:'var(--bg2)',borderRadius:12,padding:'0.85rem',marginBottom:'0.75rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color}}>
+          {editKey===p.key?(
+            <div>
+              <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>Titre</span><input value={editTitre} onChange={e=>setEditTitre(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+              <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} placeholder="Ex: PO-2025-001" style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+              <div style={{fontSize:10,color:'var(--muted)',marginBottom:8}}>📍 {p.adresse}</div>
+              <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>
+                {Object.entries(statuts).map(([k,v])=>(
+                  <div key={k} onClick={()=>setEditStatut(k)} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>
+                    {v.label}
+                  </div>
+                ))}
+              </div>
+              <div style={{display:'flex',gap:'0.4rem'}}>
+                <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={saveEdit}>✓ Sauvegarder</button>
+                <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditKey(null)}>Annuler</button>
+              </div>
+            </div>
+          ):(
+            <div>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                <div>
+                  <div style={{fontWeight:800,fontSize:15,marginBottom:3}}>{p.titre}</div>
+                  <div style={{fontSize:11,color:'var(--muted)'}}>📍 {p.adresse}</div>
+                  {p.po&&<div style={{fontSize:12,color:'var(--accent)',fontWeight:600,marginTop:3}}>PO: {p.po}</div>}
+                </div>
+                <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                  <div style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div>
+                  <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={e=>startEdit(p,e)}>✏️</button>
+                </div>
+              </div>
+              <div style={{display:'flex',gap:12,fontSize:11,color:'var(--muted)',marginTop:8,flexWrap:'wrap'}}>
+                <span>🗓 {p.jobs.length} événements</span>
+                {p.heures>0&&<span>⏱ {Math.round(p.heures*10)/10}h total</span>}
+                {p.personnes.length>0&&<span>👷 {p.personnes.join(', ')}</span>}
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Timeline passé */}
+        {passedJobs.length>0&&(
+          <div style={{marginBottom:'0.6rem'}}>
+            <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>Journées passées ({passedJobs.length})</div>
+            {passedJobs.map((j,i)=><EventCard key={i} j={j} isPast={true}/>)}
+          </div>
+        )}
+        {/* Aujourd'hui */}
+        {todayJobs.length>0&&(
+          <div style={{marginBottom:'0.6rem'}}>
+            <div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>Aujourd'hui</div>
+            {todayJobs.map((j,i)=><EventCard key={i} j={j} isPast={false}/>)}
+          </div>
+        )}
+        {/* Futur */}
+        {futureJobs.length>0&&(
+          <div>
+            <div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>À venir ({futureJobs.length})</div>
+            {futureJobs.map((j,i)=><EventCard key={i} j={j} isPast={false}/>)}
+          </div>
+        )}
+        {p.jobs.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1rem',fontSize:12}}>Aucun événement trouvé pour ce projet.</div>}
+      </div>
+    );
   }
 
+  // ── LISTE DES PROJETS ──
   const displayList=showClosed?fermes:actifs;
-
   return(
     <div style={{maxWidth:620,width:'100%'}}>
-      {/* En-tête + onglets actifs/fermés */}
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.6rem',flexWrap:'wrap'}}>
         <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',flex:1}}>
           Projets <span style={{fontSize:11,color:'var(--muted)',fontWeight:400}}>({showClosed?fermes.length:actifs.length})</span>
@@ -1280,66 +1383,40 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify}){
           </div>
         </div>
       </div>
-
-      {/* Filtres par préfixe */}
       {!showClosed&&(
         <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
           {[null,...PREFIXES,'PARTICULIER'].map(p=>{
             const count=p?prefixCounts[p]||0:projets.filter(x=>x.statut!=='ferme').length;
             if(p&&count===0)return null;
-            return(
-              <div key={p||'all'} onClick={()=>setFilterPrefix(filterPrefix===p?null:p)}
-                style={{padding:'0.2rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
-                  fontWeight:filterPrefix===p?700:400,
-                  background:filterPrefix===p?'rgba(47,129,247,0.15)':'var(--bg3)',
-                  border:'1px solid '+(filterPrefix===p?'var(--accent)':'var(--border)'),
-                  color:filterPrefix===p?'var(--accent)':'var(--muted)'}}>
-                {p||'Tous'} <span style={{fontSize:9,opacity:0.7}}>{count}</span>
-              </div>
-            );
+            return(<div key={p||'all'} onClick={()=>setFilterPrefix(filterPrefix===p?null:p)} style={{padding:'0.2rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:filterPrefix===p?700:400,background:filterPrefix===p?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(filterPrefix===p?'var(--accent)':'var(--border)'),color:filterPrefix===p?'var(--accent)':'var(--muted)'}}>
+              {p||'Tous'} <span style={{fontSize:9,opacity:0.7}}>{count}</span>
+            </div>);
           })}
         </div>
       )}
-
-      {!showClosed&&(
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{width:'100%',marginBottom:'0.5rem',fontSize:12}}/>
-      )}
-
-      {displayList.length===0&&(
-        <div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>
-          {showClosed?'Aucun projet fermé.':projets.length===0?'Ajoutez des adresses dans vos événements Google Agenda.':'Aucun projet correspondant.'}
-        </div>
-      )}
-
+      {!showClosed&&(<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{width:'100%',marginBottom:'0.5rem',fontSize:12}}/>)}
+      {displayList.length===0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>{showClosed?'Aucun projet fermé.':projets.length===0?'Ajoutez des adresses dans vos événements Google Agenda.':'Aucun projet correspondant.'}</div>)}
       {displayList.map(p=>{
         const s=statuts[p.statut]||statuts.ouvert;
         const isEditing=editKey===p.key;
         return(
-          <div key={p.key} style={{background:'var(--bg2)',borderRadius:12,padding:'0.75rem 0.85rem',marginBottom:'0.5rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color}}>
+          <div key={p.key} style={{background:'var(--bg2)',borderRadius:12,padding:'0.75rem 0.85rem',marginBottom:'0.5rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color,cursor:'pointer'}}
+            onClick={()=>!isEditing&&setSelProj(p.key)}>
             {isEditing?(
-              <div>
-                <div style={{marginBottom:'0.4rem'}}>
-                  <span style={{fontSize:10,color:'var(--muted)'}}>Titre du projet</span>
-                  <input value={editTitre} onChange={e=>setEditTitre(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/>
-                </div>
-                <div style={{marginBottom:'0.4rem'}}>
-                  <span style={{fontSize:10,color:'var(--muted)'}}>Numéro PO</span>
-                  <input value={editPO} onChange={e=>setEditPO(e.target.value)} placeholder="Ex: PO-2025-001" style={{width:'100%',fontSize:12,marginTop:3}}/>
-                </div>
-                <div style={{fontSize:10,color:'var(--muted)',marginBottom:4}}>📍 {p.adresse}</div>
-                <div style={{marginBottom:'0.5rem'}}>
-                  <span style={{fontSize:10,color:'var(--muted)'}}>Statut</span>
-                  <div style={{display:'flex',gap:'0.35rem',marginTop:4}}>
-                    {Object.entries(statuts).map(([k,v])=>(
-                      <div key={k} onClick={()=>setEditStatut(k)} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>
-                        {v.label}
-                      </div>
-                    ))}
-                  </div>
+              <div onClick={e=>e.stopPropagation()}>
+                <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>Titre</span><input value={editTitre} onChange={e=>setEditTitre(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+                <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} placeholder="Ex: PO-2025-001" style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+                <div style={{fontSize:10,color:'var(--muted)',marginBottom:8}}>📍 {p.adresse}</div>
+                <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>
+                  {Object.entries(statuts).map(([k,v])=>(
+                    <div key={k} onClick={e=>{e.stopPropagation();setEditStatut(k);}} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>
+                      {v.label}
+                    </div>
+                  ))}
                 </div>
                 <div style={{display:'flex',gap:'0.4rem'}}>
-                  <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={saveEdit}>✓ Sauvegarder</button>
-                  <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditKey(null)}>Annuler</button>
+                  <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={e=>{e.stopPropagation();saveEdit();}}>✓ Sauvegarder</button>
+                  <button className="btn-s" style={{fontSize:11}} onClick={e=>{e.stopPropagation();setEditKey(null);}}>Annuler</button>
                 </div>
               </div>
             ):(
@@ -1352,7 +1429,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify}){
                   </div>
                   <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}>
                     <div style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div>
-                    <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={()=>startEdit(p)}>✏️</button>
+                    <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={e=>startEdit(p,e)}>✏️</button>
                   </div>
                 </div>
                 <div style={{display:'flex',gap:10,fontSize:11,color:'var(--muted)',flexWrap:'wrap',marginTop:4}}>
@@ -1362,14 +1439,11 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify}){
                 </div>
                 {p.jobs.length>0&&(
                   <div style={{marginTop:'0.35rem',display:'flex',flexWrap:'wrap',gap:'0.25rem'}}>
-                    {p.jobs.slice(0,4).map((j,i)=>(
-                      <span key={i} style={{fontSize:10,background:rgba(j.gcalColor||'var(--accent)',0.15),color:j.gcalColor||'var(--accent)',borderRadius:5,padding:'1px 6px'}}>
-                        {j.title}
-                      </span>
-                    ))}
+                    {p.jobs.slice(0,4).map((j,i)=>(<span key={i} style={{fontSize:10,background:rgba(j.gcalColor||'var(--accent)',0.15),color:j.gcalColor||'var(--accent)',borderRadius:5,padding:'1px 6px'}}>{j.title}</span>))}
                     {p.jobs.length>4&&<span style={{fontSize:10,color:'var(--muted)'}}>+{p.jobs.length-4}</span>}
                   </div>
                 )}
+                <div style={{fontSize:10,color:'var(--muted)',marginTop:6,textAlign:'right'}}>Appuyer pour détails →</div>
               </div>
             )}
           </div>
@@ -1378,6 +1452,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify}){
     </div>
   );
 }
+
 
 
 
@@ -1743,6 +1818,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
   const [selJob,setSelJob]=useState('');
   const [selJobColor,setSelJobColor]=useState('');
   const [jobs,setJobs]=useState([]);
+  const [allJobs,setAllJobs]=useState([]);
   const [result,setResult]=useState(null);
   const punchDataRef=useRef({});
   const ptsRef=useRef([]);
@@ -1760,7 +1836,10 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
   const empStatut=liveEmp?liveEmp.statut:'out';
 
   useEffect(()=>{
-    if(calendarIds&&calendarIds.length)getCalendarJobs(calendarIds).then(setJobs);
+    if(calendarIds&&calendarIds.length){
+      getCalendarJobs(calendarIds).then(setJobs);
+      getAllCalendarJobs(calendarIds).then(setAllJobs);
+    }
   },[calendarIds?calendarIds.join(','):'']);
 
   useEffect(()=>{
@@ -2013,7 +2092,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
     const allPts=ptsForOut.length?ptsForOut:ptsRef.current;
     return(
       <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
-        <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={jobs} isAdmin={false} notify={notify}/>
+        <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify}/>
       </div>
     );
   }
