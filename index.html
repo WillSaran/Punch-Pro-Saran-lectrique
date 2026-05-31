@@ -215,7 +215,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v110';
+const APP_VERSION='v111';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1657,6 +1657,49 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
 }
 
 // ── WELCOME SCREEN ────────────────────────────────────────────────────────────
+// ── JOB SUMMARY ──────────────────────────────────────────────────────────────
+function JobSummary({jobs}){
+  const [activeTab,setActiveTab]=useState('today');
+  const today=localDateStr();
+  const tomorrow=localDateStr(new Date(Date.now()+86400000));
+  const dateRef=activeTab==='today'?today:tomorrow;
+  const label=activeTab==='today'?"aujourd'hui":'demain';
+  const jobsDuJour=(jobs||[]).filter(j=>(j.start||'').slice(0,10)===dateRef);
+  if(!jobs||jobs.length===0)return(
+    <div style={{maxWidth:360,width:'100%',marginTop:'1rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>Chargement de l'agenda...</div>
+  );
+  return(
+    <div style={{maxWidth:360,width:'100%',marginTop:'1rem'}}>
+      <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.6rem'}}>
+        {[['today',"📅 Aujourd'hui"],['tomorrow','📅 Demain']].map(([k,l])=>(
+          <div key={k} onClick={()=>setActiveTab(k)} style={{padding:'0.25rem 0.75rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:activeTab===k?700:400,background:activeTab===k?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(activeTab===k?'var(--accent)':'var(--border)'),color:activeTab===k?'var(--accent)':'var(--muted)'}}>
+            {l}
+          </div>
+        ))}
+      </div>
+      {jobsDuJour.length===0?(
+        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>Aucune job à l'agenda {label}</div>
+      ):(
+        jobsDuJour.map((j,i)=>(
+          <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',marginBottom:'0.4rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)')}}>
+            <div style={{fontWeight:600,fontSize:12,color:'var(--text)',marginBottom:j.description||j.location?4:0}}>{j.title}</div>
+            {j.description&&<div style={{fontSize:11,color:'var(--muted)',lineHeight:1.4,marginBottom:j.location?3:0}}>{j.description}</div>}
+            {j.location&&(
+              <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                <span style={{fontSize:11,color:'var(--muted)',flex:1}}>📍 {j.location}</span>
+                <a href={'https://maps.google.com/?q='+encodeURIComponent(j.location)} target="_blank" rel="noreferrer"
+                  style={{background:'rgba(47,129,247,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.18rem 0.5rem',fontSize:10,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
+                  🗺 Maps
+                </a>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders}){
   const now=useClock();
   const [step,setStep]=useState('emps');
@@ -2038,58 +2081,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       </div>
 
       {/* Résumé jobs — onglets Aujourd'hui / Demain */}
-      {(()=>{
-        const today=localDateStr();
-        const tomorrow=localDateStr(new Date(Date.now()+86400000));
-        const [activeTab,setActiveTab]=React.useState('today');
-        const dateRef=activeTab==='today'?today:tomorrow;
-        const label=activeTab==='today'?"Aujourd'hui":'Demain';
-        const jobsDuJour=(jobs||[]).filter(j=>(j.start||'').slice(0,10)===dateRef);
-
-        if(!jobs||jobs.length===0)return(
-          <div style={{maxWidth:360,width:'100%',marginTop:'1rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>
-            Chargement de l'agenda...
-          </div>
-        );
-        return(
-          <div style={{maxWidth:360,width:'100%',marginTop:'1rem'}}>
-            {/* Onglets */}
-            <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.6rem'}}>
-              {[['today',"📅 Aujourd'hui"],['tomorrow','📅 Demain']].map(([k,l])=>(
-                <div key={k} onClick={()=>setActiveTab(k)}
-                  style={{padding:'0.25rem 0.75rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
-                    fontWeight:activeTab===k?700:400,
-                    background:activeTab===k?'rgba(47,129,247,0.15)':'var(--bg3)',
-                    border:'1px solid '+(activeTab===k?'var(--accent)':'var(--border)'),
-                    color:activeTab===k?'var(--accent)':'var(--muted)'}}>
-                  {l}
-                </div>
-              ))}
-            </div>
-            {jobsDuJour.length===0?(
-              <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>
-                Aucune job à l'agenda {label.toLowerCase()}
-              </div>
-            ):(
-              jobsDuJour.map((j,i)=>(
-                <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',marginBottom:'0.4rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)')}}>
-                  <div style={{fontWeight:600,fontSize:12,color:'var(--text)',marginBottom:j.description||j.location?4:0}}>{j.title}</div>
-                  {j.description&&<div style={{fontSize:11,color:'var(--muted)',lineHeight:1.4,marginBottom:j.location?3:0}}>{j.description}</div>}
-                  {j.location&&(
-                    <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
-                      <span style={{fontSize:11,color:'var(--muted)',flex:1}}>📍 {j.location}</span>
-                      <a href={'https://maps.google.com/?q='+encodeURIComponent(j.location)} target="_blank" rel="noreferrer"
-                        style={{background:'rgba(47,129,247,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.18rem 0.5rem',fontSize:10,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
-                        🗺 Maps
-                      </a>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        );
-      })()}
+      <JobSummary jobs={jobs}/>
     </div>
 
   // ── EMP GRID ──
