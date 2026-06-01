@@ -216,7 +216,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v121';
+const APP_VERSION='v122';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1241,22 +1241,23 @@ function EventCard({j,isPast,projPts,editEvtAddr,setEditEvtAddr,editEvtAddrVal,s
   );
 }
 
-function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveProjData,addrOverrides,saveAddrOverrides,onBack}){
+function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveProjData,addrOverrides,saveAddrOverrides,onBack,allProjets}){
   const [editKey,setEditKey]=useState(null);
   const [editPO,setEditPO]=useState('');
   const [editTitre,setEditTitre]=useState('');
-  const [editStatut,setEditStatut]=useState('ouvert');
+  const [editStatut,setEditStatut]=useState('en-cours');
   const [editEvtAddr,setEditEvtAddr]=useState(null);
   const [editEvtAddrVal,setEditEvtAddrVal]=useState('');
   const [showMerge,setShowMerge]=useState(false);
   const [mergeTarget,setMergeTarget]=useState('');
+  const [customMergeAddr,setCustomMergeAddr]=useState('');
 
   const today=new Date();
   const sortedJobs=[...(p.jobs||[])].sort((a,b)=>new Date(a.start)-new Date(b.start));
   const passedJobs=sortedJobs.filter(j=>new Date(j.start)<today&&new Date(j.start).toDateString()!==today.toDateString());
   const todayJobs=sortedJobs.filter(j=>new Date(j.start).toDateString()===today.toDateString());
   const futureJobs=sortedJobs.filter(j=>new Date(j.start)>today&&new Date(j.start).toDateString()!==today.toDateString());
-  const s=statuts[p.statut]||statuts.ouvert;
+  const s=statuts[p.statut]||statuts['en-cours'];
 
   function saveEdit(){
     const u={...projData,[editKey]:{...(projData[editKey]||{}),po:editPO,titre:editTitre,statut:editStatut}};
@@ -1295,9 +1296,8 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
     setEditEvtAddr(null);setEditEvtAddrVal('');
   }
 
-  async function mergeIntoProject(){
-    if(!mergeTarget.trim()){notify('Entrez une adresse','warn');return;}
-    const newAddr=mergeTarget.trim();
+  async function mergeIntoProject(newAddr){
+    if(!newAddr||!newAddr.trim()){notify('Choisissez un projet ou entrez une adresse','warn');return;}
     const current=addrOverrides||{};
     const updatedOverrides={...current};
     let calCount=0;
@@ -1312,7 +1312,7 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
     }
     saveAddrOverrides(updatedOverrides);
     notify('✅ '+p.jobs.length+' événements fusionnés'+(calCount>0?' ('+calCount+' dans l\'agenda)':'')+'!','success');
-    setShowMerge(false);setMergeTarget('');
+    setShowMerge(false);setMergeTarget('');setCustomMergeAddr('');
   }
 
 
@@ -1324,12 +1324,27 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
       </div>
       {showMerge&&(
         <div style={{background:'rgba(210,153,34,0.1)',border:'1px solid var(--warning)',borderRadius:10,padding:'0.65rem',marginBottom:'0.75rem'}}>
-          <div style={{fontSize:12,fontWeight:600,color:'var(--warning)',marginBottom:'0.4rem'}}>🔀 Changer l'adresse de TOUS les événements ({p.jobs.length})</div>
-          <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.5rem'}}>Ils seront regroupés avec le projet qui a cette adresse.</div>
-          <AddressInput value={mergeTarget} onChange={setMergeTarget} placeholder="Adresse du projet de destination..."/>
-          <div style={{display:'flex',gap:'0.4rem',marginTop:'0.4rem'}}>
-            <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={mergeIntoProject}>✓ Fusionner</button>
-            <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowMerge(false);setMergeTarget('');}}>Annuler</button>
+          <div style={{fontSize:12,fontWeight:600,color:'var(--warning)',marginBottom:'0.5rem'}}>🔀 Fusionner avec un projet existant</div>
+          <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.5rem'}}>
+            Tous les {p.jobs.length} événements prendront l'adresse du projet choisi.
+          </div>
+          <select value={mergeTarget} onChange={e=>setMergeTarget(e.target.value)}
+            style={{width:'100%',marginBottom:'0.4rem',padding:'0.4rem',borderRadius:8,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',fontSize:12}}>
+            <option value="">— Choisir un projet —</option>
+            {(allProjets||[]).filter(pr=>pr.key!==p.key).map(pr=>(
+              <option key={pr.key} value={pr.adresse}>{pr.titre} ({pr.adresse.slice(0,30)})</option>
+            ))}
+            <option value="__custom__">✏️ Entrer une adresse manuellement...</option>
+          </select>
+          {mergeTarget==='__custom__'&&(
+            <AddressInput value={customMergeAddr} onChange={setCustomMergeAddr} placeholder="Adresse du projet de destination..." style={{marginBottom:'0.4rem'}}/>
+          )}
+          <div style={{display:'flex',gap:'0.4rem'}}>
+            <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}}
+              onClick={()=>mergeIntoProject(mergeTarget==='__custom__'?customMergeAddr:mergeTarget)}>
+              ✓ Fusionner ({p.jobs.length} événements)
+            </button>
+            <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowMerge(false);setMergeTarget('');setCustomMergeAddr('');}}>Annuler</button>
           </div>
         </div>
       )}
@@ -1431,8 +1446,8 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
       projets: Object.values(map).map(p=>{
         const saved=projData[p.key]||{};
         const titre=saved.titre||p.premierTitre||p.adresse;
-        return{...p,personnes:[...p.personnes],po:saved.po||'',titre,statut:saved.statut||'ouvert',prefix:getPrefix(titre)};
-      }).sort((a,b)=>{const o={ouvert:0,'en-cours':1,ferme:2};return(o[a.statut]||0)-(o[b.statut]||0)||(a.titre.localeCompare(b.titre));}),
+        return{...p,personnes:[...p.personnes],po:saved.po||'',titre,statut:saved.statut||'en-cours',prefix:getPrefix(titre)};
+      }).sort((a,b)=>{const o={'en-cours':0,'a-venir':1,ferme:2};return(o[a.statut]||0)-(o[b.statut]||0)||(a.titre.localeCompare(b.titre));}),
       noAddrMap
     };
   },[calJobs,pts,projData,addrOverrides]);
@@ -1441,7 +1456,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
   const noAddrMap=memoResult?.noAddrMap||{};
   const [addAddrJob,setAddAddrJob]=useState(null); // job sans adresse en cours d'édition
   const [addAddrVal,setAddAddrVal]=useState('');
-  const statuts={ouvert:{label:'Ouvert',color:'var(--success)',bg:'rgba(63,185,80,0.1)'},'en-cours':{label:'En cours',color:'var(--warning)',bg:'rgba(210,153,34,0.1)'},ferme:{label:'Fermé',color:'var(--muted)',bg:'var(--bg3)'}};
+  const statuts={'en-cours':{label:'En cours',color:'var(--success)',bg:'rgba(63,185,80,0.1)'},'a-venir':{label:'À venir',color:'var(--accent)',bg:'rgba(47,129,247,0.1)'},ferme:{label:'Fermé',color:'var(--muted)',bg:'var(--bg3)'}};
 
   let actifs=projets.filter(p=>p.statut!=='ferme');
   if(filterPrefix)actifs=actifs.filter(p=>p.prefix===filterPrefix);
@@ -1457,7 +1472,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
   if(selProj){
     const projFound=projets.find(x=>x.key===selProj)||null;
     if(!projFound)return null;
-    return <ProjDetail p={projFound} projPts={(pts||[]).filter(p2=>{const cj=(calJobs||[]).find(j=>j.title===p2.job);return cj&&(addrOverrides[cj.id]||cj.location||'').trim().toLowerCase()===selProj;})} calJobs={calJobs} statuts={statuts} calendarIds={calendarIds} notify={notify} projData={projData} saveProjData={saveProjData} addrOverrides={addrOverrides} saveAddrOverrides={saveAddrOverrides} onBack={()=>setSelProj(null)}/>;
+    return <ProjDetail p={projFound} projPts={(pts||[]).filter(p2=>{const cj=(calJobs||[]).find(j=>j.title===p2.job);return cj&&(addrOverrides[cj.id]||cj.location||'').trim().toLowerCase()===selProj;})} calJobs={calJobs} statuts={statuts} calendarIds={calendarIds} notify={notify} projData={projData} saveProjData={saveProjData} addrOverrides={addrOverrides} saveAddrOverrides={saveAddrOverrides} onBack={()=>setSelProj(null)} allProjets={projets}/>;
   }
 
 
@@ -1500,60 +1515,72 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
           })}
         </div>
       )}
-      {displayList.length===0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>{showClosed?'Aucun projet fermé.':projets.length===0?'Ajoutez des adresses dans vos événements Google Agenda.':'Aucun projet correspondant.'}</div>)}
-      {displayList.map(p=>{
-        const s=statuts[p.statut]||statuts.ouvert;
+      {displayList.length===0&&!showClosed&&projets.length===0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>Ajoutez des adresses dans vos événements Google Agenda.</div>)}
+      {showClosed&&fermesFiltered.length===0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>Aucun projet fermé.</div>)}
+      {showClosed&&fermesFiltered.map(p=>{
+        const s=statuts[p.statut]||statuts['en-cours'];
         const isEditing=editKey===p.key;
         return(
-          <div key={p.key} style={{background:'var(--bg2)',borderRadius:12,padding:'0.75rem 0.85rem',marginBottom:'0.5rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color,cursor:'pointer'}}
-            onClick={()=>!isEditing&&setSelProj(p.key)}>
+          <div key={p.key} style={{background:'var(--bg2)',borderRadius:12,padding:'0.75rem 0.85rem',marginBottom:'0.5rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color,cursor:'pointer'}} onClick={()=>!isEditing&&setSelProj(p.key)}>
             {isEditing?(
               <div onClick={e=>e.stopPropagation()}>
                 <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>Titre</span><input value={editTitre} onChange={e=>setEditTitre(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
-                <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} placeholder="Ex: PO-2025-001" style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+                <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
                 <div style={{fontSize:10,color:'var(--muted)',marginBottom:8}}>📍 {p.adresse}</div>
-                <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>
-                  {Object.entries(statuts).map(([k,v])=>(
-                    <div key={k} onClick={e=>{e.stopPropagation();setEditStatut(k);}} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>
-                      {v.label}
-                    </div>
-                  ))}
-                </div>
-                <div style={{display:'flex',gap:'0.4rem'}}>
-                  <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={e=>{e.stopPropagation();saveEdit();}}>✓ Sauvegarder</button>
-                  <button className="btn-s" style={{fontSize:11}} onClick={e=>{e.stopPropagation();setEditKey(null);}}>Annuler</button>
-                </div>
+                <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>{Object.entries(statuts).map(([k,v])=>(<div key={k} onClick={e=>{e.stopPropagation();setEditStatut(k);}} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>{v.label}</div>))}</div>
+                <div style={{display:'flex',gap:'0.4rem'}}><button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={e=>{e.stopPropagation();saveEdit();}}>✓ Sauvegarder</button><button className="btn-s" style={{fontSize:11}} onClick={e=>{e.stopPropagation();setEditKey(null);}}>Annuler</button></div>
               </div>
             ):(
               <div>
                 <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:4}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{p.titre}</div>
-                    <div style={{fontSize:10,color:'var(--muted)'}}>📍 {p.adresse}</div>
-                    {p.po&&<div style={{fontSize:11,color:'var(--accent)',fontWeight:600,marginTop:2}}>PO: {p.po}</div>}
-                  </div>
-                  <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}>
-                    <div style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div>
-                    <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={e=>startEdit(p,e)}>✏️</button>
-                  </div>
+                  <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{p.titre}</div><div style={{fontSize:10,color:'var(--muted)'}}>📍 {p.adresse}</div>{p.po&&<div style={{fontSize:11,color:'var(--accent)',fontWeight:600,marginTop:2}}>PO: {p.po}</div>}</div>
+                  <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}><div style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div><button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={e=>startEdit(p,e)}>✏️</button></div>
                 </div>
-                <div style={{display:'flex',gap:10,fontSize:11,color:'var(--muted)',flexWrap:'wrap',marginTop:4}}>
-                  <span>🗓 {p.jobs.length} événement{p.jobs.length!==1?'s':''}</span>
-                  {p.heures>0&&<span>⏱ {Math.round(p.heures*10)/10}h</span>}
-                  {p.personnes.length>0&&<span>👷 {p.personnes.join(', ')}</span>}
-                </div>
-                {p.jobs.length>0&&(
-                  <div style={{marginTop:'0.35rem',display:'flex',flexWrap:'wrap',gap:'0.25rem'}}>
-                    {p.jobs.slice(0,4).map((j,i)=>(<span key={i} style={{fontSize:10,background:rgba(j.gcalColor||'var(--accent)',0.15),color:j.gcalColor||'var(--accent)',borderRadius:5,padding:'1px 6px'}}>{j.title}</span>))}
-                    {p.jobs.length>4&&<span style={{fontSize:10,color:'var(--muted)'}}>+{p.jobs.length-4}</span>}
-                  </div>
-                )}
-                <div style={{fontSize:10,color:'var(--muted)',marginTop:6,textAlign:'right'}}>Appuyer pour détails →</div>
+                <div style={{display:'flex',gap:10,fontSize:11,color:'var(--muted)',flexWrap:'wrap',marginTop:4}}><span>🗓 {p.jobs.length} événements</span>{p.heures>0&&<span>⏱ {Math.round(p.heures*10)/10}h</span>}</div>
+                <div style={{fontSize:10,color:'var(--muted)',marginTop:5,textAlign:'right'}}>Appuyer pour détails →</div>
               </div>
             )}
           </div>
         );
       })}
+      {!showClosed&&(()=>{
+        const enCours=actifs.filter(p=>p.statut==='en-cours');
+        const aVenir=actifs.filter(p=>p.statut==='a-venir');
+        const autres=actifs.filter(p=>p.statut!=='en-cours'&&p.statut!=='a-venir');
+        function PCard({p}){
+          const s=statuts[p.statut]||statuts['en-cours'];
+          const isEditing=editKey===p.key;
+          return(
+            <div style={{background:'var(--bg2)',borderRadius:12,padding:'0.75rem 0.85rem',marginBottom:'0.5rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color,cursor:'pointer'}} onClick={()=>!isEditing&&setSelProj(p.key)}>
+              {isEditing?(
+                <div onClick={e=>e.stopPropagation()}>
+                  <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>Titre</span><input value={editTitre} onChange={e=>setEditTitre(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+                  <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+                  <div style={{fontSize:10,color:'var(--muted)',marginBottom:8}}>📍 {p.adresse}</div>
+                  <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>{Object.entries(statuts).map(([k,v])=>(<div key={k} onClick={e=>{e.stopPropagation();setEditStatut(k);}} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>{v.label}</div>))}</div>
+                  <div style={{display:'flex',gap:'0.4rem'}}><button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={e=>{e.stopPropagation();saveEdit();}}>✓ Sauvegarder</button><button className="btn-s" style={{fontSize:11}} onClick={e=>{e.stopPropagation();setEditKey(null);}}>Annuler</button></div>
+                </div>
+              ):(
+                <div>
+                  <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:4}}>
+                    <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{p.titre}</div><div style={{fontSize:10,color:'var(--muted)'}}>📍 {p.adresse}</div>{p.po&&<div style={{fontSize:11,color:'var(--accent)',fontWeight:600,marginTop:2}}>PO: {p.po}</div>}</div>
+                    <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}><div style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div><button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={e=>startEdit(p,e)}>✏️</button></div>
+                  </div>
+                  <div style={{display:'flex',gap:10,fontSize:11,color:'var(--muted)',flexWrap:'wrap',marginTop:4}}><span>🗓 {p.jobs.length} événements</span>{p.heures>0&&<span>⏱ {Math.round(p.heures*10)/10}h</span>}{p.personnes.length>0&&<span>👷 {p.personnes.join(', ')}</span>}</div>
+                  {p.jobs.length>0&&<div style={{marginTop:'0.35rem',display:'flex',flexWrap:'wrap',gap:'0.25rem'}}>{p.jobs.slice(0,4).map((j,i)=><span key={i} style={{fontSize:10,background:rgba(j.gcalColor||'var(--accent)',0.15),color:j.gcalColor||'var(--accent)',borderRadius:5,padding:'1px 6px'}}>{j.title}</span>)}{p.jobs.length>4&&<span style={{fontSize:10,color:'var(--muted)'}}>+{p.jobs.length-4}</span>}</div>}
+                  <div style={{fontSize:10,color:'var(--muted)',marginTop:5,textAlign:'right'}}>Appuyer pour détails →</div>
+                </div>
+              )}
+            </div>
+          );
+        }
+        return(<>
+          {enCours.length>0&&<div style={{marginBottom:'0.25rem'}}><div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>🟢 En cours ({enCours.length})</div>{enCours.map(p=><PCard key={p.key} p={p}/>)}</div>}
+          {aVenir.length>0&&<div style={{marginBottom:'0.25rem'}}>{enCours.length>0&&<div style={{borderTop:'1px solid var(--border)',margin:'0.5rem 0'}}/>}<div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>🔵 À venir ({aVenir.length})</div>{aVenir.map(p=><PCard key={p.key} p={p}/>)}</div>}
+          {autres.length>0&&<div>{(enCours.length>0||aVenir.length>0)&&<div style={{borderTop:'1px solid var(--border)',margin:'0.5rem 0'}}/>}<div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>Autres</div>{autres.map(p=><PCard key={p.key} p={p}/>)}</div>}
+          {actifs.length===0&&<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>Aucun projet actif trouvé.</div>}
+        </>);
+      })()}
 
       {/* Événements SANS adresse — affichés en bas de la catégorie filtrée */}
       {!showClosed&&(()=>{
