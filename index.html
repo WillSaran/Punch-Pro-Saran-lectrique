@@ -216,7 +216,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v123';
+const APP_VERSION='v124';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -430,16 +430,54 @@ async function ensureStructure(sid){
       'Employés':[['Nom','PIN','Statut','HeuresBanque','Couleur','Code','Email','Telephone']],
       'Pointages':[['Employé','Type','DateTime','DateStr','HeureStr','Semaine','Mois','Job','CouleurJob','DéplacementMin','HeuresConfirmées','Note','FichiersURL','Coéquipiers']],
       'HeuresEnBanque':[['Employé','Semaine','HeuresSupp','Statut','DateDemande']],
-      'Projets':[['NomProjet','NumPO','Categorie','Statut','DateDebut','Description','JobsAssociees']],
+      'Projets':[['Adresse','Titre','PO','Statut','AdresseOverrides']],
       'Messages':[['De','Action','Détails','DateTime','Lu']]
     };
     for(const [sheet,h] of Object.entries(headers)){
-      // Always update headers to ensure all columns are present
       await gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId:sid,range:sheet+'!A1',valueInputOption:'RAW',resource:{values:h}
       });
     }
   }catch(e){console.error(e);}
+}
+
+// Lire les projets depuis Sheets → {projData, addrOverrides}
+async function getProjetsFromSheets(sid){
+  try{
+    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Projets!A2:E'});
+    const rows=res.result.values||[];
+    const projData={};
+    const addrOverrides={};
+    rows.forEach(r=>{
+      const adresse=(r[0]||'').trim().toLowerCase();
+      if(!adresse)return;
+      projData[adresse]={titre:r[1]||'',po:r[2]||'',statut:r[3]||'en-cours'};
+      // AdresseOverrides est un JSON stringifié dans la colonne E
+      if(r[4]){try{const ov=JSON.parse(r[4]);Object.assign(addrOverrides,ov);}catch{}}
+    });
+    return{projData,addrOverrides};
+  }catch(e){console.error('getProjets:',e);return{projData:{},addrOverrides:{}};}
+}
+
+// Sauvegarder tous les projets dans Sheets (réécriture complète)
+async function saveProjetsToSheets(sid,projData,addrOverrides){
+  try{
+    // Regrouper les addrOverrides par adresse de projet
+    // On stocke l'objet addrOverrides complet dans la première ligne comme JSON dans col E
+    const rows=Object.entries(projData).map(([adresse,d])=>[
+      adresse, d.titre||'', d.po||'', d.statut||'en-cours', ''
+    ]);
+    // Stocker addrOverrides dans la première ligne col E
+    if(rows.length>0)rows[0][4]=JSON.stringify(addrOverrides||{});
+    else rows.push(['__overrides__','','','',JSON.stringify(addrOverrides||{})]);
+    // Effacer et réécrire
+    await gapi.client.sheets.spreadsheets.values.clear({spreadsheetId:sid,range:'Projets!A2:E'});
+    if(rows.length>0){
+      await gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId:sid,range:'Projets!A2',valueInputOption:'RAW',resource:{values:rows}
+      });
+    }
+  }catch(e){console.error('saveProjets:',e);}
 }
 async function getEmployees(sid){
   try{
@@ -1440,21 +1478,49 @@ function ProjCard({p,statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,edi
 
 function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
   const PREFIXES=['PAY','CRS','ASC','GGP','SAR'];
-  const STORAGE_KEY='punchpro_projets_v3';
+  const STORAGE_KEY='punchpro_projets_v3'; // gardé pour migration
   const [projData,setProjData]=useState({});
-  const [addrOverrides,setAddrOverrides]=useState(()=>{try{return JSON.parse(localStorage.getItem('punchpro_addr_overrides')||'{}');}catch{return{};}});
-  const [selProj,setSelProj]=useState(null); // projet sélectionné pour détail
+  const [addrOverrides,setAddrOverrides]=useState({});
+  const [loadingProj,setLoadingProj]=useState(true);
+  const [selProj,setSelProj]=useState(null);
   const [editKey,setEditKey]=useState(null);
   const [editPO,setEditPO]=useState('');
   const [editTitre,setEditTitre]=useState('');
-  const [editStatut,setEditStatut]=useState('ouvert');
+  const [editStatut,setEditStatut]=useState('en-cours');
   const [showClosed,setShowClosed]=useState(false);
   const [filterPrefix,setFilterPrefix]=useState(null);
   const [search,setSearch]=useState('');
 
-  useEffect(()=>{try{const s=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');setProjData(s);}catch{}},[]);
-  function saveProjData(d){setProjData(d);localStorage.setItem(STORAGE_KEY,JSON.stringify(d));}
-  function saveAddrOverrides(d){setAddrOverrides(d);localStorage.setItem('punchpro_addr_overrides',JSON.stringify(d));}
+  // Charger depuis Sheets, avec migration automatique depuis localStorage
+  useEffect(()=>{
+    if(!sid)return;
+    setLoadingProj(true);
+    getProjetsFromSheets(sid).then(({projData:pd,addrOverrides:ao})=>{
+      if(Object.keys(pd).length===0){
+        try{
+          const local=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
+          const localAddr=JSON.parse(localStorage.getItem('punchpro_addr_overrides')||'{}');
+          if(Object.keys(local).length>0){
+            setProjData(local);setAddrOverrides(localAddr);
+            saveProjetsToSheets(sid,local,localAddr);
+            console.log('Migration localStorage→Sheets effectuée');
+          }
+        }catch{}
+      }else{setProjData(pd);setAddrOverrides(ao);}
+      setLoadingProj(false);
+    });
+  },[sid]);
+
+  function saveProjData(d){
+    setProjData(d);
+    saveProjetsToSheets(sid,d,addrOverrides);
+    localStorage.setItem(STORAGE_KEY,JSON.stringify(d));
+  }
+  function saveAddrOverrides(d){
+    setAddrOverrides(d);
+    saveProjetsToSheets(sid,projData,d);
+    localStorage.setItem('punchpro_addr_overrides',JSON.stringify(d));
+  }
   function getPrefix(t){const u=(t||'').toUpperCase();for(const p of PREFIXES)if(u.startsWith(p))return p;return 'PARTICULIER';}
 
   const memoResult=useMemo(()=>{
