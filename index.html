@@ -216,7 +216,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v117';
+const APP_VERSION='v118';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1199,6 +1199,159 @@ async function getPOs(sid){
     return map;
   }catch{return{};}
 }
+// ── PROJECT DETAIL ────────────────────────────────────────────────────────────
+function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveProjData,onBack}){
+  const [editKey,setEditKey]=useState(null);
+  const [editPO,setEditPO]=useState('');
+  const [editTitre,setEditTitre]=useState('');
+  const [editStatut,setEditStatut]=useState('ouvert');
+  const [editEvtAddr,setEditEvtAddr]=useState(null);
+  const [editEvtAddrVal,setEditEvtAddrVal]=useState('');
+  const [showMerge,setShowMerge]=useState(false);
+  const [mergeTarget,setMergeTarget]=useState('');
+
+  const today=new Date();
+  const sortedJobs=[...(p.jobs||[])].sort((a,b)=>new Date(a.start)-new Date(b.start));
+  const passedJobs=sortedJobs.filter(j=>new Date(j.start)<today&&new Date(j.start).toDateString()!==today.toDateString());
+  const todayJobs=sortedJobs.filter(j=>new Date(j.start).toDateString()===today.toDateString());
+  const futureJobs=sortedJobs.filter(j=>new Date(j.start)>today&&new Date(j.start).toDateString()!==today.toDateString());
+  const s=statuts[p.statut]||statuts.ouvert;
+
+  function saveEdit(){
+    const u={...projData,[editKey]:{...(projData[editKey]||{}),po:editPO,titre:editTitre,statut:editStatut}};
+    saveProjData(u);setEditKey(null);
+  }
+
+  async function saveEvtAddress(j){
+    if(!editEvtAddrVal.trim()){notify('Entrez une adresse','warn');return;}
+    try{
+      for(const calId of (calendarIds||['primary'])){
+        try{await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:editEvtAddrVal.trim()}});
+          notify('✅ Adresse modifiée! Rafraîchir pour voir.','success');
+          setEditEvtAddr(null);setEditEvtAddrVal('');return;
+        }catch(e){continue;}
+      }
+      notify('Impossible de modifier — vérifiez les permissions','err');
+    }catch(e){notify('Erreur: '+e.message,'err');}
+  }
+
+  async function mergeIntoProject(){
+    if(!mergeTarget.trim()){notify('Entrez une adresse','warn');return;}
+    let count=0;
+    for(const j of (p.jobs||[])){
+      for(const calId of (calendarIds||['primary'])){
+        try{await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:mergeTarget.trim()}});count++;break;}
+        catch(e){continue;}
+      }
+    }
+    notify('✅ '+count+' événements mis à jour! Rafraîchir pour voir.','success');
+    setShowMerge(false);setMergeTarget('');
+  }
+
+  function EventCard({j,isPast}){
+    const evtPts=(projPts||[]).filter(p2=>p2.job===j.title);
+    const heures=evtPts.filter(p2=>p2.type==='out'||p2.type==='confirm').reduce((a,p2)=>a+(parseFloat(p2.heures)||0),0);
+    const fichiers=evtPts.flatMap(p2=>p2.fichiersURL||[]).filter(Boolean);
+    const isEditingAddr=editEvtAddr===j.id;
+    return(
+      <div style={{background:'var(--bg3)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)'),opacity:isPast?0.85:1}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:600,fontSize:12}}>{j.title}</div>
+            <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}</div>
+            {j.location&&!isEditingAddr&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>📍 {j.location}</div>}
+            {j.description&&<div style={{fontSize:11,color:'var(--muted)',marginTop:3,lineHeight:1.4}}>{j.description}</div>}
+            {isEditingAddr&&(
+              <div style={{marginTop:'0.35rem',display:'flex',gap:'0.3rem',alignItems:'center'}}>
+                <div style={{flex:1}}><AddressInput value={editEvtAddrVal} onChange={setEditEvtAddrVal} placeholder="Nouvelle adresse..."/></div>
+                <button className="btn-p" style={{marginTop:0,fontSize:10,padding:'0.25rem 0.5rem'}} onClick={()=>saveEvtAddress(j)}>✓</button>
+                <button className="btn-s" style={{fontSize:10,padding:'0.25rem 0.5rem'}} onClick={()=>{setEditEvtAddr(null);setEditEvtAddrVal('');}}>✕</button>
+              </div>
+            )}
+          </div>
+          <div style={{display:'flex',gap:4,alignItems:'flex-start',flexShrink:0}}>
+            {heures>0&&<div style={{fontSize:11,color:'var(--success)',fontWeight:700}}>⏱{heures.toFixed(1)}h</div>}
+            {!isEditingAddr&&<button style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:11,padding:'0 2px',touchAction:'manipulation'}} onClick={()=>{setEditEvtAddr(j.id);setEditEvtAddrVal(j.location||p.adresse);}}>📍✏️</button>}
+          </div>
+        </div>
+        {fichiers.length>0&&(
+          <div style={{marginTop:'0.35rem',display:'flex',flexWrap:'wrap',gap:'0.25rem'}}>
+            {fichiers.map((raw,i)=>{
+              const url=raw.split('|')[0];const nom=raw.includes('|')?raw.split('|')[1]:('Fichier '+(i+1));
+              const isOT=nom.startsWith('OT_');const isAP=nom.startsWith('AP_');
+              return(<a key={i} href={url} target="_blank" rel="noreferrer" style={{fontSize:10,background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:5,padding:'1px 7px',textDecoration:'none'}}>{isOT?'🔧':isAP?'📋':'📎'} {nom}</a>);
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return(
+    <div style={{maxWidth:620,width:'100%'}}>
+      <div style={{display:'flex',gap:'0.4rem',alignItems:'center',marginBottom:'0.75rem'}}>
+        <button className="btn-s" style={{fontSize:11}} onClick={onBack}>← Retour</button>
+        <button className="btn-s" style={{fontSize:11,marginLeft:'auto'}} onClick={()=>setShowMerge(x=>!x)}>🔀 Fusionner</button>
+      </div>
+      {showMerge&&(
+        <div style={{background:'rgba(210,153,34,0.1)',border:'1px solid var(--warning)',borderRadius:10,padding:'0.65rem',marginBottom:'0.75rem'}}>
+          <div style={{fontSize:12,fontWeight:600,color:'var(--warning)',marginBottom:'0.4rem'}}>🔀 Changer l'adresse de TOUS les événements ({p.jobs.length})</div>
+          <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.5rem'}}>Ils seront regroupés avec le projet qui a cette adresse.</div>
+          <AddressInput value={mergeTarget} onChange={setMergeTarget} placeholder="Adresse du projet de destination..."/>
+          <div style={{display:'flex',gap:'0.4rem',marginTop:'0.4rem'}}>
+            <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={mergeIntoProject}>✓ Fusionner</button>
+            <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowMerge(false);setMergeTarget('');}}>Annuler</button>
+          </div>
+        </div>
+      )}
+      {/* Info projet */}
+      <div style={{background:'var(--bg2)',borderRadius:12,padding:'0.85rem',marginBottom:'0.75rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color}}>
+        {editKey===p.key?(
+          <div>
+            <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>Titre</span><input value={editTitre} onChange={e=>setEditTitre(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+            <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} placeholder="Ex: PO-2025-001" style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+            <div style={{fontSize:10,color:'var(--muted)',marginBottom:8}}>📍 {p.adresse}</div>
+            <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>
+              {Object.entries(statuts).map(([k,v])=>(
+                <div key={k} onClick={()=>setEditStatut(k)} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>
+                  {v.label}
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:'0.4rem'}}>
+              <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={saveEdit}>✓ Sauvegarder</button>
+              <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditKey(null)}>Annuler</button>
+            </div>
+          </div>
+        ):(
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+              <div>
+                <div style={{fontWeight:800,fontSize:15,marginBottom:3}}>{p.titre}</div>
+                <div style={{fontSize:11,color:'var(--muted)'}}>📍 {p.adresse}</div>
+                {p.po&&<div style={{fontSize:12,color:'var(--accent)',fontWeight:600,marginTop:3}}>PO: {p.po}</div>}
+              </div>
+              <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                <div style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div>
+                <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={()=>{setEditKey(p.key);setEditPO(p.po);setEditTitre(p.titre);setEditStatut(p.statut);}}>✏️</button>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:12,fontSize:11,color:'var(--muted)',marginTop:8,flexWrap:'wrap'}}>
+              <span>🗓 {p.jobs.length} événements</span>
+              {p.heures>0&&<span>⏱ {Math.round(p.heures*10)/10}h total</span>}
+              {p.personnes.length>0&&<span>👷 {p.personnes.join(', ')}</span>}
+            </div>
+          </div>
+        )}
+      </div>
+      {passedJobs.length>0&&(<div style={{marginBottom:'0.6rem'}}><div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>Passées ({passedJobs.length})</div>{passedJobs.map((j,i)=><EventCard key={i} j={j} isPast={true}/>)}</div>)}
+      {todayJobs.length>0&&(<div style={{marginBottom:'0.6rem'}}><div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>Aujourd'hui</div>{todayJobs.map((j,i)=><EventCard key={i} j={j} isPast={false}/>)}</div>)}
+      {futureJobs.length>0&&(<div><div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>À venir ({futureJobs.length})</div>{futureJobs.map((j,i)=><EventCard key={i} j={j} isPast={false}/>)}</div>)}
+      {p.jobs.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1rem',fontSize:12}}>Aucun événement pour ce projet.</div>}
+    </div>
+  );
+}
+
 function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
   const PREFIXES=['PAY','CRS','ASC','GGP','SAR'];
   const STORAGE_KEY='punchpro_projets_v3';
@@ -1270,199 +1423,15 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
 
   // ── VUE DÉTAIL PROJET ──
   if(selProj){
-    const p=projets.find(x=>x.key===selProj)||selProj;
-    const today=new Date();
-
-    // Trier les événements par date
-    const sortedJobs=[...p.jobs].sort((a,b)=>new Date(a.start)-new Date(b.start));
-    const passedJobs=sortedJobs.filter(j=>new Date(j.start)<today);
-    const todayJobs=sortedJobs.filter(j=>new Date(j.start).toDateString()===today.toDateString());
-    const futureJobs=sortedJobs.filter(j=>new Date(j.start)>today&&new Date(j.start).toDateString()!==today.toDateString());
-
-    // Pointages associés à ce projet
-    const projPts=(pts||[]).filter(p2=>{
-      const cj=(calJobs||[]).find(j=>j.title===p2.job);
-      return cj&&(cj.location||'').trim().toLowerCase()===selProj;
-    });
-
-    const s=statuts[p.statut]||statuts.ouvert;
-    const [editEvtAddr,setEditEvtAddr]=useState(null); // event id being edited
-    const [editEvtAddrVal,setEditEvtAddrVal]=useState('');
-    const [showMerge,setShowMerge]=useState(false);
-    const [mergeTarget,setMergeTarget]=useState('');
-
-    async function saveEvtAddress(j){
-      if(!editEvtAddrVal.trim()){notify('Entrez une adresse','warn');return;}
-      try{
-        for(const calId of (calendarIds||['primary'])){
-          try{
-            await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:editEvtAddrVal.trim()}});
-            notify('✅ Adresse modifiée! Rafraîchir pour voir le changement.','success');
-            setEditEvtAddr(null);setEditEvtAddrVal('');
-            return;
-          }catch(e){continue;}
-        }
-        notify('Erreur: impossible de modifier cet événement','err');
-      }catch(e){notify('Erreur: '+e.message,'err');}
-    }
-
-    async function mergeIntoProject(){
-      if(!mergeTarget.trim()){notify('Entrez une adresse de référence','warn');return;}
-      // Change address of ALL events in this project to mergeTarget
-      let count=0;
-      for(const j of p.jobs){
-        for(const calId of (calendarIds||['primary'])){
-          try{
-            await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:mergeTarget.trim()}});
-            count++;break;
-          }catch(e){continue;}
-        }
-      }
-      notify('✅ '+count+' événements mis à jour! Rafraîchir pour voir.','success');
-      setShowMerge(false);setMergeTarget('');
-    }
-
-    function EventCard({j,isPast}){
-      const evtPts=projPts.filter(p2=>p2.job===j.title);
-      const heures=evtPts.filter(p2=>p2.type==='out'||p2.type==='confirm').reduce((a,p2)=>a+(parseFloat(p2.heures)||0),0);
-      const fichiers=evtPts.flatMap(p2=>p2.fichiersURL||[]).filter(Boolean);
-      const isEditingAddr=editEvtAddr===j.id;
-      return(
-        <div style={{background:'var(--bg3)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)'),opacity:isPast?0.85:1}}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-            <div style={{flex:1}}>
-              <div style={{fontWeight:600,fontSize:12}}>{j.title}</div>
-              <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}</div>
-              {j.location&&!isEditingAddr&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>📍 {j.location}</div>}
-              {j.description&&<div style={{fontSize:11,color:'var(--muted)',marginTop:3,lineHeight:1.4}}>{j.description}</div>}
-              {isEditingAddr&&(
-                <div style={{marginTop:'0.35rem',display:'flex',gap:'0.3rem',alignItems:'center'}}>
-                  <div style={{flex:1}}>
-                    <AddressInput value={editEvtAddrVal} onChange={setEditEvtAddrVal} placeholder="Nouvelle adresse..."/>
-                  </div>
-                  <button className="btn-p" style={{marginTop:0,fontSize:10,padding:'0.25rem 0.5rem'}} onClick={()=>saveEvtAddress(j)}>✓</button>
-                  <button className="btn-s" style={{fontSize:10,padding:'0.25rem 0.5rem'}} onClick={()=>{setEditEvtAddr(null);setEditEvtAddrVal('');}}>✕</button>
-                </div>
-              )}
-            </div>
-            <div style={{display:'flex',gap:4,alignItems:'flex-start',flexShrink:0}}>
-              {heures>0&&<div style={{fontSize:11,color:'var(--success)',fontWeight:700}}>⏱{heures.toFixed(1)}h</div>}
-              {!isEditingAddr&&(
-                <button style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:10,padding:'0 2px',touchAction:'manipulation'}}
-                  title="Modifier l'adresse"
-                  onClick={()=>{setEditEvtAddr(j.id);setEditEvtAddrVal(j.location||p.adresse);}}>
-                  📍✏️
-                </button>
-              )}
-            </div>
-          </div>
-          {fichiers.length>0&&(
-            <div style={{marginTop:'0.35rem',display:'flex',flexWrap:'wrap',gap:'0.25rem'}}>
-              {fichiers.map((raw,i)=>{
-                const url=raw.split('|')[0];
-                const nom=raw.includes('|')?raw.split('|')[1]:('Fichier '+(i+1));
-                const isOT=nom.startsWith('OT_');const isAP=nom.startsWith('AP_');
-                return(<a key={i} href={url} target="_blank" rel="noreferrer" style={{fontSize:10,background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:5,padding:'1px 7px',textDecoration:'none'}}>
-                  {isOT?'🔧':isAP?'📋':'📎'} {nom}
-                </a>);
-              })}
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    return(
-      <div style={{maxWidth:620,width:'100%'}}>
-        <div style={{display:'flex',gap:'0.4rem',alignItems:'center',marginBottom:'0.75rem'}}>
-          <button className="btn-s" style={{fontSize:11}} onClick={()=>setSelProj(null)}>← Retour</button>
-          <button className="btn-s" style={{fontSize:11,marginLeft:'auto'}} onClick={()=>setShowMerge(s=>!s)}>
-            🔀 Fusionner dans un autre projet
-          </button>
-        </div>
-        {/* Fusion de projets */}
-        {showMerge&&(
-          <div style={{background:'rgba(210,153,34,0.1)',border:'1px solid var(--warning)',borderRadius:10,padding:'0.65rem',marginBottom:'0.75rem'}}>
-            <div style={{fontSize:12,fontWeight:600,color:'var(--warning)',marginBottom:'0.4rem'}}>
-              🔀 Fusionner — changer l'adresse de TOUS les événements de ce projet
-            </div>
-            <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.5rem'}}>
-              Tous les {p.jobs.length} événements auront la nouvelle adresse et seront regroupés avec le projet correspondant.
-            </div>
-            <AddressInput value={mergeTarget} onChange={setMergeTarget} placeholder="Adresse du projet de destination..."/>
-            <div style={{display:'flex',gap:'0.4rem',marginTop:'0.4rem'}}>
-              <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={mergeIntoProject}>✓ Fusionner ({p.jobs.length} événements)</button>
-              <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowMerge(false);setMergeTarget('');}}>Annuler</button>
-            </div>
-          </div>
-        )}
-        <div style={{background:'var(--bg2)',borderRadius:12,padding:'0.85rem',marginBottom:'0.75rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color}}>
-          {editKey===p.key?(
-            <div>
-              <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>Titre</span><input value={editTitre} onChange={e=>setEditTitre(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
-              <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} placeholder="Ex: PO-2025-001" style={{width:'100%',fontSize:12,marginTop:3}}/></div>
-              <div style={{fontSize:10,color:'var(--muted)',marginBottom:8}}>📍 {p.adresse}</div>
-              <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>
-                {Object.entries(statuts).map(([k,v])=>(
-                  <div key={k} onClick={()=>setEditStatut(k)} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>
-                    {v.label}
-                  </div>
-                ))}
-              </div>
-              <div style={{display:'flex',gap:'0.4rem'}}>
-                <button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={saveEdit}>✓ Sauvegarder</button>
-                <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditKey(null)}>Annuler</button>
-              </div>
-            </div>
-          ):(
-            <div>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-                <div>
-                  <div style={{fontWeight:800,fontSize:15,marginBottom:3}}>{p.titre}</div>
-                  <div style={{fontSize:11,color:'var(--muted)'}}>📍 {p.adresse}</div>
-                  {p.po&&<div style={{fontSize:12,color:'var(--accent)',fontWeight:600,marginTop:3}}>PO: {p.po}</div>}
-                </div>
-                <div style={{display:'flex',gap:4,alignItems:'center'}}>
-                  <div style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div>
-                  <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={e=>startEdit(p,e)}>✏️</button>
-                </div>
-              </div>
-              <div style={{display:'flex',gap:12,fontSize:11,color:'var(--muted)',marginTop:8,flexWrap:'wrap'}}>
-                <span>🗓 {p.jobs.length} événements</span>
-                {p.heures>0&&<span>⏱ {Math.round(p.heures*10)/10}h total</span>}
-                {p.personnes.length>0&&<span>👷 {p.personnes.join(', ')}</span>}
-              </div>
-            </div>
-          )}
-        </div>
-        {/* Timeline passé */}
-        {passedJobs.length>0&&(
-          <div style={{marginBottom:'0.6rem'}}>
-            <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>Journées passées ({passedJobs.length})</div>
-            {passedJobs.map((j,i)=><EventCard key={i} j={j} isPast={true}/>)}
-          </div>
-        )}
-        {/* Aujourd'hui */}
-        {todayJobs.length>0&&(
-          <div style={{marginBottom:'0.6rem'}}>
-            <div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>Aujourd'hui</div>
-            {todayJobs.map((j,i)=><EventCard key={i} j={j} isPast={false}/>)}
-          </div>
-        )}
-        {/* Futur */}
-        {futureJobs.length>0&&(
-          <div>
-            <div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>À venir ({futureJobs.length})</div>
-            {futureJobs.map((j,i)=><EventCard key={i} j={j} isPast={false}/>)}
-          </div>
-        )}
-        {p.jobs.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1rem',fontSize:12}}>Aucun événement trouvé pour ce projet.</div>}
-      </div>
-    );
+    const projFound=projets.find(x=>x.key===selProj)||null;
+    if(!projFound)return null;
+    return <ProjDetail p={projFound} projPts={(pts||[]).filter(p2=>{const cj=(calJobs||[]).find(j=>j.title===p2.job);return cj&&(cj.location||'').trim().toLowerCase()===selProj;})} calJobs={calJobs} statuts={statuts} calendarIds={calendarIds} notify={notify} projData={projData} saveProjData={saveProjData} onBack={()=>setSelProj(null)}/>;
   }
 
+
   // ── LISTE DES PROJETS ──
-  const displayList=showClosed?fermes:actifs;
+  const fermesFiltered=filterPrefix?fermes.filter(p=>p.prefix===filterPrefix):fermes;
+  const displayList=showClosed?fermesFiltered:actifs;
   return(
     <div style={{maxWidth:620,width:'100%'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.6rem',flexWrap:'wrap'}}>
@@ -1488,6 +1457,17 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
         </div>
       )}
       {!showClosed&&(<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{width:'100%',marginBottom:'0.5rem',fontSize:12}}/>)}
+      {showClosed&&(
+        <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
+          {[null,...PREFIXES,'PARTICULIER'].map(pfx=>{
+            const count=pfx?fermes.filter(x=>x.prefix===pfx).length:fermes.length;
+            if(pfx&&count===0)return null;
+            return(<div key={pfx||'all'} onClick={()=>setFilterPrefix(filterPrefix===pfx?null:pfx)} style={{padding:'0.2rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:filterPrefix===pfx?700:400,background:filterPrefix===pfx?'rgba(100,100,100,0.15)':'var(--bg3)',border:'1px solid '+(filterPrefix===pfx?'var(--muted)':'var(--border)'),color:'var(--muted)'}}>
+              {pfx||'Tous'} <span style={{fontSize:9,opacity:0.7}}>{count}</span>
+            </div>);
+          })}
+        </div>
+      )}
       {displayList.length===0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>{showClosed?'Aucun projet fermé.':projets.length===0?'Ajoutez des adresses dans vos événements Google Agenda.':'Aucun projet correspondant.'}</div>)}
       {displayList.map(p=>{
         const s=statuts[p.statut]||statuts.ouvert;
