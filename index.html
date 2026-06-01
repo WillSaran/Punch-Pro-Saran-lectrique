@@ -216,7 +216,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v119';
+const APP_VERSION='v120';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1214,10 +1214,12 @@ function EventCard({j,isPast,projPts,editEvtAddr,setEditEvtAddr,editEvtAddrVal,s
           {j.location&&!isEditingAddr&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>📍 {j.location}</div>}
           {j.description&&<div style={{fontSize:11,color:'var(--muted)',marginTop:3,lineHeight:1.4}}>{j.description}</div>}
           {isEditingAddr&&(
-            <div style={{marginTop:'0.35rem',display:'flex',gap:'0.3rem',alignItems:'center'}}>
-              <div style={{flex:1}}><AddressInput value={editEvtAddrVal} onChange={setEditEvtAddrVal} placeholder="Nouvelle adresse..."/></div>
-              <button className="btn-p" style={{marginTop:0,fontSize:10,padding:'0.25rem 0.5rem'}} onClick={()=>saveEvtAddress(j)}>✓</button>
-              <button className="btn-s" style={{fontSize:10,padding:'0.25rem 0.5rem'}} onClick={()=>{setEditEvtAddr(null);setEditEvtAddrVal('');}}>✕</button>
+            <div style={{marginTop:'0.35rem'}}>
+              <AddressInput value={editEvtAddrVal} onChange={setEditEvtAddrVal} placeholder="Nouvelle adresse..." style={{marginBottom:'0.3rem'}}/>
+              <div style={{display:'flex',gap:'0.3rem'}}>
+                <button className="btn-p" style={{marginTop:0,fontSize:11,padding:'0.3rem 0.75rem',flex:1}} onClick={()=>saveEvtAddress(j)}>✓ Confirmer</button>
+                <button className="btn-s" style={{fontSize:11,padding:'0.3rem 0.6rem'}} onClick={()=>{setEditEvtAddr(null);setEditEvtAddrVal('');}}>Annuler</button>
+              </div>
             </div>
           )}
         </div>
@@ -1860,11 +1862,9 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
 function AddressInput({value,onChange,placeholder,style}){
   const [suggestions,setSuggestions]=useState([]);
   const [showSugg,setShowSugg]=useState(false);
-  const [loading,setLoading]=useState(false);
   const debounceRef=useRef(null);
   const wrapRef=useRef(null);
 
-  // Close on outside click
   useEffect(()=>{
     const handler=e=>{if(wrapRef.current&&!wrapRef.current.contains(e.target))setShowSugg(false);};
     document.addEventListener('mousedown',handler);
@@ -1872,57 +1872,38 @@ function AddressInput({value,onChange,placeholder,style}){
   },[]);
 
   async function fetchSuggestions(text){
-    if(!text||text.length<3){setSuggestions([]);return;}
-    // Use Google Places Autocomplete API if available
+    if(!text||text.length<3){setSuggestions([]);setShowSugg(false);return;}
     if(window.google&&window.google.maps&&window.google.maps.places){
       try{
         const service=new window.google.maps.places.AutocompleteService();
         service.getPlacePredictions({input:text,componentRestrictions:{country:'ca'},types:['address']},
           (results,status)=>{
-            if(status==='OK'&&results){
-              setSuggestions(results.map(r=>({label:r.description,value:r.description})));
-              setShowSugg(true);
-            }else{setSuggestions([]);}
-            setLoading(false);
+            if(status==='OK'&&results){setSuggestions(results.map(r=>r.description));setShowSugg(true);}
+            else{setSuggestions([]);setShowSugg(false);}
           }
         );
-      }catch(e){setLoading(false);}
-    }else{
-      // Fallback: no autocomplete available
-      setLoading(false);setSuggestions([]);
+      }catch(e){setSuggestions([]);}
     }
   }
 
   function handleChange(e){
-    const v=e.target.value;
-    onChange(v);
-    setLoading(true);
+    const v=e.target.value;onChange(v);
     clearTimeout(debounceRef.current);
     debounceRef.current=setTimeout(()=>fetchSuggestions(v),350);
   }
 
-  function selectSugg(s){
-    onChange(s.value);
-    setSuggestions([]);
-    setShowSugg(false);
-  }
-
   return(
-    <div ref={wrapRef} style={{position:'relative',...(style||{})}}>
-      <input
-        value={value}
-        onChange={handleChange}
-        onFocus={()=>suggestions.length>0&&setShowSugg(true)}
-        placeholder={placeholder||'Adresse...'}
-        style={{width:'100%'}}/>
+    <div ref={wrapRef} style={{position:'relative',width:'100%',...(style||{})}}>
+      <input value={value} onChange={handleChange} onFocus={()=>suggestions.length>0&&setShowSugg(true)}
+        placeholder={placeholder||'Adresse...'} style={{width:'100%'}}/>
       {showSugg&&suggestions.length>0&&(
-        <div style={{position:'absolute',top:'100%',left:0,right:0,zIndex:999,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.4)',maxHeight:200,overflowY:'auto'}}>
+        <div style={{position:'absolute',top:'100%',left:0,right:0,zIndex:9999,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.5)',maxHeight:180,overflowY:'auto'}}>
           {suggestions.map((s,i)=>(
-            <div key={i} onMouseDown={()=>selectSugg(s)}
-              style={{padding:'0.45rem 0.75rem',fontSize:12,cursor:'pointer',borderBottom:'1px solid var(--border)',color:'var(--text)'}}
-              onMouseEnter={e=>e.target.style.background='var(--bg3)'}
-              onMouseLeave={e=>e.target.style.background='transparent'}>
-              📍 {s.label}
+            <div key={i} onMouseDown={()=>{onChange(s);setSuggestions([]);setShowSugg(false);}}
+              style={{padding:'0.4rem 0.75rem',fontSize:12,cursor:'pointer',borderBottom:'1px solid var(--border)',color:'var(--text)',background:'transparent'}}
+              onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              📍 {s}
             </div>
           ))}
         </div>
