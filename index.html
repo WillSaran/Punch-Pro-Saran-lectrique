@@ -216,7 +216,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v122';
+const APP_VERSION='v123';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1253,7 +1253,21 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
   const [customMergeAddr,setCustomMergeAddr]=useState('');
 
   const today=new Date();
-  const sortedJobs=[...(p.jobs||[])].sort((a,b)=>new Date(a.start)-new Date(b.start));
+  // Sous-préfixes pour trier les événements à l'intérieur d'un projet
+  const SUB_PREFIXES=['ROUGH','FINITION','SERV'];
+  function getSubPrefixOrder(title){
+    const t=(title||'').toUpperCase();
+    const idx=SUB_PREFIXES.findIndex(sp=>t.includes(sp));
+    return idx>=0?idx:SUB_PREFIXES.length;
+  }
+  function sortJobs(arr){
+    return [...arr].sort((a,b)=>{
+      const oa=getSubPrefixOrder(a.title),ob=getSubPrefixOrder(b.title);
+      if(oa!==ob)return oa-ob;
+      return new Date(a.start)-new Date(b.start);
+    });
+  }
+  const sortedJobs=sortJobs((p.jobs||[]));
   const passedJobs=sortedJobs.filter(j=>new Date(j.start)<today&&new Date(j.start).toDateString()!==today.toDateString());
   const todayJobs=sortedJobs.filter(j=>new Date(j.start).toDateString()===today.toDateString());
   const futureJobs=sortedJobs.filter(j=>new Date(j.start)>today&&new Date(j.start).toDateString()!==today.toDateString());
@@ -1392,6 +1406,34 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
       {todayJobs.length>0&&(<div style={{marginBottom:'0.6rem'}}><div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>Aujourd'hui</div>{todayJobs.map((j,i)=><EventCard key={i} j={j} isPast={false} projPts={projPts} editEvtAddr={editEvtAddr} setEditEvtAddr={setEditEvtAddr} editEvtAddrVal={editEvtAddrVal} setEditEvtAddrVal={setEditEvtAddrVal} saveEvtAddress={saveEvtAddress} pAdresse={p.adresse}/>)}</div>)}
       {futureJobs.length>0&&(<div><div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>À venir ({futureJobs.length})</div>{futureJobs.map((j,i)=><EventCard key={i} j={j} isPast={false} projPts={projPts} editEvtAddr={editEvtAddr} setEditEvtAddr={setEditEvtAddr} editEvtAddrVal={editEvtAddrVal} setEditEvtAddrVal={setEditEvtAddrVal} saveEvtAddress={saveEvtAddress} pAdresse={p.adresse}/>)}</div>)}
       {p.jobs.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1rem',fontSize:12}}>Aucun événement pour ce projet.</div>}
+    </div>
+  );
+}
+
+function ProjCard({p,statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,editStatut,setEditStatut,setEditKey,saveEdit,startEdit,setSelProj}){
+  const s=statuts[p.statut]||statuts['en-cours'];
+  const isEditing=editKey===p.key;
+  return(
+    <div style={{background:'var(--bg2)',borderRadius:12,padding:'0.75rem 0.85rem',marginBottom:'0.5rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color,cursor:'pointer'}} onClick={()=>!isEditing&&setSelProj(p.key)}>
+      {isEditing?(
+        <div onClick={e=>e.stopPropagation()}>
+          <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>Titre</span><input value={editTitre} onChange={e=>setEditTitre(e.target.value)} autoFocus style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+          <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
+          <div style={{fontSize:10,color:'var(--muted)',marginBottom:8}}>📍 {p.adresse}</div>
+          <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>{Object.entries(statuts).map(([k,v])=>(<div key={k} onClick={e=>{e.stopPropagation();setEditStatut(k);}} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>{v.label}</div>))}</div>
+          <div style={{display:'flex',gap:'0.4rem'}}><button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={e=>{e.stopPropagation();saveEdit();}}>✓ Sauvegarder</button><button className="btn-s" style={{fontSize:11}} onClick={e=>{e.stopPropagation();setEditKey(null);}}>Annuler</button></div>
+        </div>
+      ):(
+        <div>
+          <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:4}}>
+            <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{p.titre}</div><div style={{fontSize:10,color:'var(--muted)'}}>📍 {p.adresse}</div>{p.po&&<div style={{fontSize:11,color:'var(--accent)',fontWeight:600,marginTop:2}}>PO: {p.po}</div>}</div>
+            <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}><div style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div><button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={e=>startEdit(p,e)}>✏️</button></div>
+          </div>
+          <div style={{display:'flex',gap:10,fontSize:11,color:'var(--muted)',flexWrap:'wrap',marginTop:4}}><span>🗓 {p.jobs.length} événements</span>{p.heures>0&&<span>⏱ {Math.round(p.heures*10)/10}h</span>}{p.personnes.length>0&&<span>👷 {p.personnes.join(', ')}</span>}</div>
+          {p.jobs.length>0&&<div style={{marginTop:'0.35rem',display:'flex',flexWrap:'wrap',gap:'0.25rem'}}>{p.jobs.slice(0,4).map((j,i)=><span key={i} style={{fontSize:10,background:rgba(j.gcalColor||'var(--accent)',0.15),color:j.gcalColor||'var(--accent)',borderRadius:5,padding:'1px 6px'}}>{j.title}</span>)}{p.jobs.length>4&&<span style={{fontSize:10,color:'var(--muted)'}}>+{p.jobs.length-4}</span>}</div>}
+          <div style={{fontSize:10,color:'var(--muted)',marginTop:5,textAlign:'right'}}>Appuyer pour détails →</div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1547,37 +1589,11 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
         const enCours=actifs.filter(p=>p.statut==='en-cours');
         const aVenir=actifs.filter(p=>p.statut==='a-venir');
         const autres=actifs.filter(p=>p.statut!=='en-cours'&&p.statut!=='a-venir');
-        function PCard({p}){
-          const s=statuts[p.statut]||statuts['en-cours'];
-          const isEditing=editKey===p.key;
-          return(
-            <div style={{background:'var(--bg2)',borderRadius:12,padding:'0.75rem 0.85rem',marginBottom:'0.5rem',border:'1px solid var(--border)',borderLeft:'4px solid '+s.color,cursor:'pointer'}} onClick={()=>!isEditing&&setSelProj(p.key)}>
-              {isEditing?(
-                <div onClick={e=>e.stopPropagation()}>
-                  <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>Titre</span><input value={editTitre} onChange={e=>setEditTitre(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
-                  <div style={{marginBottom:'0.4rem'}}><span style={{fontSize:10,color:'var(--muted)'}}>PO</span><input value={editPO} onChange={e=>setEditPO(e.target.value)} style={{width:'100%',fontSize:12,marginTop:3}}/></div>
-                  <div style={{fontSize:10,color:'var(--muted)',marginBottom:8}}>📍 {p.adresse}</div>
-                  <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.5rem'}}>{Object.entries(statuts).map(([k,v])=>(<div key={k} onClick={e=>{e.stopPropagation();setEditStatut(k);}} style={{padding:'0.2rem 0.6rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:editStatut===k?700:400,background:editStatut===k?v.bg:'var(--bg3)',border:'1px solid '+(editStatut===k?v.color:'var(--border)'),color:editStatut===k?v.color:'var(--muted)'}}>{v.label}</div>))}</div>
-                  <div style={{display:'flex',gap:'0.4rem'}}><button className="btn-p" style={{flex:1,marginTop:0,fontSize:12}} onClick={e=>{e.stopPropagation();saveEdit();}}>✓ Sauvegarder</button><button className="btn-s" style={{fontSize:11}} onClick={e=>{e.stopPropagation();setEditKey(null);}}>Annuler</button></div>
-                </div>
-              ):(
-                <div>
-                  <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:4}}>
-                    <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{p.titre}</div><div style={{fontSize:10,color:'var(--muted)'}}>📍 {p.adresse}</div>{p.po&&<div style={{fontSize:11,color:'var(--accent)',fontWeight:600,marginTop:2}}>PO: {p.po}</div>}</div>
-                    <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}><div style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:s.bg,color:s.color,border:'1px solid '+s.color}}>{s.label}</div><button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem'}} onClick={e=>startEdit(p,e)}>✏️</button></div>
-                  </div>
-                  <div style={{display:'flex',gap:10,fontSize:11,color:'var(--muted)',flexWrap:'wrap',marginTop:4}}><span>🗓 {p.jobs.length} événements</span>{p.heures>0&&<span>⏱ {Math.round(p.heures*10)/10}h</span>}{p.personnes.length>0&&<span>👷 {p.personnes.join(', ')}</span>}</div>
-                  {p.jobs.length>0&&<div style={{marginTop:'0.35rem',display:'flex',flexWrap:'wrap',gap:'0.25rem'}}>{p.jobs.slice(0,4).map((j,i)=><span key={i} style={{fontSize:10,background:rgba(j.gcalColor||'var(--accent)',0.15),color:j.gcalColor||'var(--accent)',borderRadius:5,padding:'1px 6px'}}>{j.title}</span>)}{p.jobs.length>4&&<span style={{fontSize:10,color:'var(--muted)'}}>+{p.jobs.length-4}</span>}</div>}
-                  <div style={{fontSize:10,color:'var(--muted)',marginTop:5,textAlign:'right'}}>Appuyer pour détails →</div>
-                </div>
-              )}
-            </div>
-          );
-        }
+        const cardProps={statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,editStatut,setEditStatut,setEditKey,saveEdit,startEdit,setSelProj};
         return(<>
-          {enCours.length>0&&<div style={{marginBottom:'0.25rem'}}><div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>🟢 En cours ({enCours.length})</div>{enCours.map(p=><PCard key={p.key} p={p}/>)}</div>}
-          {aVenir.length>0&&<div style={{marginBottom:'0.25rem'}}>{enCours.length>0&&<div style={{borderTop:'1px solid var(--border)',margin:'0.5rem 0'}}/>}<div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>🔵 À venir ({aVenir.length})</div>{aVenir.map(p=><PCard key={p.key} p={p}/>)}</div>}
-          {autres.length>0&&<div>{(enCours.length>0||aVenir.length>0)&&<div style={{borderTop:'1px solid var(--border)',margin:'0.5rem 0'}}/>}<div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>Autres</div>{autres.map(p=><PCard key={p.key} p={p}/>)}</div>}
+          {enCours.length>0&&<div style={{marginBottom:'0.25rem'}}><div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>🟢 En cours ({enCours.length})</div>{enCours.map(p=><ProjCard key={p.key} p={p} {...cardProps}/>)}</div>}
+          {aVenir.length>0&&<div style={{marginBottom:'0.25rem'}}>{enCours.length>0&&<div style={{borderTop:'1px solid var(--border)',margin:'0.5rem 0'}}/>}<div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>🔵 À venir ({aVenir.length})</div>{aVenir.map(p=><ProjCard key={p.key} p={p} {...cardProps}/>)}</div>}
+          {autres.length>0&&<div>{(enCours.length>0||aVenir.length>0)&&<div style={{borderTop:'1px solid var(--border)',margin:'0.5rem 0'}}/>}<div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>Autres</div>{autres.map(p=><ProjCard key={p.key} p={p} {...cardProps}/>)}</div>}
           {actifs.length===0&&<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>Aucun projet actif trouvé.</div>}
         </>);
       })()}
