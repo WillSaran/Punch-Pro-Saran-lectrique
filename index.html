@@ -216,7 +216,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v124';
+const APP_VERSION='v125';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1688,29 +1688,28 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
                     <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}</div>
                   </div>
                   {addAddrJob===j.id?(
-                    <div style={{display:'flex',gap:'0.3rem',alignItems:'center',flex:1,marginLeft:8}}>
-                      <div style={{flex:1}}>
-                        <AddressInput value={addAddrVal} onChange={setAddAddrVal} placeholder="Entrer l'adresse..."/>
-                      </div>
-                      <button className="btn-p" style={{marginTop:0,fontSize:10,padding:'0.25rem 0.5rem',whiteSpace:'nowrap'}}
-                        onClick={async()=>{
-                          if(!addAddrVal.trim()){notify('Entrez une adresse','warn');return;}
-                          // Mettre à jour l'événement dans Google Calendar
-                          try{
+                    <div style={{marginTop:'0.4rem'}}>
+                      <AddressInput value={addAddrVal} onChange={setAddAddrVal} placeholder="Entrer l'adresse..." style={{marginBottom:'0.35rem'}}/>
+                      <div style={{display:'flex',gap:'0.35rem'}}>
+                        <button className="btn-p" style={{flex:1,marginTop:0,fontSize:11}}
+                          onClick={async()=>{
+                            if(!addAddrVal.trim()){notify('Entrez une adresse','warn');return;}
+                            // Sauvegarder localement + Calendar
+                            const addrOv=JSON.parse(localStorage.getItem('punchpro_addr_overrides')||'{}');
+                            addrOv[j.id]=addAddrVal.trim();
+                            localStorage.setItem('punchpro_addr_overrides',JSON.stringify(addrOv));
                             for(const calId of (calendarIds||['primary'])){
-                              try{
-                                await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:addAddrVal.trim()}});
-                                notify('Adresse ajoutée! Rafraîchir pour voir.','success');
-                                break;
-                              }catch(e){continue;}
+                              try{await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:addAddrVal.trim()}});break;}
+                              catch(e){continue;}
                             }
-                          }catch(e){notify('Erreur: '+e.message,'err');}
-                          setAddAddrJob(null);setAddAddrVal('');
-                        }}>✓</button>
-                      <button className="btn-s" style={{fontSize:10,padding:'0.25rem 0.5rem'}} onClick={()=>{setAddAddrJob(null);setAddAddrVal('');}}>✕</button>
+                            notify('✅ Adresse ajoutée! Rafraîchir pour voir.','success');
+                            setAddAddrJob(null);setAddAddrVal('');
+                          }}>✓ Confirmer</button>
+                        <button className="btn-s" style={{fontSize:11}} onClick={()=>{setAddAddrJob(null);setAddAddrVal('');}}>Annuler</button>
+                      </div>
                     </div>
                   ):(
-                    <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem',flexShrink:0}}
+                    <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem',flexShrink:0,marginLeft:8}}
                       onClick={()=>{setAddAddrJob(j.id);setAddAddrVal('');}}>
                       + Adresse
                     </button>
@@ -2002,6 +2001,7 @@ function AddressInput({value,onChange,placeholder,style}){
   const [showSugg,setShowSugg]=useState(false);
   const debounceRef=useRef(null);
   const wrapRef=useRef(null);
+  const mouseDownRef=useRef(false);
 
   useEffect(()=>{
     const handler=e=>{if(wrapRef.current&&!wrapRef.current.contains(e.target))setShowSugg(false);};
@@ -2009,36 +2009,45 @@ function AddressInput({value,onChange,placeholder,style}){
     return()=>document.removeEventListener('mousedown',handler);
   },[]);
 
-  async function fetchSuggestions(text){
+  function fetchSuggestions(text){
     if(!text||text.length<3){setSuggestions([]);setShowSugg(false);return;}
-    if(window.google&&window.google.maps&&window.google.maps.places){
-      try{
-        const service=new window.google.maps.places.AutocompleteService();
-        service.getPlacePredictions({input:text,componentRestrictions:{country:'ca'},types:['address']},
-          (results,status)=>{
-            if(status==='OK'&&results){setSuggestions(results.map(r=>r.description));setShowSugg(true);}
-            else{setSuggestions([]);setShowSugg(false);}
-          }
-        );
-      }catch(e){setSuggestions([]);}
+    if(window.google?.maps?.places){
+      const service=new window.google.maps.places.AutocompleteService();
+      service.getPlacePredictions(
+        {input:text,componentRestrictions:{country:'ca'},types:['address']},
+        (results,status)=>{
+          if(status==='OK'&&results){setSuggestions(results.map(r=>r.description));setShowSugg(true);}
+          else{setSuggestions([]);setShowSugg(false);}
+        }
+      );
     }
   }
 
   function handleChange(e){
     const v=e.target.value;onChange(v);
     clearTimeout(debounceRef.current);
-    debounceRef.current=setTimeout(()=>fetchSuggestions(v),350);
+    debounceRef.current=setTimeout(()=>fetchSuggestions(v),300);
+  }
+
+  function handleBlur(){
+    setTimeout(()=>{if(!mouseDownRef.current)setShowSugg(false);mouseDownRef.current=false;},200);
   }
 
   return(
     <div ref={wrapRef} style={{position:'relative',width:'100%',...(style||{})}}>
-      <input value={value} onChange={handleChange} onFocus={()=>suggestions.length>0&&setShowSugg(true)}
+      <input value={value} onChange={handleChange} onBlur={handleBlur}
+        onFocus={()=>suggestions.length>0&&setShowSugg(true)}
         placeholder={placeholder||'Adresse...'} style={{width:'100%'}}/>
       {showSugg&&suggestions.length>0&&(
-        <div style={{position:'absolute',top:'100%',left:0,right:0,zIndex:9999,background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,boxShadow:'0 4px 16px rgba(0,0,0,0.5)',maxHeight:180,overflowY:'auto'}}>
+        <div style={{position:'absolute',top:'calc(100% + 2px)',left:0,right:0,zIndex:9999,
+          background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,
+          boxShadow:'0 6px 20px rgba(0,0,0,0.5)',maxHeight:200,overflowY:'auto'}}>
           {suggestions.map((s,i)=>(
-            <div key={i} onMouseDown={()=>{onChange(s);setSuggestions([]);setShowSugg(false);}}
-              style={{padding:'0.4rem 0.75rem',fontSize:12,cursor:'pointer',borderBottom:'1px solid var(--border)',color:'var(--text)',background:'transparent'}}
+            <div key={i}
+              onMouseDown={e=>{e.preventDefault();mouseDownRef.current=true;onChange(s);setSuggestions([]);setShowSugg(false);}}
+              style={{padding:'0.45rem 0.75rem',fontSize:12,cursor:'pointer',
+                borderBottom:i<suggestions.length-1?'1px solid var(--border)':'none',
+                color:'var(--text)',background:'transparent'}}
               onMouseEnter={e=>e.currentTarget.style.background='var(--bg3)'}
               onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
               📍 {s}
