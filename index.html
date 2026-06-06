@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v131';
+const APP_VERSION='v132';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -226,7 +226,7 @@ const EMP_COLORS=['#2f81f7','#6e40c9','#3fb950','#d29922','#f85149','#0ea5e9','#
   '#7986cb','#33b679','#8e24aa','#e67c73','#f6c026','#f5511d','#039be5','#616161','#3f51b5','#0b8043','#d50000'];
 const GCAL_COLORS={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000','':'#2f81f7'};
 const BOSS_EMAILS=['info@saranelectrique.com','saranelectrique@gmail.com'];
-const SCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/userinfo.email';
+const SCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email';
 const DISCOVERY=['https://sheets.googleapis.com/$discovery/rest?version=v4','https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'];
 let tokenClient=null;
 
@@ -1153,13 +1153,15 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
   const [fichiersURL,setFichiersURL]=useState([]);
   const [coequipiers,setCoequipiers]=useState([]);
   const [coeqHeures,setCoeqHeures]=useState({});
+  const [heuresBanquePrises,setHeuresBanquePrises]=useState(0); // heures prises de la banque
 
   function timeToMin(t){const[h,m]=(t||'00:00').split(':').map(Number);return h*60+(m||0);}
-  // Total en quarts d'heure
   const totalMin=Math.max(0,snapToQuart(timeToMin(heureFin)-timeToMin(heureDebut)));
   const totalH=totalMin/60;
-  const otMin=Math.max(0,totalMin-480); // 8h = 480 min
+  const otMin=Math.max(0,totalMin-480);
   const otH=otMin/60;
+  const banqueActuelle=emp.heuresBanque||0;
+  const banqueApres=Math.round((banqueActuelle-heuresBanquePrises)*4)/4;
 
   const travelOpts=[0,15,30,45,60,90];
   const teammates=(allEmps||[]).filter(e=>e.nom!==emp.nom);
@@ -1198,7 +1200,29 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
       <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: matériel manquant..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
       {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:'📎 '+nom;return(<div key={i} className="file-item"><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={jobName||'punch'} jobLocation={jobLocation||''} calendarIds={calendarIds} calEventTitle={jobName||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
-      <button className="btn-p" style={{marginTop:'0.4rem'}} onClick={confirm}>✓ Confirmer la job</button>
+      {/* ── HEURES DE BANQUE ── */}
+      <div className="dur-section">
+        <div className="csec">Heures de banque</div>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.75rem'}}>
+          <div style={{fontSize:11,color:'var(--muted)'}}>
+            Banque disponible : <strong style={{color:banqueActuelle>=0?'var(--success)':'var(--danger)'}}>{hToQuart(banqueActuelle)}</strong>
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <button className="dur-btn" style={{width:28,height:28,fontSize:13}} onClick={()=>setHeuresBanquePrises(h=>Math.max(0,Math.round((h-0.25)*4)/4))}>−</button>
+            <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',color:heuresBanquePrises>0?'var(--warning)':'var(--muted)',minWidth:40,textAlign:'center'}}>
+              {heuresBanquePrises>0?'-'+hToQuart(heuresBanquePrises):'0'}
+            </div>
+            <button className="dur-btn" style={{width:28,height:28,fontSize:13}} onClick={()=>setHeuresBanquePrises(h=>Math.round((h+0.25)*4)/4)}>+</button>
+          </div>
+        </div>
+        {heuresBanquePrises>0&&(
+          <div style={{fontSize:10,color:banqueApres>=0?'var(--muted)':'var(--warning)',marginTop:4,textAlign:'right'}}>
+            Banque après : <strong>{hToQuart(banqueApres)}</strong>
+            {banqueApres<0&&' ⚠️ Déficit'}
+          </div>
+        )}
+      </div>
+      <button className="btn-p" style={{marginTop:'0.4rem'}} onClick={()=>{const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,heureDebut,heureFin,jobDate,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch,heuresBanquePrises});}}>✓ Confirmer la job</button>
     </div>
   );
 }
@@ -1851,19 +1875,15 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const [pts,setPts]=useState([]);
   const [tab,setTab]=useState('semaine');
   const [loading,setLoading]=useState(true);
+  const [sending,setSending]=useState(false);
   const [editLine,setEditLine]=useState(null);
   const [editData,setEditData]=useState({});
-  const fileRef=useRef();
-  const camRef=useRef();
-  const [addFileLine,setAddFileLine]=useState(null);
-  const [uploading,setUploading]=useState(false);
 
   const today=localDateStr();
   const curWeek=getWeek(new Date());
   const curMois=getMois(new Date());
 
   useEffect(()=>{load();},[]);
-
   async function load(){setLoading(true);const p=await getPointages(sid,{nom:emp.nom});setPts(p);setLoading(false);}
 
   function getFiltered(){
@@ -1873,15 +1893,87 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
     return pts;
   }
 
-  const lines=combinePts(getFiltered());
-  // Calculer correctement depuis les lignes combinées (pas les pts bruts)
-  const totalH=Math.round(lines.reduce((s,l)=>s+(l.heures||0),0)*4)/4;
-  const totalDep=Math.round(lines.reduce((s,l)=>s+(l.deplacement||0),0));
-  const totalOT=Math.round(Math.max(0,lines.reduce((s,l)=>s+(l.ot||0),0))*4)/4;
+  const allLines=combinePts(getFiltered());
+  const totalH=Math.round(allLines.reduce((s,l)=>s+(l.heures||0),0)*4)/4;
+  const totalDep=Math.round(allLines.reduce((s,l)=>s+(l.deplacement||0),0));
+  const totalOT=Math.round(Math.max(0,allLines.reduce((s,l)=>s+(l.ot||0),0))*4)/4;
 
-  async function startEdit(line){
-    setEditLine(line);
-    setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});
+  // ── VUE SEMAINE — grouper par jour ──
+  function buildSemaineView(lignes){
+    const parDate={};
+    lignes.forEach(l=>{
+      if(!parDate[l.date])parDate[l.date]={date:l.date,jobs:[],heures:0,deplacement:0,ouvert:false};
+      const d=parDate[l.date];
+      if(l.job&&l.job!=='—'&&!d.jobs.includes(l.job))d.jobs.push(l.job);
+      d.heures+=l.heures||0;
+      d.deplacement+=l.deplacement||0;
+      if(!l.heureOut&&l.type!=='confirm')d.ouvert=true;
+    });
+    return Object.values(parDate).sort((a,b)=>a.date.localeCompare(b.date));
+  }
+
+  const joursView=buildSemaineView(allLines);
+
+  // ── ENVOYER COURRIEL RÉSUMÉ SEMAINE ──
+  async function confirmerSemaine(){
+    setSending(true);
+    notify('⏳ Envoi du résumé...','warn');
+    try{
+      const token=gapi.client.getToken();
+      if(!token?.access_token){notify('Pas de token Google','err');setSending(false);return;}
+
+      const banqueEmp=emp.heuresBanque||0;
+      const lignesSem=allLines.filter(l=>l.semaine===curWeek||pts.find(p=>p.row===l.inRow&&p.semaine===curWeek));
+
+      // Construire le corps du courriel
+      const joursStr=joursView.map(j=>{
+        const jourLabel=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][new Date(j.date+'T12:00:00').getDay()];
+        const moisLabel=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][new Date(j.date+'T12:00:00').getMonth()];
+        const dateLabel=jourLabel+' '+new Date(j.date+'T12:00:00').getDate()+' '+moisLabel;
+        const jobsStr=j.jobs.join(', ')||'—';
+        const h=Math.round(j.heures*4)/4;
+        const deplStr=j.deplacement>0?'  🚗 '+j.deplacement+' min':'';
+        return '  '+dateLabel.padEnd(14)+jobsStr.padEnd(35)+(j.ouvert?'⏳ ouvert':hToQuart(h))+deplStr;
+      }).join('\n');
+
+      const suppStr=totalOT>0?'\n⚡ Heures supp cette semaine : '+hToQuart(totalOT):'';
+      const banqueStr='\n🏦 Banque d\'heures actuelle : '+hToQuart(banqueEmp);
+
+      const body=`Bonjour,
+
+${emp.nom} confirme sa semaine ${curWeek} :
+
+JOURNÉES :
+${joursStr}
+
+─────────────────────────────
+⏱ TOTAL SEMAINE : ${hToQuart(totalH)}${suppStr}${banqueStr}
+${totalDep>0?'🚗 Déplacement total : '+totalDep+' min':''}
+
+Envoyé depuis PunchPro — Saran Électrique`;
+
+      // Encoder le courriel en base64
+      const to='info@saranelectrique.com';
+      const subject='Résumé semaine '+curWeek+' — '+emp.nom;
+      const message='To: '+to+'\r\nSubject: '+subject+'\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n'+body;
+      const encoded=btoa(unescape(encodeURIComponent(message))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+
+      const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},
+        body:JSON.stringify({raw:encoded})
+      });
+
+      if(res.ok){
+        notify('✅ Résumé envoyé à info@saranelectrique.com!','success');
+      }else{
+        const err=await res.json();
+        notify('Erreur envoi: '+(err?.error?.message||res.status),'err');
+      }
+    }catch(e){
+      notify('Erreur: '+e.message,'err');
+    }
+    setSending(false);
   }
 
   async function saveEdit(){
@@ -1898,133 +1990,149 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
     try{
       if(line.outRow)await deletePointageRow(sid,line.outRow);
       if(line.inRow)await deletePointageRow(sid,line.inRow);
-      await addMessage(sid,emp.nom,'Suppression',line.date+' — '+(line.job||'—')+', '+(line.heures||'?')+'h');
-      notify('Supprimé — Admin notifié','success');await load();
+      await addMessage(sid,emp.nom,'Suppression',line.date+' — '+(line.job||'—'));
+      notify('Supprimé','success');await load();
     }catch(e){notify('Erreur: '+e.message,'err');}
-  }
-
-  async function handleAddFile(line,f){
-    if(!f)return;
-    setAddFileLine(line);setUploading(true);
-    const result=await uploadToDrive(f,emp.nom,line.job||'punch',null);
-    setUploading(false);setAddFileLine(null);
-    if(result&&result.url){
-      const urls=[...(line.fichiersURL||[]),result.url];
-      const row=line.inRow||line.outRow;
-      if(row)await updatePointageFichiers(sid,row,urls);
-      await addMessage(sid,emp.nom,'Fichier ajouté',line.date+' — '+(line.job||'—'));
-      notify('📎 Fichier ajouté!','success');await load();
-    }else notify('Erreur upload','err');
   }
 
   return(
     <div style={{maxWidth:560,width:'100%',textAlign:'left'}}>
-      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'1rem'}}>
+      {/* En-tête */}
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.75rem'}}>
         <div className="emp-av" style={{background:emp.couleur,width:36,height:36,fontSize:12}}>{emp.code}</div>
-        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>Mes heures — {emp.nom}</div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>{emp.nom}</div>
+          <div style={{fontSize:11,color:'var(--muted)'}}>Semaine {curWeek} · Banque : <strong style={{color:'var(--accent)'}}>{hToQuart(emp.heuresBanque||0)}</strong></div>
+        </div>
       </div>
-      <div className="stats-grid" style={{marginBottom:'1rem'}}>
+
+      {/* Stats */}
+      <div className="stats-grid" style={{marginBottom:'0.75rem'}}>
         <div className="stat-box"><div className="val">{hToQuart(totalH)}</div><div className="lbl">Heures</div></div>
-        <div className="stat-box"><div className="val" style={{color:'var(--warning)'}}>{totalOT>0?hToQuart(totalOT):'—'}</div><div className="lbl">Overtime</div></div>
+        <div className="stat-box"><div className="val" style={{color:totalOT>0?'var(--warning)':'var(--muted)'}}>{totalOT>0?hToQuart(totalOT):'—'}</div><div className="lbl">OT</div></div>
         <div className="stat-box"><div className="val">{totalDep>0?totalDep+'m':'—'}</div><div className="lbl">Dépl.</div></div>
-        <div className="stat-box"><div className="val">{lines.length}</div><div className="lbl">Journées</div></div>
+        <div className="stat-box"><div className="val">{joursView.length}</div><div className="lbl">Jours</div></div>
       </div>
-      <div className="tabs">
-        {[['today','Auj.'],['semaine','Semaine'],['mois','Mois'],['all','Tout']].map(([k,l])=>(
+
+      {/* Onglets */}
+      <div className="tabs" style={{marginBottom:'0.6rem'}}>
+        {[['today',"Auj."],['semaine','Semaine'],['mois','Mois'],['all','Tout']].map(([k,l])=>(
           <div key={k} className={'tab'+(tab===k?' active':'')} onClick={()=>setTab(k)}>{l}</div>
         ))}
       </div>
+
       {loading?<div style={{color:'var(--muted)',textAlign:'center',padding:'2rem'}}>⏳</div>:(
-        <div className="scroll-area" style={{maxHeight:'calc(100vh - 380px)'}}>
-          {lines.map((line,i)=>(
-            <div key={i} className={'hist-line'+(line.ot>0?' has-ot':'')} style={{borderLeftColor:line.jobColor||'var(--border2)'}}>
-              {editLine===line?(
-                <div className="hist-edit-form">
-                  <div className="fg" style={{marginBottom:'0.45rem'}}><label>Job</label><input value={editData.job} onChange={e=>{const v=e.target.value;setEditData(p=>({...p,job:v}));}}/></div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.45rem',marginBottom:'0.45rem'}}>
-                    <div className="fg" style={{marginBottom:0}}>
-                      <label>Heures</label>
-                      <input type="number" value={editData.heures} onChange={e=>{const v=parseFloat(e.target.value)||0;setEditData(p=>({...p,heures:v}));}}/>
+        <>
+          {/* ── VUE SEMAINE CONDENSÉE ── */}
+          {(tab==='semaine'||tab==='today')&&joursView.length>0&&(
+            <div style={{background:'var(--bg3)',borderRadius:10,overflow:'hidden',marginBottom:'0.6rem'}}>
+              {joursView.map((j,idx)=>{
+                const jourLabel=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][new Date(j.date+'T12:00:00').getDay()];
+                const d=new Date(j.date+'T12:00:00');
+                const moisLabel=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][d.getMonth()];
+                const h=Math.round(j.heures*4)/4;
+                const isOT=h>8;
+                return(
+                  <div key={j.date} style={{
+                    display:'flex',alignItems:'center',gap:8,
+                    padding:'0.5rem 0.75rem',
+                    borderBottom:idx<joursView.length-1?'1px solid var(--border)':'none',
+                    background:idx%2===0?'var(--bg3)':'var(--bg2)'
+                  }}>
+                    {/* Jour + Date */}
+                    <div style={{flexShrink:0,textAlign:'center',minWidth:36}}>
+                      <div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase'}}>{jourLabel}</div>
+                      <div style={{fontSize:11,color:'var(--muted)'}}>{d.getDate()} {moisLabel}</div>
                     </div>
-                    <div className="fg" style={{marginBottom:0}}>
-                      <label>Dépl. (min)</label>
-                      <input type="number" value={editData.deplacement} onChange={e=>{const v=parseInt(e.target.value)||0;setEditData(p=>({...p,deplacement:v}));}}/>
+                    {/* Jobs */}
+                    <div style={{flex:1,minWidth:0}}>
+                      {j.jobs.length>0
+                        ?j.jobs.map((job,ji)=>(
+                          <div key={ji} style={{fontSize:11,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{job}</div>
+                        ))
+                        :<div style={{fontSize:11,color:'var(--muted)',fontStyle:'italic'}}>—</div>
+                      }
                     </div>
-                  </div>
-                  <div className="fg" style={{marginBottom:'0.45rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>{const v=e.target.value;setEditData(p=>({...p,note:v}));}}/></div>
-                  <div style={{display:'flex',gap:'0.4rem'}}>
-                    <button className="btn-p" style={{marginTop:0,flex:1}} onClick={saveEdit}>✓ Sauvegarder</button>
-                    <button className="btn-s" onClick={()=>setEditLine(null)}>Annuler</button>
-                  </div>
-                </div>
-              ):(
-                <>
-                  <div className="hist-header">
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                        {line.date}
-                        {line.type==='confirm'?<span className="badge badge-conf">Confirmé</span>:
-                          line.heures>0?<span className="badge badge-in">{hToQuart(line.heures)}</span>:<span className="badge badge-pend">En cours</span>}
-                        {line.ot>0&&<span className="badge" style={{background:'rgba(210,153,34,0.15)',color:'var(--warning)'}}>+{hToQuart(line.ot)} OT</span>}
+                    {/* Heures + Dépl */}
+                    <div style={{flexShrink:0,textAlign:'right'}}>
+                      <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',color:isOT?'var(--warning)':'var(--success)'}}>
+                        {j.ouvert?'⏳':hToQuart(h)}
                       </div>
-                      {line.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.heure}{line.heureOut?' → '+line.heureOut:''}</div>}
-                      {line.job&&<div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--muted)',marginTop:2}}>{line.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:line.jobColor}}></div>}{line.job}</div>}
-                      {line.coequipiers&&line.coequipiers.length>0&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{'👥 '+line.coequipiers.join(', ')}</div>}
-                      {line.note&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,fontStyle:'italic'}}>"{line.note}"</div>}
-                    </div>
-                    <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:3,flexShrink:0}}>
-                      {line.deplacement>0&&<span style={{fontSize:10,color:'var(--warning)'}}>{'🚗'+line.deplacement+'m'}</span>}
-                      {line.fichiersURL&&line.fichiersURL.length>0&&(
-                        <div style={{display:'flex',flexDirection:'column',gap:2,alignItems:'flex-end'}}>
-                          {line.fichiersURL.map((u,fi)=>{
-                            const lbl=u.includes('/AP_')||u.includes('%2FAP_')?'📋 AP':u.includes('/OT_')||u.includes('%2FOT_')?'🔧 OT':'📎';
-                            return(
-                              <div key={fi} style={{display:'flex',alignItems:'center',gap:3}}>
-                                <a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:10}}>{lbl}</a>
-                                <button style={{background:'none',border:'none',color:'var(--danger)',cursor:'pointer',fontSize:10,padding:'0 2px',touchAction:'manipulation'}}
-                                  onClick={async()=>{
-                                    if(!confirm('Supprimer ce fichier?'))return;
-                                    const newUrls=(line.fichiersURL||[]).filter((_,j)=>j!==fi);
-                                    const row=line.inRow||line.outRow;
-                                    if(row)await updatePointageFichiers(sid,row,newUrls);
-                                    notify('Fichier supprimé','success');load();
-                                  }}>✕</button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
+                      {j.deplacement>0&&<div style={{fontSize:9,color:'var(--muted)'}}>🚗 {j.deplacement}m</div>}
+                      {isOT&&<div style={{fontSize:9,color:'var(--warning)',fontWeight:600}}>+{hToQuart(h-8)} OT</div>}
                     </div>
                   </div>
-                  <div className="hist-actions">
-                    <button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>startEdit(line)}>✏️ Modifier</button>
-                    <button className="btn-sm btn-deny" onClick={()=>handleDelete(line)}>🗑 Supprimer</button>
-                  </div>
-                  {/* Ajouter fichier à cette entrée */}
-                  <div style={{marginTop:'0.4rem'}}>
-                    <DriveUploader
-                      empName={emp.nom}
-                      jobName={line.job||'punch'}
-                      calendarIds={calendarIds}
-                      calEventTitle={line.job||null}
-                      folders={folders||[]}
-                      onUploaded={async raw=>{
-                        const url=raw.split('|')[0];
-                        const urls=[...(line.fichiersURL||[]),url];
-                        const row=line.inRow||line.outRow;
-                        if(row)await updatePointageFichiers(sid,row,urls);
-                        await addMessage(sid,emp.nom,'Fichier ajouté',line.date+' — '+(line.job||'—'));
-                        notify('📎 Fichier ajouté!','success');load();
-                      }}
-                      notify={notify}
-                    />
-                  </div>
-                </>
-              )}
+                );
+              })}
+              {/* Total semaine */}
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.5rem 0.75rem',background:'var(--bg4)',borderTop:'2px solid var(--border)'}}>
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:600}}>TOTAL {tab==='today'?"AUJOURD'HUI":'SEMAINE'}</span>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  {totalDep>0&&<span style={{fontSize:10,color:'var(--muted)'}}>🚗 {totalDep}m</span>}
+                  {totalOT>0&&<span style={{fontSize:11,color:'var(--warning)',fontWeight:700}}>+{hToQuart(totalOT)} OT</span>}
+                  <span style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem',color:'var(--success)'}}>{hToQuart(totalH)}</span>
+                </div>
+              </div>
             </div>
-          ))}
-          {lines.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'2rem',fontSize:13}}>Aucune entrée pour cette période</div>}
-        </div>
+          )}
+
+          {/* ── VUE MOIS / TOUT — liste détaillée ── */}
+          {(tab==='mois'||tab==='all')&&(
+            <div style={{marginBottom:'0.6rem'}}>
+              {allLines.map((line,i)=>(
+                <div key={i} className={'hist-line'+(line.ot>0?' has-ot':'')} style={{borderLeftColor:line.jobColor||'var(--border2)'}}>
+                  {editLine===line?(
+                    <div className="hist-edit-form">
+                      <div className="fg" style={{marginBottom:'0.45rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
+                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.45rem',marginBottom:'0.45rem'}}>
+                        <div className="fg" style={{marginBottom:0}}><label>Heures</label><input type="number" step="0.25" value={editData.heures} onChange={e=>setEditData(p=>({...p,heures:parseFloat(e.target.value)||0}))}/></div>
+                        <div className="fg" style={{marginBottom:0}}><label>Dépl. (min)</label><input type="number" value={editData.deplacement} onChange={e=>setEditData(p=>({...p,deplacement:parseInt(e.target.value)||0}))}/></div>
+                      </div>
+                      <div className="fg" style={{marginBottom:'0.45rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
+                      <div style={{display:'flex',gap:'0.4rem'}}>
+                        <button className="btn-p" style={{marginTop:0,flex:1}} onClick={saveEdit}>✓ Sauvegarder</button>
+                        <button className="btn-s" onClick={()=>setEditLine(null)}>Annuler</button>
+                      </div>
+                    </div>
+                  ):(
+                    <>
+                      <div className="hist-header">
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                            {line.date}
+                            {line.type==='confirm'?<span className="badge badge-conf">Confirmé</span>:
+                              line.heures>0?<span className="badge badge-in">{hToQuart(line.heures)}</span>:<span className="badge badge-pend">En cours</span>}
+                            {line.ot>0&&<span className="badge" style={{background:'rgba(210,153,34,0.15)',color:'var(--warning)'}}>+{hToQuart(line.ot)} OT</span>}
+                          </div>
+                          {line.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.heure}{line.heureOut?' → '+line.heureOut:''}</div>}
+                          {line.job&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.job}</div>}
+                          {line.note&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,fontStyle:'italic'}}>"{line.note}"</div>}
+                        </div>
+                        <div style={{flexShrink:0}}>
+                          {line.deplacement>0&&<span style={{fontSize:10,color:'var(--warning)'}}>🚗{line.deplacement}m</span>}
+                        </div>
+                      </div>
+                      <div className="hist-actions">
+                        <button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>{setEditLine(line);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});}}>✏️ Modifier</button>
+                        <button className="btn-sm btn-deny" onClick={()=>handleDelete(line)}>🗑 Supprimer</button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+              {allLines.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:12}}>Aucune entrée.</div>}
+            </div>
+          )}
+
+          {/* ── BOUTON CONFIRMER MA SEMAINE ── */}
+          {tab==='semaine'&&(
+            <button className="btn-p" style={{marginTop:'0.5rem',background:'linear-gradient(135deg,#1a237e,#283593)'}}
+              disabled={sending||joursView.length===0}
+              onClick={confirmerSemaine}>
+              {sending?'⏳ Envoi...':`📧 Confirmer ma semaine ${curWeek}`}
+            </button>
+          )}
+        </>
       )}
     </div>
   );
@@ -2249,16 +2357,17 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
     const data={...punchDataRef.current,job:selJob||'',jobColor:selJobColor||''};
     try{
       if(type==='confirm'){
-        // Utiliser la date de l'événement agenda si disponible
         const confirmedData={
           ...data,
-          // Ajouter heureDebut/heureFin dans la note pour référence
           note:(data.note||'')+(data.heureDebut&&data.heureFin?' ['+data.heureDebut+'→'+data.heureFin+']':''),
-          // Utiliser la date de la job si fournie (sinon aujourd'hui via addPointage)
           jobDate:data.jobDate||null,
         };
         await addPointage(sid,emp,'confirm',confirmedData);
-        // Enregistrer aussi pour tous les coéquipiers
+        // Enregistrer heures de banque prises
+        if(data.heuresBanquePrises&&data.heuresBanquePrises>0){
+          await addHeuresBanque(sid,emp.nom,getWeek(new Date()),-data.heuresBanquePrises);
+          notify('🏦 -'+hToQuart(data.heuresBanquePrises)+' de la banque','success');
+        }
         if(data.coeqHeures){
           for(const [nom,h] of Object.entries(data.coeqHeures)){
             const ce=emps.find(e=>e.nom===nom);
