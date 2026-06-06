@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v130';
+const APP_VERSION='v131';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -270,13 +270,19 @@ function combinePts(pts){
     if(processed.has(p.row))continue;
     if(p.type==='confirm'){
       processed.add(p.row);
-      lines.push({date:p.date,type:'confirm',job:p.job,jobColor:p.jobColor,heures:p.heures,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:null,semaine:p.semaine,nom:p.nom,ot:Math.max(0,Math.round((p.heures-8)*10)/10)});
+      const h=Math.round((p.heures||0)*4)/4;
+      const ot=Math.max(0,Math.round((h-8)*4)/4);
+      lines.push({date:p.date,type:'confirm',job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:null,semaine:p.semaine,nom:p.nom,ot});
     }else if(p.type==='in'){
       processed.add(p.row);
       const matchOut=sorted.find(o=>o.type==='out'&&o.nom===p.nom&&!processed.has(o.row)&&new Date(o.datetime)>new Date(p.datetime));
-      let h=null,ot=0;
-      if(matchOut){processed.add(matchOut.row);h=Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/360000)/10;ot=Math.max(0,Math.round((h-8)*10)/10);}
-      lines.push({date:p.date,type:'pair',heure:p.heure,heureOut:matchOut?matchOut.heure:'',job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:matchOut?matchOut.row:null,semaine:p.semaine,nom:p.nom,ot});
+      let h=0,ot=0;
+      if(matchOut){
+        processed.add(matchOut.row);
+        h=Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/3600000*4)/4;
+        ot=Math.max(0,Math.round((h-8)*4)/4);
+      }
+      lines.push({date:p.date,type:'pair',heure:p.heure,heureOut:matchOut?matchOut.heure:'',job:matchOut?matchOut.job:p.job,jobColor:matchOut?matchOut.jobColor:p.jobColor,heures:matchOut?h:null,deplacement:matchOut?matchOut.deplacement:p.deplacement,note:matchOut?matchOut.note:p.note,fichiersURL:matchOut?matchOut.fichiersURL:p.fichiersURL,coequipiers:matchOut?matchOut.coequipiers:p.coequipiers,inRow:p.row,outRow:matchOut?matchOut.row:null,semaine:p.semaine,nom:p.nom,ot});
     }
   }
   return lines.sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -1868,9 +1874,10 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   }
 
   const lines=combinePts(getFiltered());
-  const totalH=calcH(getFiltered());
-  const totalDep=Math.round(getFiltered().filter(p=>p.type==='in'||p.type==='confirm').reduce((s,p)=>s+(p.deplacement||0),0));
-  const totalOT=Math.round(lines.reduce((s,l)=>s+(l.ot||0),0)*10)/10;
+  // Calculer correctement depuis les lignes combinées (pas les pts bruts)
+  const totalH=Math.round(lines.reduce((s,l)=>s+(l.heures||0),0)*4)/4;
+  const totalDep=Math.round(lines.reduce((s,l)=>s+(l.deplacement||0),0));
+  const totalOT=Math.round(Math.max(0,lines.reduce((s,l)=>s+(l.ot||0),0))*4)/4;
 
   async function startEdit(line){
     setEditLine(line);
@@ -1918,8 +1925,8 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
       </div>
       <div className="stats-grid" style={{marginBottom:'1rem'}}>
         <div className="stat-box"><div className="val">{hToQuart(totalH)}</div><div className="lbl">Heures</div></div>
-        <div className="stat-box"><div className="val" style={{color:'var(--warning)'}}>{totalOT}h</div><div className="lbl">Overtime</div></div>
-        <div className="stat-box"><div className="val">{totalDep}m</div><div className="lbl">Dépl.</div></div>
+        <div className="stat-box"><div className="val" style={{color:'var(--warning)'}}>{totalOT>0?hToQuart(totalOT):'—'}</div><div className="lbl">Overtime</div></div>
+        <div className="stat-box"><div className="val">{totalDep>0?totalDep+'m':'—'}</div><div className="lbl">Dépl.</div></div>
         <div className="stat-box"><div className="val">{lines.length}</div><div className="lbl">Journées</div></div>
       </div>
       <div className="tabs">
@@ -1957,8 +1964,8 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                       <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                         {line.date}
                         {line.type==='confirm'?<span className="badge badge-conf">Confirmé</span>:
-                          line.heures!==null?<span className="badge badge-in">{line.heures}h</span>:<span className="badge badge-pend">En cours</span>}
-                        {line.ot>0&&<span className="badge" style={{background:'rgba(210,153,34,0.15)',color:'var(--warning)'}}>+{line.ot}h OT</span>}
+                          line.heures>0?<span className="badge badge-in">{hToQuart(line.heures)}</span>:<span className="badge badge-pend">En cours</span>}
+                        {line.ot>0&&<span className="badge" style={{background:'rgba(210,153,34,0.15)',color:'var(--warning)'}}>+{hToQuart(line.ot)} OT</span>}
                       </div>
                       {line.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.heure}{line.heureOut?' → '+line.heureOut:''}</div>}
                       {line.job&&<div style={{display:'flex',alignItems:'center',gap:5,fontSize:11,color:'var(--muted)',marginTop:2}}>{line.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:line.jobColor}}></div>}{line.job}</div>}
