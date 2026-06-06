@@ -124,6 +124,7 @@ button{font-family:var(--font-body)}
 .punch-result.ok{background:rgba(63,185,80,0.07);border:1px solid rgba(63,185,80,0.3)}
 .punch-result.err{background:rgba(248,81,73,0.07);border:1px solid rgba(248,81,73,0.25)}
 @keyframes popIn{from{transform:scale(0.92);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8);}50%{opacity:1;transform:scale(1.2);}}
 .pbadge{display:inline-block;padding:0.25rem 0.75rem;border-radius:20px;font-size:11px;font-weight:700;margin:0.28rem 0.15rem}
 .pbadge.in{background:rgba(63,185,80,0.18);color:var(--success)}
 .pbadge.out{background:rgba(248,81,73,0.14);color:var(--danger)}
@@ -216,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v128';
+const APP_VERSION='v129';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1105,26 +1106,57 @@ function snapToQuart(mins){return Math.round(mins/15)*15;}
 // Formater heures en quarts (ex: 7.75 → "7h45", 8.5 → "8h30")
 function hToQuart(h){const totalMins=Math.round(h*60/15)*15;return minsToQuart(totalMins);}
 
-// Picker heure avec quarts d'heure
+// Picker heure — roulette pour les heures + ±15min pour les minutes
 function TimePicker({label,value,onChange}){
   function timeToMins(t){const[h,m]=(t||'00:00').split(':').map(Number);return h*60+m;}
   function minsToTime(m){return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');}
-  const mins=timeToMins(value);
-  function add(delta){const snapped=snapToQuart(mins+delta);const clamped=Math.max(0,Math.min(23*60+45,snapped));onChange(minsToTime(clamped));}
-  const h=Math.floor(mins/60);const m=mins%60;
+  const totalMins=timeToMins(value);
+  const h=Math.floor(totalMins/60);
+  const m=totalMins%60;
+
+  function setH(newH){
+    const clamped=((newH%24)+24)%24;
+    onChange(minsToTime(clamped*60+m));
+  }
+  function addMins(delta){
+    const newM=((m+delta)%60+60)%60;
+    onChange(minsToTime(h*60+newM));
+  }
+
+  // Roulette scroll sur les heures
+  function handleWheelH(e){
+    e.preventDefault();
+    setH(h+(e.deltaY>0?-1:1));
+  }
+
   return(
     <div style={{textAlign:'center'}}>
       <div style={{fontSize:10,color:'var(--muted)',marginBottom:6}}>{label}</div>
-      <div style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:10,padding:'0.3rem',display:'inline-flex',flexDirection:'column',alignItems:'center',gap:2,minWidth:80}}>
-        <button className="dur-btn" style={{width:36,height:30,fontSize:16,touchAction:'manipulation'}} onClick={()=>add(15)}>+</button>
-        <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.4rem',color:'var(--text)',lineHeight:1.1,letterSpacing:'-0.5px'}}>
-          {String(h).padStart(2,'0')}<span style={{color:'var(--muted)',fontSize:'1rem'}}>h</span>{String(m).padStart(2,'0')}
+      <div style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:10,padding:'0.3rem 0.4rem',display:'inline-flex',alignItems:'center',gap:'0.3rem'}}>
+        {/* Heures — roulette */}
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+          <button className="dur-btn" style={{width:32,height:26,fontSize:14,touchAction:'manipulation'}} onClick={()=>setH(h+1)}>+</button>
+          <div onWheel={handleWheelH}
+            style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.5rem',color:'var(--text)',lineHeight:1,minWidth:36,textAlign:'center',cursor:'ns-resize',userSelect:'none'}}
+            title="Faire défiler pour changer l'heure">
+            {String(h).padStart(2,'0')}
+          </div>
+          <button className="dur-btn" style={{width:32,height:26,fontSize:14,touchAction:'manipulation'}} onClick={()=>setH(h-1)}>−</button>
         </div>
-        <button className="dur-btn" style={{width:36,height:30,fontSize:16,touchAction:'manipulation'}} onClick={()=>add(-15)}>−</button>
+        <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.4rem',color:'var(--muted)',paddingBottom:2}}>h</div>
+        {/* Minutes — ±15 seulement */}
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+          <button className="dur-btn" style={{width:32,height:26,fontSize:14,touchAction:'manipulation'}} onClick={()=>addMins(15)}>+</button>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.5rem',color:'var(--text)',lineHeight:1,minWidth:36,textAlign:'center'}}>
+            {String(m).padStart(2,'0')}
+          </div>
+          <button className="dur-btn" style={{width:32,height:26,fontSize:14,touchAction:'manipulation'}} onClick={()=>addMins(-15)}>−</button>
+        </div>
       </div>
     </div>
   );
 }
+
 
 function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,onConfirm,onBack,notify,folders,calendarIds}){
   const [heureDebut,setHeureDebut]=useState('07:00');
@@ -3119,6 +3151,7 @@ function App(){
     }catch{return DEFAULT_CFG;}
   });
   const [showCfg,setShowCfg]=useState(false);
+  const [redirectLoading,setRedirectLoading]=useState(!!sessionStorage.getItem('_oauth_token'));
   const returningFromRedirect=!!sessionStorage.getItem('_oauth_token');
   const [authed,setAuthed]=useState(false);
   const [userEmail,setUserEmail]=useState('');
@@ -3199,7 +3232,14 @@ function App(){
   }
 
   useEffect(()=>{if(cfg)loadLibs(cfg);},[cfg]);
-  useEffect(()=>{if(authed&&cfg)getEmployees(cfg.spreadsheetId).then(setEmps);},[refreshKey,authed]);
+  useEffect(()=>{
+    if(authed&&cfg){
+      getEmployees(cfg.spreadsheetId).then(e=>{
+        setEmps(e);
+        setRedirectLoading(false); // employees loaded — safe to show app
+      });
+    }
+  },[refreshKey,authed]);
 
   // Refresh OAuth token — toutes les 45 min ET quand l'app revient au premier plan
   useEffect(()=>{
@@ -3301,6 +3341,22 @@ function App(){
         )}
         <div style={{fontSize:9,color:'var(--muted)',fontFamily:'monospace',marginTop:'auto',paddingTop:'0.5rem'}}>{APP_VERSION}</div>
       </div>
+
+      {/* Écran de chargement complet pendant le redirect OAuth */}
+      {redirectLoading&&(
+        <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:9999,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'1.5rem'}}>
+          <img src="logo.png" alt="" style={{width:120,opacity:0.9}} onError={e=>e.target.style.display='none'}/>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.2rem',marginBottom:'0.5rem'}}>Connexion en cours...</div>
+            <div style={{color:'var(--muted)',fontSize:13}}>Veuillez patienter</div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            {[0,1,2].map(i=>(
+              <div key={i} style={{width:8,height:8,borderRadius:'50%',background:'var(--accent)',animation:'pulse 1.2s ease-in-out '+(i*0.2)+'s infinite'}}/>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Minimal topbar */}
       <div className="topbar">
