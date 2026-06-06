@@ -216,7 +216,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v125';
+const APP_VERSION='v127';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -479,9 +479,25 @@ async function saveProjetsToSheets(sid,projData,addrOverrides){
     }
   }catch(e){console.error('saveProjets:',e);}
 }
+async function withTokenCheck(fn){
+  try{
+    return await fn();
+  }catch(e){
+    // Si erreur 401, token expiré
+    if(e?.status===401||e?.result?.error?.code===401){
+      console.warn('API 401 — token expiré');
+      if(tokenClient)tokenClient.requestAccessToken({prompt:''});
+      // Réessayer après 2 secondes
+      await new Promise(r=>setTimeout(r,2000));
+      return await fn();
+    }
+    throw e;
+  }
+}
+
 async function getEmployees(sid){
   try{
-    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:H'});
+    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:H'}));
     return (res.result.values||[]).map((r,i)=>({
       nom:r[0]||'',pin:r[1]||'',statut:r[2]||'out',heuresBanque:parseFloat(r[3])||0,
       couleur:r[4]||EMP_COLORS[i%EMP_COLORS.length],code:r[5]||(r[0]||'??').substring(0,2).toUpperCase(),
@@ -513,14 +529,17 @@ async function addPointage(sid,emp,type,data){
   const now=new Date();
   let dt=now;
   if(data.customTime){
-    // Build date using local time parts to avoid UTC timezone shift
     const parts=data.customTime.split(':');
     dt=new Date(now.getFullYear(),now.getMonth(),now.getDate(),parseInt(parts[0])||0,parseInt(parts[1])||0,0,0);
   }
-  // Format date as YYYY-MM-DD in local time
+  // Pour les confirmations, utiliser la date de la job si fournie
+  if(type==='confirm'&&data.jobDate){
+    const parts=data.jobDate.split('-');
+    dt=new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]),12,0,0,0);
+  }
   const dateStr=dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
-  const heureStr=String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
-  await gapi.client.sheets.spreadsheets.values.append({
+  const heureStr=data.heureDebut||String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');
+  await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.append({
     spreadsheetId:sid,range:'Pointages!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
     resource:{values:[[
       emp.nom,type,dt.toISOString(),
@@ -532,10 +551,10 @@ async function addPointage(sid,emp,type,data){
       (data.fichiersURL||[]).join(' | '),
       (data.coequipiers||[]).join(', ')
     ]]}
-  });
+  }));
 }
 async function getPointages(sid,filter){
-  const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Pointages!A2:N'});
+  const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Pointages!A2:N'}));
   let rows=(res.result.values||[]).map((r,i)=>({
     nom:r[0],type:r[1],datetime:r[2],date:r[3],heure:r[4],semaine:r[5],mois:r[6],
     job:r[7]||'',jobColor:r[8]||'',deplacement:parseFloat(r[9])||0,
@@ -1112,44 +1131,54 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
   );
 }
 
-function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,isOut,onConfirm,onBack,notify,folders,calendarIds}){
-  const [heures,setHeures]=useState(0);const [quarts,setQuarts]=useState(0);const [deplacement,setDeplacement]=useState(0);
-  const [note,setNote]=useState('');const [fichiersURL,setFichiersURL]=useState([]);const [coequipiers,setCoequipiers]=useState([]);
+function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,onConfirm,onBack,notify,folders,calendarIds}){
+  // Heure début et fin au lieu d'un total
+  const [heureDebut,setHeureDebut]=useState('07:00');
+  const [heureFin,setHeureFin]=useState('15:30');
+  const [deplacement,setDeplacement]=useState(0);
+  const [note,setNote]=useState('');
+  const [fichiersURL,setFichiersURL]=useState([]);
+  const [coequipiers,setCoequipiers]=useState([]);
   const [coeqHeures,setCoeqHeures]=useState({});
-  const travelOpts=[0,15,30,45,60,90];const totalH=heures+quarts*0.25;const otH=Math.max(0,Math.round((totalH-8)*10)/10);
+
+  // Calculer les heures totales depuis début/fin
+  function timeToMin(t){const [h,m]=(t||'00:00').split(':').map(Number);return h*60+(m||0);}
+  const totalMin=Math.max(0,timeToMin(heureFin)-timeToMin(heureDebut));
+  const totalH=Math.round(totalMin/60*100)/100;
+  const otH=Math.max(0,Math.round((totalH-8)*10)/10);
+
+  const travelOpts=[0,15,30,45,60,90];
   const teammates=(allEmps||[]).filter(e=>e.nom!==emp.nom);
   function toggleCoeq(nom){setCoequipiers(prev=>{const next=prev.includes(nom)?prev.filter(n=>n!==nom):[...prev,nom];if(!prev.includes(nom))setCoeqHeures(p=>({...p,[nom]:totalH}));return next;});}
   useEffect(()=>{setCoeqHeures(p=>{const u={...p};coequipiers.forEach(n=>{if(u[n]===undefined)u[n]=totalH;});return u;});},[totalH]);
-  function confirm(){const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch});}
+
+  function confirm(){
+    const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));
+    onConfirm({heures:totalH,heureDebut,heureFin,jobDate,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch});
+  }
   const coeqEmps=teammates.filter(t=>coequipiers.includes(t.nom));
+
   return(
     <div className="dur-wrap">
-      {jobName&&(<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.45rem 0.7rem',marginBottom:'0.6rem'}}><div style={{width:10,height:10,borderRadius:'50%',background:jobColor||'var(--accent)',flexShrink:0}}></div><div style={{fontSize:13,fontWeight:600}}>{jobName}</div></div>)}
+      {jobName&&(<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.45rem 0.7rem',marginBottom:'0.6rem'}}><div style={{width:10,height:10,borderRadius:'50%',background:jobColor||'var(--accent)',flexShrink:0}}></div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{jobName}</div>{jobDate&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>📅 {new Date(jobDate+'T12:00:00').toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}</div>}</div></div>)}
       <div className="dur-section">
-        <div className="csec">Heures de la journée</div>
-        <div style={{display:'flex',gap:'0.65rem',alignItems:'center',justifyContent:'center',flexWrap:'wrap'}}>
+        <div className="csec">Heures de travail</div>
+        <div style={{display:'flex',gap:'1rem',alignItems:'center',justifyContent:'center'}}>
           <div style={{textAlign:'center'}}>
-            <div style={{fontSize:10,color:'var(--muted)',marginBottom:4}}>Heures</div>
-            <div className="dur-row" style={{flexDirection:'column',gap:4}}>
-              <button className="dur-btn" onClick={()=>setHeures(h=>Math.min(24,h+1))}>+</button>
-              <div className="dur-val">{heures}</div>
-              <button className="dur-btn" onClick={()=>setHeures(h=>Math.max(0,h-1))}>−</button>
-            </div>
+            <div style={{fontSize:10,color:'var(--muted)',marginBottom:6}}>Début</div>
+            <input type="time" value={heureDebut} onChange={e=>setHeureDebut(e.target.value)}
+              style={{fontSize:'1.3rem',fontWeight:700,fontFamily:'var(--font-head)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'0.4rem 0.6rem',color:'var(--text)',width:110,textAlign:'center'}}/>
           </div>
-          <div style={{color:'var(--muted)',fontSize:'1.4rem',fontWeight:200,paddingTop:14}}>:</div>
+          <div style={{fontSize:'1.4rem',color:'var(--muted)',fontWeight:200,paddingTop:18}}>→</div>
           <div style={{textAlign:'center'}}>
-            <div style={{fontSize:10,color:'var(--muted)',marginBottom:4}}>Minutes</div>
-            <div className="dur-row" style={{flexDirection:'column',gap:4}}>
-              <button className="dur-btn" onClick={()=>setQuarts(q=>Math.min(3,q+1))}>+</button>
-              <div className="dur-val">{quarts*15}</div>
-              <button className="dur-btn" onClick={()=>setQuarts(q=>Math.max(0,q-1))}>−</button>
-            </div>
+            <div style={{fontSize:10,color:'var(--muted)',marginBottom:6}}>Fin</div>
+            <input type="time" value={heureFin} onChange={e=>setHeureFin(e.target.value)}
+              style={{fontSize:'1.3rem',fontWeight:700,fontFamily:'var(--font-head)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:8,padding:'0.4rem 0.6rem',color:'var(--text)',width:110,textAlign:'center'}}/>
           </div>
-          <div style={{textAlign:'center',paddingTop:14,minWidth:60}}>
-            <div style={{fontSize:10,color:'var(--muted)'}}>Total</div>
-            <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',color:'var(--success)'}}>{totalH}h</div>
-            {otH>0&&<div style={{fontSize:9,color:'var(--warning)'}}>+{otH}h OT</div>}
-          </div>
+        </div>
+        <div style={{textAlign:'center',marginTop:'0.5rem',fontSize:12,color:'var(--muted)'}}>
+          Total: <strong style={{color:totalH>0?'var(--success)':'var(--muted)'}}>{totalH.toFixed(2)}h</strong>
+          {otH>0&&<span style={{color:'var(--warning)',marginLeft:8}}>({otH.toFixed(2)}h sup.)</span>}
         </div>
       </div>
       <div className="dur-section"><div className="csec">Déplacement (minutes)</div><div className="travel-opts">{travelOpts.map(v=>(<div key={v} className={'travel-opt'+(deplacement===v?' sel':'')} onClick={()=>setDeplacement(v)}><div className="tv">{v}</div><div className="tl">min</div></div>))}</div></div>
@@ -2152,6 +2181,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
   const [mode,setMode]=useState('in');
   const [selJob,setSelJob]=useState('');
   const [selJobColor,setSelJobColor]=useState('');
+  const [selJobDate,setSelJobDate]=useState('');
   const [jobs,setJobs]=useState([]);
   const [allJobs,setAllJobs]=useState([]);
   const [result,setResult]=useState(null);
@@ -2212,11 +2242,25 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
     const data={...punchDataRef.current,job:selJob||'',jobColor:selJobColor||''};
     try{
       if(type==='confirm'){
-        await addPointage(sid,emp,'confirm',data);
+        // Utiliser la date de l'événement agenda si disponible
+        const confirmedData={
+          ...data,
+          // Ajouter heureDebut/heureFin dans la note pour référence
+          note:(data.note||'')+(data.heureDebut&&data.heureFin?' ['+data.heureDebut+'→'+data.heureFin+']':''),
+          // Utiliser la date de la job si fournie (sinon aujourd'hui via addPointage)
+          jobDate:data.jobDate||null,
+        };
+        await addPointage(sid,emp,'confirm',confirmedData);
+        // Enregistrer aussi pour tous les coéquipiers
         if(data.coeqHeures){
           for(const [nom,h] of Object.entries(data.coeqHeures)){
             const ce=emps.find(e=>e.nom===nom);
-            if(ce&&h>0)await addPointage(sid,ce,'confirm',{job:data.job,jobColor:data.jobColor,heures:h,deplacement:data.deplacement||0,note:(data.note||'')+'[via '+emp.nom+']',fichiersURL:data.fichiersURL||[],coequipiers:[emp.nom]});
+            if(ce&&h>0)await addPointage(sid,ce,'confirm',{
+              ...confirmedData,
+              heures:h,
+              note:(data.note||'')+(data.heureDebut&&data.heureFin?' ['+data.heureDebut+'→'+data.heureFin+']':'')+' [via '+emp.nom+']',
+              coequipiers:[emp.nom]
+            });
           }
         }
       }else{
@@ -2382,6 +2426,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       <TimeHeader/>
       <DurationForm emp={selEmp} allEmps={emps} jobName={selJob} jobColor={selJobColor}
         jobLocation={jobs.find(j=>j.title===selJob)?.location||''}
+        jobDate={selJobDate}
         isOut={false}
         onConfirm={d=>{punchDataRef.current=d;setStep('pin-confirm');}}
         onBack={goBack} notify={notify} folders={folders} calendarIds={calendarIds}/>
@@ -2394,6 +2439,8 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       <TimeHeader/>
       <JobSelector jobs={jobs} emp={selEmp}
         onSelect={(t,c)=>{setSelJob(t);setSelJobColor(c);
+          const jDate=(jobs.find(j=>j.title===t)?.start||'').slice(0,10);
+          setSelJobDate(jDate);
           if(mode==='out')setStep('duration-out');
           else if(mode==='confirm')setStep('confirm');
           else setStep('punch-in');
@@ -3167,15 +3214,48 @@ function App(){
   useEffect(()=>{if(cfg)loadLibs(cfg);},[cfg]);
   useEffect(()=>{if(authed&&cfg)getEmployees(cfg.spreadsheetId).then(setEmps);},[refreshKey,authed]);
 
-  // Refresh OAuth token silently every 45 min to avoid timeout
+  // Refresh OAuth token — toutes les 45 min ET quand l'app revient au premier plan
   useEffect(()=>{
     if(!authed||!tokenClient)return;
-    const interval=setInterval(()=>{
+
+    function refreshToken(){
       try{
         tokenClient.requestAccessToken({prompt:''});
+        console.log('Token refreshed silently');
       }catch(e){console.log('Token refresh skipped:',e);}
-    },45*60*1000);
-    return()=>clearInterval(interval);
+    }
+
+    // Timer régulier toutes les 45 min
+    const interval=setInterval(refreshToken, 45*60*1000);
+
+    // Vérifier quand l'app revient au premier plan (tab visible, app ouverte)
+    function onVisible(){
+      if(document.visibilityState==='visible'){
+        const token=gapi.client.getToken();
+        // Si plus de token ou token qui date de plus de 50 min, rafraîchir
+        if(!token||!token.access_token){
+          refreshToken();
+        }
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible);
+
+    return()=>{clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);};
+  },[authed]);
+
+  // Intercepter les erreurs 401 des appels API — reforcer auth si nécessaire
+  useEffect(()=>{
+    if(!authed)return;
+    const origFetch=window.fetch;
+    window.fetch=async function(...args){
+      const res=await origFetch(...args);
+      if(res.status===401){
+        console.warn('401 detected — token expired, refreshing...');
+        if(tokenClient)tokenClient.requestAccessToken({prompt:''});
+      }
+      return res;
+    };
+    return()=>{window.fetch=origFetch;};
   },[authed]);
 
   function handleAuth(){
