@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v133';
+const APP_VERSION='v134';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2093,7 +2093,8 @@ Envoyé depuis PunchPro — Saran Électrique`;
 
                     {/* Détails expandés */}
                     {isExpanded&&(
-                      <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)'}}>
+                      <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)'}}
+                        onClick={e=>e.stopPropagation()}>
                         {dayLines.map((line,li)=>(
                           <div key={li} style={{padding:'0.5rem 0.75rem 0.5rem 2rem',borderBottom:li<dayLines.length-1?'1px solid var(--border)':'none'}}>
                             {editLine===line?(
@@ -2118,29 +2119,33 @@ Envoyé depuis PunchPro — Saran Électrique`;
                                     <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{line.job||'—'}</span>
                                     {line.heures>0&&<span style={{fontSize:11,color:'var(--success)',fontWeight:700,marginLeft:'auto'}}>{hToQuart(line.heures)}</span>}
                                   </div>
-                                  {/* Horaire */}
                                   {(line.heure||line.heureOut)&&<div style={{fontSize:10,color:'var(--muted)'}}>🕐 {line.heure||'—'}{line.heureOut?' → '+line.heureOut:''}</div>}
-                                  {/* Déplacement */}
                                   {line.deplacement>0&&<div style={{fontSize:10,color:'var(--muted)'}}>🚗 {line.deplacement} min</div>}
-                                  {/* Coéquipiers */}
                                   {line.coequipiers&&line.coequipiers.length>0&&<div style={{fontSize:10,color:'var(--muted)'}}>👥 {line.coequipiers.join(', ')}</div>}
-                                  {/* Note */}
                                   {line.note&&<div style={{fontSize:10,color:'var(--muted)',fontStyle:'italic',marginTop:2}}>"{line.note}"</div>}
-                                  {/* Fichiers */}
+                                  {/* Fichiers avec nom complet */}
                                   {line.fichiersURL&&line.fichiersURL.length>0&&(
-                                    <div style={{marginTop:3,display:'flex',flexWrap:'wrap',gap:4}}>
-                                      {line.fichiersURL.map((u,fi)=>{
-                                        const url=u.split('|')[0];
-                                        const nom=u.includes('|')?u.split('|')[1]:null;
-                                        const lbl=nom?.startsWith('AP_')?'📋 '+nom:nom?.startsWith('OT_')?'🔧 '+nom:'📎 Fichier';
-                                        return(<a key={fi} href={url} target="_blank" rel="noreferrer" style={{fontSize:10,color:'var(--accent)',background:'rgba(47,129,247,0.1)',borderRadius:4,padding:'1px 6px',textDecoration:'none'}}>{lbl}</a>);
+                                    <div style={{marginTop:3,display:'flex',flexDirection:'column',gap:3}}>
+                                      {line.fichiersURL.map((raw,fi)=>{
+                                        const url=raw.split('|')[0];
+                                        const nom=raw.includes('|')?raw.split('|')[1]:raw.split('/').pop()||'Fichier';
+                                        const isOT=nom.startsWith('OT_');
+                                        const isAP=nom.startsWith('AP_');
+                                        const icon=isOT?'🔧':isAP?'📋':'📎';
+                                        return(
+                                          <a key={fi} href={url} target="_blank" rel="noreferrer"
+                                            style={{fontSize:10,color:'var(--accent)',background:'rgba(47,129,247,0.1)',borderRadius:4,padding:'2px 7px',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
+                                            {icon} {nom}
+                                          </a>
+                                        );
                                       })}
                                     </div>
                                   )}
                                 </div>
                                 {/* Bouton modifier */}
-                                <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.45rem'}}
-                                  onClick={e=>{e.stopPropagation();setEditLine(line);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});}}>
+                                <button className="btn-sm"
+                                  style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.45rem'}}
+                                  onClick={()=>{setEditLine(line);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});}}>
                                   ✏️
                                 </button>
                               </div>
