@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v136';
+const APP_VERSION='v137';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1877,9 +1877,9 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const [loading,setLoading]=useState(true);
   const [sending,setSending]=useState(false);
   const [editKey,setEditKey]=useState(null);
+  const [editLineData,setEditLineData]=useState(null); // ligne complète pour sauvegarde
   const [editData,setEditData]=useState({});
   const [expandedDate,setExpandedDate]=useState(null);
-  const editLineRef=useRef(null); // stores line object for saving
 
   const today=localDateStr();
   const curWeek=getWeek(new Date());
@@ -1973,16 +1973,30 @@ Total heures : ${hToQuart(totalH)}${suppStr}${banqueStr}${totalDep>0?'\nDéplace
 
 Envoyé depuis PunchPro — Saran Électrique`;
 
-      // Encoder le courriel en base64
       const to='info@saranelectrique.com';
-      const subject='Résumé semaine '+curWeek+' — '+emp.nom;
-      const message='To: '+to+'\r\nSubject: '+subject+'\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n'+body;
-      // Encoder correctement en UTF-8 avec TextEncoder (supporte les accents)
-      const encoder=new TextEncoder();
-      const bytes=encoder.encode(message);
-      let binary='';
-      bytes.forEach(b=>binary+=String.fromCharCode(b));
-      const encoded=btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      const subject='Resume semaine '+curWeek+' - '+emp.nom.replace(/[àâä]/g,'a').replace(/[éèêë]/g,'e').replace(/[îï]/g,'i').replace(/[ôö]/g,'o').replace(/[ùûü]/g,'u').replace(/[ç]/g,'c');
+      // Encoder le corps en UTF-8 correctement
+      const msgLines=[
+        'To: '+to,
+        'Subject: '+subject,
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: base64',
+        '',
+        ''
+      ];
+      const msgHeader=msgLines.join('\r\n');
+      // Encoder le body en base64 UTF-8
+      const bodyBytes=new TextEncoder().encode(body);
+      let bodyB64='';
+      const chunk=3*76; // multiple de 3 pour base64 propre
+      for(let i=0;i<bodyBytes.length;i+=chunk){
+        const slice=bodyBytes.slice(i,i+chunk);
+        let bin='';
+        slice.forEach(b=>bin+=String.fromCharCode(b));
+        bodyB64+=btoa(bin)+'\r\n';
+      }
+      const fullMsg=msgHeader+bodyB64;
+      const encoded=btoa(fullMsg).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 
       const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
         method:'POST',
@@ -2002,12 +2016,14 @@ Envoyé depuis PunchPro — Saran Électrique`;
     setSending(false);
   }
 
-  async function saveEditLine(line){
+  async function saveEditLine(){
+    const line=editLineData;
+    if(!line)return;
     try{
       if(line.inRow)await updatePointageData(sid,line.inRow,{...editData,fichiersURL:line.fichiersURL,coequipiers:line.coequipiers});
       await addMessage(sid,emp.nom,'Modification',line.date+' — '+editData.job+', '+editData.heures+'h');
       notify('✅ Modifié','success');
-      setEditKey(null);await load();
+      setEditKey(null);setEditLineData(null);await load();
     }catch(e){notify('Erreur: '+e.message,'err');}
   }
 
@@ -2113,7 +2129,7 @@ Envoyé depuis PunchPro — Saran Électrique`;
                                   </div>
                                   <div className="fg" style={{marginBottom:'0.35rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
                                   <div style={{display:'flex',gap:'0.35rem'}}>
-                                    <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={()=>saveEditLine(line)}>✓ Sauvegarder</button>
+                                    <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEditLine}>✓ Sauvegarder</button>
                                     <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditKey(null)}>Annuler</button>
                                   </div>
                                 </div>
@@ -2152,7 +2168,7 @@ Envoyé depuis PunchPro — Saran Électrique`;
                                   </div>
                                   <button className="btn-sm"
                                     style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.5rem',marginTop:2}}
-                                    onClick={()=>{setEditKey(lineKey);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});}}>
+                                    onClick={()=>{setEditKey(lineKey);setEditLineData(line);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});setExpandedDate(j.date);}}>
                                     ✏️ Modifier
                                   </button>
                                 </div>
