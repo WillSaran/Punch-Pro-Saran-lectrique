@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v135';
+const APP_VERSION='v136';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1876,9 +1876,10 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const [tab,setTab]=useState('semaine');
   const [loading,setLoading]=useState(true);
   const [sending,setSending]=useState(false);
-  const [editLine,setEditLine]=useState(null);
+  const [editKey,setEditKey]=useState(null);
   const [editData,setEditData]=useState({});
   const [expandedDate,setExpandedDate]=useState(null);
+  const editLineRef=useRef(null); // stores line object for saving
 
   const today=localDateStr();
   const curWeek=getWeek(new Date());
@@ -2001,12 +2002,12 @@ Envoyé depuis PunchPro — Saran Électrique`;
     setSending(false);
   }
 
-  async function saveEdit(){
+  async function saveEditLine(line){
     try{
-      if(editLine.inRow)await updatePointageData(sid,editLine.inRow,{...editData,fichiersURL:editLine.fichiersURL,coequipiers:editLine.coequipiers});
-      await addMessage(sid,emp.nom,'Modification',editLine.date+' — '+editData.job+', '+editData.heures+'h');
-      notify('✅ Modifié — Admin notifié','success');
-      setEditLine(null);await load();
+      if(line.inRow)await updatePointageData(sid,line.inRow,{...editData,fichiersURL:line.fichiersURL,coequipiers:line.coequipiers});
+      await addMessage(sid,emp.nom,'Modification',line.date+' — '+editData.job+', '+editData.heures+'h');
+      notify('✅ Modifié','success');
+      setEditKey(null);await load();
     }catch(e){notify('Erreur: '+e.message,'err');}
   }
 
@@ -2097,11 +2098,77 @@ Envoyé depuis PunchPro — Saran Électrique`;
 
                     {/* Détails expandés */}
                     {isExpanded&&(
+                      <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)'}}>
+                        {dayLines.map((line,li)=>{
+                          const lineKey=j.date+':'+li;
+                          const isEditing=editKey===lineKey;
+                          return(
+                            <div key={li} style={{padding:'0.5rem 0.75rem 0.5rem 2rem',borderBottom:li<dayLines.length-1?'1px solid var(--border)':'none'}}>
+                              {isEditing?(
+                                <div>
+                                  <div className="fg" style={{marginBottom:'0.35rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
+                                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.35rem',marginBottom:'0.35rem'}}>
+                                    <div className="fg" style={{marginBottom:0}}><label>Heures</label><input type="number" step="0.25" value={editData.heures} onChange={e=>setEditData(p=>({...p,heures:parseFloat(e.target.value)||0}))}/></div>
+                                    <div className="fg" style={{marginBottom:0}}><label>Dépl.(min)</label><input type="number" value={editData.deplacement} onChange={e=>setEditData(p=>({...p,deplacement:parseInt(e.target.value)||0}))}/></div>
+                                  </div>
+                                  <div className="fg" style={{marginBottom:'0.35rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
+                                  <div style={{display:'flex',gap:'0.35rem'}}>
+                                    <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={()=>saveEditLine(line)}>✓ Sauvegarder</button>
+                                    <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditKey(null)}>Annuler</button>
+                                  </div>
+                                </div>
+                              ):(
+                                <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
+                                  <div style={{flex:1}}>
+                                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+                                      {line.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:line.jobColor,flexShrink:0}}></div>}
+                                      <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{line.job||'—'}</span>
+                                      {line.heures>0&&<span style={{fontSize:11,color:'var(--success)',fontWeight:700,marginLeft:'auto'}}>{hToQuart(line.heures)}</span>}
+                                    </div>
+                                    {(line.heure||line.heureOut)&&<div style={{fontSize:10,color:'var(--muted)'}}>🕐 {line.heure||'—'}{line.heureOut?' → '+line.heureOut:''}</div>}
+                                    {line.deplacement>0&&<div style={{fontSize:10,color:'var(--muted)'}}>🚗 {line.deplacement} min</div>}
+                                    {line.coequipiers&&line.coequipiers.length>0&&<div style={{fontSize:10,color:'var(--muted)'}}>👥 {line.coequipiers.join(', ')}</div>}
+                                    {line.note&&<div style={{fontSize:10,color:'var(--muted)',fontStyle:'italic',marginTop:2}}>"{line.note}"</div>}
+                                    {line.fichiersURL&&line.fichiersURL.length>0&&(
+                                      <div style={{marginTop:3,display:'flex',flexDirection:'column',gap:3}}>
+                                        {line.fichiersURL.map((raw,fi)=>{
+                                          const url=raw.split('|')[0];
+                                          const stored=raw.includes('|')?raw.split('|')[1]:null;
+                                          // Nom stocké → afficher direct
+                                          // Sinon → "Voir fichier" cliquable
+                                          const nom=stored||'Voir fichier Drive';
+                                          const isOT=nom.startsWith('OT_');
+                                          const isAP=nom.startsWith('AP_');
+                                          const icon=isOT?'🔧':isAP?'📋':'📎';
+                                          return(
+                                            <a key={fi} href={url} target="_blank" rel="noreferrer"
+                                              style={{fontSize:10,color:'var(--accent)',background:'rgba(47,129,247,0.1)',borderRadius:4,padding:'2px 7px',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
+                                              {icon} {nom}
+                                            </a>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <button className="btn-sm"
+                                    style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.5rem',marginTop:2}}
+                                    onClick={()=>{setEditKey(lineKey);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});}}>
+                                    ✏️ Modifier
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {isExpanded&&(
                       <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)'}}
                         onClick={e=>e.stopPropagation()}>
                         {dayLines.map((line,li)=>(
                           <div key={li} style={{padding:'0.5rem 0.75rem 0.5rem 2rem',borderBottom:li<dayLines.length-1?'1px solid var(--border)':'none'}}>
-                            {editLine===line?(
+                            {editKey===("mois:"+i)?(
                               <div style={{paddingBottom:'0.25rem'}}>
                                 <div className="fg" style={{marginBottom:'0.35rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
                                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.35rem',marginBottom:'0.35rem'}}>
@@ -2132,7 +2199,16 @@ Envoyé depuis PunchPro — Saran Électrique`;
                                     <div style={{marginTop:3,display:'flex',flexDirection:'column',gap:3}}>
                                       {line.fichiersURL.map((raw,fi)=>{
                                         const url=raw.split('|')[0];
-                                        const nom=raw.includes('|')?raw.split('|')[1]:raw.split('/').pop()||'Fichier';
+                                        const nomRaw=raw.includes('|')?raw.split('|')[1]:null;
+                                        // Extraire le nom depuis l'URL Drive si pas de nom stocké
+                                        let nom=nomRaw;
+                                        if(!nom){
+                                          const url2=raw.split('|')[0];
+                                          // Essayer d'extraire depuis le nom de fichier dans l'URL
+                                          const urlMatch=url2.match(/[?&]name=([^&]+)/);
+                                          if(urlMatch)nom=decodeURIComponent(urlMatch[1]);
+                                          else nom='📄 Voir fichier Drive';
+                                        }
                                         const isOT=nom.startsWith('OT_');
                                         const isAP=nom.startsWith('AP_');
                                         const icon=isOT?'🔧':isAP?'📋':'📎';
@@ -2182,7 +2258,7 @@ Envoyé depuis PunchPro — Saran Électrique`;
             <div style={{marginBottom:'0.6rem'}}>
               {allLines.map((line,i)=>(
                 <div key={i} className={'hist-line'+(line.ot>0?' has-ot':'')} style={{borderLeftColor:line.jobColor||'var(--border2)'}}>
-                  {editLine===line?(
+                  {editKey===("mois:"+i)?(
                     <div className="hist-edit-form">
                       <div className="fg" style={{marginBottom:'0.45rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
                       <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.45rem',marginBottom:'0.45rem'}}>
