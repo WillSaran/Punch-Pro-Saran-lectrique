@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v132';
+const APP_VERSION='v133';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1878,6 +1878,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const [sending,setSending]=useState(false);
   const [editLine,setEditLine]=useState(null);
   const [editData,setEditData]=useState({});
+  const [expandedDate,setExpandedDate]=useState(null);
 
   const today=localDateStr();
   const curWeek=getWeek(new Date());
@@ -1925,30 +1926,49 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
       const banqueEmp=emp.heuresBanque||0;
       const lignesSem=allLines.filter(l=>l.semaine===curWeek||pts.find(p=>p.row===l.inRow&&p.semaine===curWeek));
 
-      // Construire le corps du courriel
+      // Construire le corps du courriel — une journée par bloc, une job par ligne
       const joursStr=joursView.map(j=>{
-        const jourLabel=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][new Date(j.date+'T12:00:00').getDay()];
-        const moisLabel=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][new Date(j.date+'T12:00:00').getMonth()];
-        const dateLabel=jourLabel+' '+new Date(j.date+'T12:00:00').getDate()+' '+moisLabel;
-        const jobsStr=j.jobs.join(', ')||'—';
+        const d=new Date(j.date+'T12:00:00');
+        const jourLabel=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'][d.getDay()];
+        const moisLabel=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()];
+        const dateLabel=jourLabel+' '+d.getDate()+' '+moisLabel;
         const h=Math.round(j.heures*4)/4;
-        const deplStr=j.deplacement>0?'  🚗 '+j.deplacement+' min':'';
-        return '  '+dateLabel.padEnd(14)+jobsStr.padEnd(35)+(j.ouvert?'⏳ ouvert':hToQuart(h))+deplStr;
-      }).join('\n');
+        const deplStr=j.deplacement>0?'  (déplacement: '+j.deplacement+' min)':'';
+        // En-tête de la journée
+        let bloc='── '+dateLabel+' ──────────────────────\n';
+        // Une ligne par job
+        if(j.jobs.length>0){
+          j.jobs.forEach(job=>{
+            // Trouver les heures de cette job spécifique
+            const jobLines=allLines.filter(l=>l.date===j.date&&l.job===job);
+            const jobH=Math.round(jobLines.reduce((s,l)=>s+(l.heures||0),0)*4)/4;
+            const jobNote=jobLines.map(l=>l.note).filter(Boolean).join(', ');
+            bloc+='   • '+job+(jobH>0?'   →   '+hToQuart(jobH):'')+(jobNote?'   ('+jobNote+')':'')+'\n';
+          });
+        }else{
+          bloc+='   • (aucune job enregistrée)\n';
+        }
+        bloc+='   Total : '+(j.ouvert?'⏳ en cours':hToQuart(h))+deplStr;
+        return bloc;
+      }).join('\n\n');
 
-      const suppStr=totalOT>0?'\n⚡ Heures supp cette semaine : '+hToQuart(totalOT):'';
-      const banqueStr='\n🏦 Banque d\'heures actuelle : '+hToQuart(banqueEmp);
+      const suppStr=totalOT>0?'\nHeures supplémentaires : '+hToQuart(totalOT):'';
+      const banqueStr='\nBanque d\'heures actuelle : '+hToQuart(banqueEmp);
 
       const body=`Bonjour,
 
-${emp.nom} confirme sa semaine ${curWeek} :
+${emp.nom} confirme sa semaine ${curWeek}.
 
-JOURNÉES :
+═══════════════════════════════════
+DÉTAIL DE LA SEMAINE
+═══════════════════════════════════
+
 ${joursStr}
 
-─────────────────────────────
-⏱ TOTAL SEMAINE : ${hToQuart(totalH)}${suppStr}${banqueStr}
-${totalDep>0?'🚗 Déplacement total : '+totalDep+' min':''}
+═══════════════════════════════════
+RÉSUMÉ
+═══════════════════════════════════
+Total heures : ${hToQuart(totalH)}${suppStr}${banqueStr}${totalDep>0?'\nDéplacement total : '+totalDep+' min':''}
 
 Envoyé depuis PunchPro — Saran Électrique`;
 
@@ -2023,44 +2043,112 @@ Envoyé depuis PunchPro — Saran Électrique`;
 
       {loading?<div style={{color:'var(--muted)',textAlign:'center',padding:'2rem'}}>⏳</div>:(
         <>
-          {/* ── VUE SEMAINE CONDENSÉE ── */}
+          {/* ── VUE SEMAINE CONDENSÉE avec expand ── */}
           {(tab==='semaine'||tab==='today')&&joursView.length>0&&(
-            <div style={{background:'var(--bg3)',borderRadius:10,overflow:'hidden',marginBottom:'0.6rem'}}>
+            <div style={{borderRadius:10,overflow:'hidden',marginBottom:'0.6rem',border:'1px solid var(--border)'}}>
               {joursView.map((j,idx)=>{
                 const jourLabel=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'][new Date(j.date+'T12:00:00').getDay()];
                 const d=new Date(j.date+'T12:00:00');
                 const moisLabel=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'][d.getMonth()];
                 const h=Math.round(j.heures*4)/4;
                 const isOT=h>8;
+                const isExpanded=expandedDate===j.date;
+                // Lignes détail pour ce jour
+                const dayLines=allLines.filter(l=>l.date===j.date);
                 return(
-                  <div key={j.date} style={{
-                    display:'flex',alignItems:'center',gap:8,
-                    padding:'0.5rem 0.75rem',
-                    borderBottom:idx<joursView.length-1?'1px solid var(--border)':'none',
-                    background:idx%2===0?'var(--bg3)':'var(--bg2)'
-                  }}>
-                    {/* Jour + Date */}
-                    <div style={{flexShrink:0,textAlign:'center',minWidth:36}}>
-                      <div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase'}}>{jourLabel}</div>
-                      <div style={{fontSize:11,color:'var(--muted)'}}>{d.getDate()} {moisLabel}</div>
-                    </div>
-                    {/* Jobs */}
-                    <div style={{flex:1,minWidth:0}}>
-                      {j.jobs.length>0
-                        ?j.jobs.map((job,ji)=>(
-                          <div key={ji} style={{fontSize:11,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{job}</div>
-                        ))
-                        :<div style={{fontSize:11,color:'var(--muted)',fontStyle:'italic'}}>—</div>
-                      }
-                    </div>
-                    {/* Heures + Dépl */}
-                    <div style={{flexShrink:0,textAlign:'right'}}>
-                      <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',color:isOT?'var(--warning)':'var(--success)'}}>
-                        {j.ouvert?'⏳':hToQuart(h)}
+                  <div key={j.date}>
+                    {/* Ligne résumé — cliquable */}
+                    <div onClick={()=>setExpandedDate(isExpanded?null:j.date)}
+                      style={{display:'flex',alignItems:'center',gap:8,padding:'0.5rem 0.75rem',
+                        borderBottom:(isExpanded||idx<joursView.length-1)?'1px solid var(--border)':'none',
+                        background:isExpanded?'rgba(47,129,247,0.08)':(idx%2===0?'var(--bg3)':'var(--bg2)'),
+                        cursor:'pointer',touchAction:'manipulation'}}>
+                      {/* Expand indicator */}
+                      <div style={{fontSize:10,color:'var(--muted)',flexShrink:0,width:14,textAlign:'center'}}>
+                        {isExpanded?'▼':'▶'}
                       </div>
-                      {j.deplacement>0&&<div style={{fontSize:9,color:'var(--muted)'}}>🚗 {j.deplacement}m</div>}
-                      {isOT&&<div style={{fontSize:9,color:'var(--warning)',fontWeight:600}}>+{hToQuart(h-8)} OT</div>}
+                      {/* Jour + Date */}
+                      <div style={{flexShrink:0,textAlign:'center',minWidth:36}}>
+                        <div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase'}}>{jourLabel}</div>
+                        <div style={{fontSize:11,color:'var(--muted)'}}>{d.getDate()} {moisLabel}</div>
+                      </div>
+                      {/* Jobs résumé */}
+                      <div style={{flex:1,minWidth:0}}>
+                        {j.jobs.length>0
+                          ?<div style={{fontSize:11,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                            {j.jobs.length===1?j.jobs[0]:j.jobs.length+' jobs'}
+                          </div>
+                          :<div style={{fontSize:11,color:'var(--muted)',fontStyle:'italic'}}>—</div>
+                        }
+                      </div>
+                      {/* Heures */}
+                      <div style={{flexShrink:0,textAlign:'right'}}>
+                        <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',color:isOT?'var(--warning)':'var(--success)'}}>
+                          {j.ouvert?'⏳':hToQuart(h)}
+                        </div>
+                        {j.deplacement>0&&<div style={{fontSize:9,color:'var(--muted)'}}>🚗{j.deplacement}m</div>}
+                        {isOT&&<div style={{fontSize:9,color:'var(--warning)',fontWeight:600}}>+{hToQuart(h-8)} OT</div>}
+                      </div>
                     </div>
+
+                    {/* Détails expandés */}
+                    {isExpanded&&(
+                      <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)'}}>
+                        {dayLines.map((line,li)=>(
+                          <div key={li} style={{padding:'0.5rem 0.75rem 0.5rem 2rem',borderBottom:li<dayLines.length-1?'1px solid var(--border)':'none'}}>
+                            {editLine===line?(
+                              <div style={{paddingBottom:'0.25rem'}}>
+                                <div className="fg" style={{marginBottom:'0.35rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
+                                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.35rem',marginBottom:'0.35rem'}}>
+                                  <div className="fg" style={{marginBottom:0}}><label>Heures</label><input type="number" step="0.25" value={editData.heures} onChange={e=>setEditData(p=>({...p,heures:parseFloat(e.target.value)||0}))}/></div>
+                                  <div className="fg" style={{marginBottom:0}}><label>Dépl.(min)</label><input type="number" value={editData.deplacement} onChange={e=>setEditData(p=>({...p,deplacement:parseInt(e.target.value)||0}))}/></div>
+                                </div>
+                                <div className="fg" style={{marginBottom:'0.35rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
+                                <div style={{display:'flex',gap:'0.35rem'}}>
+                                  <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEdit}>✓ Sauvegarder</button>
+                                  <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditLine(null)}>Annuler</button>
+                                </div>
+                              </div>
+                            ):(
+                              <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
+                                <div style={{flex:1}}>
+                                  {/* Job + heures */}
+                                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+                                    {line.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:line.jobColor,flexShrink:0}}></div>}
+                                    <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{line.job||'—'}</span>
+                                    {line.heures>0&&<span style={{fontSize:11,color:'var(--success)',fontWeight:700,marginLeft:'auto'}}>{hToQuart(line.heures)}</span>}
+                                  </div>
+                                  {/* Horaire */}
+                                  {(line.heure||line.heureOut)&&<div style={{fontSize:10,color:'var(--muted)'}}>🕐 {line.heure||'—'}{line.heureOut?' → '+line.heureOut:''}</div>}
+                                  {/* Déplacement */}
+                                  {line.deplacement>0&&<div style={{fontSize:10,color:'var(--muted)'}}>🚗 {line.deplacement} min</div>}
+                                  {/* Coéquipiers */}
+                                  {line.coequipiers&&line.coequipiers.length>0&&<div style={{fontSize:10,color:'var(--muted)'}}>👥 {line.coequipiers.join(', ')}</div>}
+                                  {/* Note */}
+                                  {line.note&&<div style={{fontSize:10,color:'var(--muted)',fontStyle:'italic',marginTop:2}}>"{line.note}"</div>}
+                                  {/* Fichiers */}
+                                  {line.fichiersURL&&line.fichiersURL.length>0&&(
+                                    <div style={{marginTop:3,display:'flex',flexWrap:'wrap',gap:4}}>
+                                      {line.fichiersURL.map((u,fi)=>{
+                                        const url=u.split('|')[0];
+                                        const nom=u.includes('|')?u.split('|')[1]:null;
+                                        const lbl=nom?.startsWith('AP_')?'📋 '+nom:nom?.startsWith('OT_')?'🔧 '+nom:'📎 Fichier';
+                                        return(<a key={fi} href={url} target="_blank" rel="noreferrer" style={{fontSize:10,color:'var(--accent)',background:'rgba(47,129,247,0.1)',borderRadius:4,padding:'1px 6px',textDecoration:'none'}}>{lbl}</a>);
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Bouton modifier */}
+                                <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.45rem'}}
+                                  onClick={e=>{e.stopPropagation();setEditLine(line);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});}}>
+                                  ✏️
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -2068,7 +2156,7 @@ Envoyé depuis PunchPro — Saran Électrique`;
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.5rem 0.75rem',background:'var(--bg4)',borderTop:'2px solid var(--border)'}}>
                 <span style={{fontSize:11,color:'var(--muted)',fontWeight:600}}>TOTAL {tab==='today'?"AUJOURD'HUI":'SEMAINE'}</span>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
-                  {totalDep>0&&<span style={{fontSize:10,color:'var(--muted)'}}>🚗 {totalDep}m</span>}
+                  {totalDep>0&&<span style={{fontSize:10,color:'var(--muted)'}}>🚗{totalDep}m</span>}
                   {totalOT>0&&<span style={{fontSize:11,color:'var(--warning)',fontWeight:700}}>+{hToQuart(totalOT)} OT</span>}
                   <span style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem',color:'var(--success)'}}>{hToQuart(totalH)}</span>
                 </div>
