@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v137';
+const APP_VERSION='v138';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1876,17 +1876,23 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const [tab,setTab]=useState('semaine');
   const [loading,setLoading]=useState(true);
   const [sending,setSending]=useState(false);
-  const [editKey,setEditKey]=useState(null);
-  const [editLineData,setEditLineData]=useState(null); // ligne complète pour sauvegarde
-  const [editData,setEditData]=useState({});
   const [expandedDate,setExpandedDate]=useState(null);
+  // Edit: on stocke la CLÉ (date:li) et la LIGNE complète séparément
+  const [editKey,setEditKey]=useState(null);
+  const [editLine,setEditLine]=useState(null);
+  const [editData,setEditData]=useState({});
 
   const today=localDateStr();
   const curWeek=getWeek(new Date());
   const curMois=getMois(new Date());
 
   useEffect(()=>{load();},[]);
-  async function load(){setLoading(true);const p=await getPointages(sid,{nom:emp.nom});setPts(p);setLoading(false);}
+  async function load(){
+    setLoading(true);
+    const p=await getPointages(sid,{nom:emp.nom});
+    setPts(p);
+    setLoading(false);
+  }
 
   function getFiltered(){
     if(tab==='today')return pts.filter(p=>p.date===today);
@@ -1900,130 +1906,36 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const totalDep=Math.round(allLines.reduce((s,l)=>s+(l.deplacement||0),0));
   const totalOT=Math.round(Math.max(0,allLines.reduce((s,l)=>s+(l.ot||0),0))*4)/4;
 
-  // ── VUE SEMAINE — grouper par jour ──
-  function buildSemaineView(lignes){
-    const parDate={};
-    lignes.forEach(l=>{
-      if(!parDate[l.date])parDate[l.date]={date:l.date,jobs:[],heures:0,deplacement:0,ouvert:false};
-      const d=parDate[l.date];
+  // Vue semaine — grouper par jour
+  const joursView=(()=>{
+    const map={};
+    allLines.forEach(l=>{
+      if(!map[l.date])map[l.date]={date:l.date,jobs:[],heures:0,deplacement:0,ouvert:false};
+      const d=map[l.date];
       if(l.job&&l.job!=='—'&&!d.jobs.includes(l.job))d.jobs.push(l.job);
       d.heures+=l.heures||0;
       d.deplacement+=l.deplacement||0;
       if(!l.heureOut&&l.type!=='confirm')d.ouvert=true;
     });
-    return Object.values(parDate).sort((a,b)=>a.date.localeCompare(b.date));
+    return Object.values(map).sort((a,b)=>a.date.localeCompare(b.date));
+  })();
+
+  function openEdit(key,line){
+    setEditKey(key);
+    setEditLine(line);
+    setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});
+    // Garder la journée ouverte
+    setExpandedDate(line.date);
   }
+  function closeEdit(){setEditKey(null);setEditLine(null);}
 
-  const joursView=buildSemaineView(allLines);
-
-  // ── ENVOYER COURRIEL RÉSUMÉ SEMAINE ──
-  async function confirmerSemaine(){
-    setSending(true);
-    notify('⏳ Envoi du résumé...','warn');
+  async function saveEdit(){
+    if(!editLine)return;
     try{
-      const token=gapi.client.getToken();
-      if(!token?.access_token){notify('Pas de token Google','err');setSending(false);return;}
-
-      const banqueEmp=emp.heuresBanque||0;
-      const lignesSem=allLines.filter(l=>l.semaine===curWeek||pts.find(p=>p.row===l.inRow&&p.semaine===curWeek));
-
-      // Construire le corps du courriel — une journée par bloc, une job par ligne
-      const joursStr=joursView.map(j=>{
-        const d=new Date(j.date+'T12:00:00');
-        const jourLabel=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'][d.getDay()];
-        const moisLabel=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'][d.getMonth()];
-        const dateLabel=jourLabel+' '+d.getDate()+' '+moisLabel;
-        const h=Math.round(j.heures*4)/4;
-        const deplStr=j.deplacement>0?'  (déplacement: '+j.deplacement+' min)':'';
-        // En-tête de la journée
-        let bloc='── '+dateLabel+' ──────────────────────\n';
-        // Une ligne par job
-        if(j.jobs.length>0){
-          j.jobs.forEach(job=>{
-            // Trouver les heures de cette job spécifique
-            const jobLines=allLines.filter(l=>l.date===j.date&&l.job===job);
-            const jobH=Math.round(jobLines.reduce((s,l)=>s+(l.heures||0),0)*4)/4;
-            const jobNote=jobLines.map(l=>l.note).filter(Boolean).join(', ');
-            bloc+='   • '+job+(jobH>0?'   →   '+hToQuart(jobH):'')+(jobNote?'   ('+jobNote+')':'')+'\n';
-          });
-        }else{
-          bloc+='   • (aucune job enregistrée)\n';
-        }
-        bloc+='   Total : '+(j.ouvert?'⏳ en cours':hToQuart(h))+deplStr;
-        return bloc;
-      }).join('\n\n');
-
-      const suppStr=totalOT>0?'\nHeures supplémentaires : '+hToQuart(totalOT):'';
-      const banqueStr='\nBanque d\'heures actuelle : '+hToQuart(banqueEmp);
-
-      const body=`Bonjour,
-
-${emp.nom} confirme sa semaine ${curWeek}.
-
-═══════════════════════════════════
-DÉTAIL DE LA SEMAINE
-═══════════════════════════════════
-
-${joursStr}
-
-═══════════════════════════════════
-RÉSUMÉ
-═══════════════════════════════════
-Total heures : ${hToQuart(totalH)}${suppStr}${banqueStr}${totalDep>0?'\nDéplacement total : '+totalDep+' min':''}
-
-Envoyé depuis PunchPro — Saran Électrique`;
-
-      const to='info@saranelectrique.com';
-      const subject='Resume semaine '+curWeek+' - '+emp.nom.replace(/[àâä]/g,'a').replace(/[éèêë]/g,'e').replace(/[îï]/g,'i').replace(/[ôö]/g,'o').replace(/[ùûü]/g,'u').replace(/[ç]/g,'c');
-      // Encoder le corps en UTF-8 correctement
-      const msgLines=[
-        'To: '+to,
-        'Subject: '+subject,
-        'Content-Type: text/plain; charset=UTF-8',
-        'Content-Transfer-Encoding: base64',
-        '',
-        ''
-      ];
-      const msgHeader=msgLines.join('\r\n');
-      // Encoder le body en base64 UTF-8
-      const bodyBytes=new TextEncoder().encode(body);
-      let bodyB64='';
-      const chunk=3*76; // multiple de 3 pour base64 propre
-      for(let i=0;i<bodyBytes.length;i+=chunk){
-        const slice=bodyBytes.slice(i,i+chunk);
-        let bin='';
-        slice.forEach(b=>bin+=String.fromCharCode(b));
-        bodyB64+=btoa(bin)+'\r\n';
-      }
-      const fullMsg=msgHeader+bodyB64;
-      const encoded=btoa(fullMsg).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-
-      const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
-        method:'POST',
-        headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},
-        body:JSON.stringify({raw:encoded})
-      });
-
-      if(res.ok){
-        notify('✅ Résumé envoyé à info@saranelectrique.com!','success');
-      }else{
-        const err=await res.json();
-        notify('Erreur envoi: '+(err?.error?.message||res.status),'err');
-      }
-    }catch(e){
-      notify('Erreur: '+e.message,'err');
-    }
-    setSending(false);
-  }
-
-  async function saveEditLine(){
-    const line=editLineData;
-    if(!line)return;
-    try{
-      if(line.inRow)await updatePointageData(sid,line.inRow,{...editData,fichiersURL:line.fichiersURL,coequipiers:line.coequipiers});
-      await addMessage(sid,emp.nom,'Modification',line.date+' — '+editData.job+', '+editData.heures+'h');
+      if(editLine.inRow)await updatePointageData(sid,editLine.inRow,{...editData,fichiersURL:editLine.fichiersURL,coequipiers:editLine.coequipiers});
+      await addMessage(sid,emp.nom,'Modification',editLine.date+' — '+editData.job+', '+editData.heures+'h');
       notify('✅ Modifié','success');
-      setEditKey(null);setEditLineData(null);await load();
+      closeEdit();await load();
     }catch(e){notify('Erreur: '+e.message,'err');}
   }
 
@@ -2037,9 +1949,110 @@ Envoyé depuis PunchPro — Saran Électrique`;
     }catch(e){notify('Erreur: '+e.message,'err');}
   }
 
+  // Courriel résumé semaine
+  async function confirmerSemaine(){
+    setSending(true);
+    notify('⏳ Envoi...','warn');
+    try{
+      const token=gapi.client.getToken();
+      if(!token?.access_token){notify('Pas de token','err');setSending(false);return;}
+      const banque=emp.heuresBanque||0;
+      const joursStr=joursView.map(j=>{
+        const d=new Date(j.date+'T12:00:00');
+        const jours=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+        const mois=['janvier','fevrier','mars','avril','mai','juin','juillet','aout','septembre','octobre','novembre','decembre'];
+        const label=jours[d.getDay()]+' '+d.getDate()+' '+mois[d.getMonth()];
+        const h=Math.round(j.heures*4)/4;
+        const dayLines=allLines.filter(l=>l.date===j.date);
+        let bloc='-- '+label+' --\n';
+        dayLines.forEach(l=>{if(l.job)bloc+='  * '+l.job+(l.heures>0?'  '+hToQuart(l.heures):'')+'\n';});
+        bloc+='  Total: '+(j.ouvert?'en cours':hToQuart(h))+(j.deplacement>0?'  ('+j.deplacement+' min)':'');
+        return bloc;
+      }).join('\n\n');
+      const body='Bonjour,\n\n'+emp.nom+' confirme sa semaine '+curWeek+'.\n\n'+
+        '=== DETAIL ===\n\n'+joursStr+'\n\n'+
+        '=== RESUME ===\n'+
+        'Total heures: '+hToQuart(totalH)+'\n'+
+        (totalOT>0?'Heures supp: '+hToQuart(totalOT)+'\n':'')+
+        'Banque: '+hToQuart(banque)+'\n'+
+        (totalDep>0?'Deplacement total: '+totalDep+' min\n':'')+
+        '\nEnvoye depuis PunchPro - Saran Electrique';
+      const to='info@saranelectrique.com';
+      const subject='Semaine '+curWeek+' - '+emp.nom;
+      const msgHeader='To: '+to+'\r\nSubject: '+subject+'\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
+      const bodyBytes=new TextEncoder().encode(body);
+      let b64='';
+      for(let i=0;i<bodyBytes.length;i+=57){
+        const chunk=bodyBytes.slice(i,i+57);
+        let bin='';chunk.forEach(b=>bin+=String.fromCharCode(b));
+        b64+=btoa(bin)+'\r\n';
+      }
+      const fullMsg=msgHeader+b64;
+      const encoded=btoa(fullMsg).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},
+        body:JSON.stringify({raw:encoded})
+      });
+      if(res.ok){notify('✅ Courriel envoyé!','success');}
+      else{const err=await res.json();notify('Erreur: '+(err?.error?.message||res.status),'err');}
+    }catch(e){notify('Erreur: '+e.message,'err');}
+    setSending(false);
+  }
+
+  // Composant carte de ligne (jour détail)
+  function LineCard({line,lineKey}){
+    const isEditing=editKey===lineKey;
+    if(isEditing) return(
+      <div style={{padding:'0.5rem 0.75rem 0.5rem 2.5rem'}}>
+        <div className="fg" style={{marginBottom:'0.3rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.3rem',marginBottom:'0.3rem'}}>
+          <div className="fg" style={{marginBottom:0}}><label>Heures</label><input type="number" step="0.25" value={editData.heures} onChange={e=>setEditData(p=>({...p,heures:parseFloat(e.target.value)||0}))}/></div>
+          <div className="fg" style={{marginBottom:0}}><label>Dépl.(min)</label><input type="number" value={editData.deplacement} onChange={e=>setEditData(p=>({...p,deplacement:parseInt(e.target.value)||0}))}/></div>
+        </div>
+        <div className="fg" style={{marginBottom:'0.3rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
+        <div style={{display:'flex',gap:'0.3rem'}}>
+          <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEdit}>✓ Sauvegarder</button>
+          <button className="btn-s" style={{fontSize:11}} onClick={closeEdit}>Annuler</button>
+        </div>
+      </div>
+    );
+    return(
+      <div style={{display:'flex',alignItems:'flex-start',gap:8,padding:'0.5rem 0.75rem 0.5rem 2.5rem'}}>
+        <div style={{flex:1}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
+            {line.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:line.jobColor,flexShrink:0}}></div>}
+            <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{line.job||'—'}</span>
+            {line.heures>0&&<span style={{fontSize:11,color:'var(--success)',fontWeight:700,marginLeft:'auto'}}>{hToQuart(line.heures)}</span>}
+          </div>
+          {(line.heure||line.heureOut)&&<div style={{fontSize:10,color:'var(--muted)'}}>🕐 {line.heure||'—'}{line.heureOut?' → '+line.heureOut:''}</div>}
+          {line.deplacement>0&&<div style={{fontSize:10,color:'var(--muted)'}}>🚗 {line.deplacement} min</div>}
+          {line.coequipiers&&line.coequipiers.length>0&&<div style={{fontSize:10,color:'var(--muted)'}}>👥 {line.coequipiers.join(', ')}</div>}
+          {line.note&&<div style={{fontSize:10,color:'var(--muted)',fontStyle:'italic',marginTop:2}}>"{line.note}"</div>}
+          {line.fichiersURL&&line.fichiersURL.length>0&&(
+            <div style={{marginTop:3,display:'flex',flexDirection:'column',gap:3}}>
+              {line.fichiersURL.map((raw,fi)=>{
+                const url=raw.split('|')[0];
+                const nom=raw.includes('|')?raw.split('|')[1]:'Voir fichier Drive';
+                const icon=nom.startsWith('OT_')?'🔧':nom.startsWith('AP_')?'📋':'📎';
+                return(<a key={fi} href={url} target="_blank" rel="noreferrer"
+                  style={{fontSize:10,color:'var(--accent)',background:'rgba(47,129,247,0.1)',borderRadius:4,padding:'2px 7px',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
+                  {icon} {nom}
+                </a>);
+              })}
+            </div>
+          )}
+        </div>
+        <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.5rem',marginTop:2}}
+          onClick={()=>openEdit(lineKey,line)}>
+          ✏️
+        </button>
+      </div>
+    );
+  }
+
   return(
     <div style={{maxWidth:560,width:'100%',textAlign:'left'}}>
-      {/* En-tête */}
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.75rem'}}>
         <div className="emp-av" style={{background:emp.couleur,width:36,height:36,fontSize:12}}>{emp.code}</div>
         <div style={{flex:1}}>
@@ -2047,25 +2060,19 @@ Envoyé depuis PunchPro — Saran Électrique`;
           <div style={{fontSize:11,color:'var(--muted)'}}>Semaine {curWeek} · Banque : <strong style={{color:'var(--accent)'}}>{hToQuart(emp.heuresBanque||0)}</strong></div>
         </div>
       </div>
-
-      {/* Stats */}
       <div className="stats-grid" style={{marginBottom:'0.75rem'}}>
         <div className="stat-box"><div className="val">{hToQuart(totalH)}</div><div className="lbl">Heures</div></div>
         <div className="stat-box"><div className="val" style={{color:totalOT>0?'var(--warning)':'var(--muted)'}}>{totalOT>0?hToQuart(totalOT):'—'}</div><div className="lbl">OT</div></div>
         <div className="stat-box"><div className="val">{totalDep>0?totalDep+'m':'—'}</div><div className="lbl">Dépl.</div></div>
         <div className="stat-box"><div className="val">{joursView.length}</div><div className="lbl">Jours</div></div>
       </div>
-
-      {/* Onglets */}
       <div className="tabs" style={{marginBottom:'0.6rem'}}>
         {[['today',"Auj."],['semaine','Semaine'],['mois','Mois'],['all','Tout']].map(([k,l])=>(
           <div key={k} className={'tab'+(tab===k?' active':'')} onClick={()=>setTab(k)}>{l}</div>
         ))}
       </div>
-
       {loading?<div style={{color:'var(--muted)',textAlign:'center',padding:'2rem'}}>⏳</div>:(
         <>
-          {/* ── VUE SEMAINE CONDENSÉE avec expand ── */}
           {(tab==='semaine'||tab==='today')&&joursView.length>0&&(
             <div style={{borderRadius:10,overflow:'hidden',marginBottom:'0.6rem',border:'1px solid var(--border)'}}>
               {joursView.map((j,idx)=>{
@@ -2075,34 +2082,25 @@ Envoyé depuis PunchPro — Saran Électrique`;
                 const h=Math.round(j.heures*4)/4;
                 const isOT=h>8;
                 const isExpanded=expandedDate===j.date;
-                // Lignes détail pour ce jour
                 const dayLines=allLines.filter(l=>l.date===j.date);
                 return(
                   <div key={j.date}>
-                    {/* Ligne résumé */}
                     <div style={{display:'flex',alignItems:'center',gap:8,padding:'0.5rem 0.75rem',
-                        borderBottom:(isExpanded||idx<joursView.length-1)?'1px solid var(--border)':'none',
-                        background:isExpanded?'rgba(47,129,247,0.08)':(idx%2===0?'var(--bg3)':'var(--bg2)')}}>
-                      {/* Expand indicator — seule zone cliquable pour toggle */}
+                      borderBottom:idx<joursView.length-1||isExpanded?'1px solid var(--border)':'none',
+                      background:isExpanded?'rgba(47,129,247,0.06)':(idx%2===0?'var(--bg3)':'var(--bg2)')}}>
                       <div onClick={()=>setExpandedDate(isExpanded?null:j.date)}
-                        style={{fontSize:10,color:'var(--muted)',flexShrink:0,width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4,background:'var(--bg4)',cursor:'pointer',touchAction:'manipulation'}}>
+                        style={{fontSize:10,color:'var(--accent)',flexShrink:0,width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4,background:'var(--bg4)',cursor:'pointer',touchAction:'manipulation',fontWeight:700}}>
                         {isExpanded?'▼':'▶'}
                       </div>
-                      {/* Jour + Date */}
                       <div style={{flexShrink:0,textAlign:'center',minWidth:36}}>
                         <div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase'}}>{jourLabel}</div>
                         <div style={{fontSize:11,color:'var(--muted)'}}>{d.getDate()} {moisLabel}</div>
                       </div>
-                      {/* Jobs résumé */}
                       <div style={{flex:1,minWidth:0}}>
-                        {j.jobs.length>0
-                          ?<div style={{fontSize:11,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                            {j.jobs.length===1?j.jobs[0]:j.jobs.length+' jobs'}
-                          </div>
-                          :<div style={{fontSize:11,color:'var(--muted)',fontStyle:'italic'}}>—</div>
-                        }
+                        {j.jobs.length===0?<div style={{fontSize:11,color:'var(--muted)',fontStyle:'italic'}}>—</div>
+                        :j.jobs.length===1?<div style={{fontSize:11,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.jobs[0]}</div>
+                        :<div style={{fontSize:11,color:'var(--text)'}}>{j.jobs.length} jobs</div>}
                       </div>
-                      {/* Heures */}
                       <div style={{flexShrink:0,textAlign:'right'}}>
                         <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',color:isOT?'var(--warning)':'var(--success)'}}>
                           {j.ouvert?'⏳':hToQuart(h)}
@@ -2111,145 +2109,11 @@ Envoyé depuis PunchPro — Saran Électrique`;
                         {isOT&&<div style={{fontSize:9,color:'var(--warning)',fontWeight:600}}>+{hToQuart(h-8)} OT</div>}
                       </div>
                     </div>
-
-                    {/* Détails expandés */}
                     {isExpanded&&(
                       <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)'}}>
-                        {dayLines.map((line,li)=>{
-                          const lineKey=j.date+':'+li;
-                          const isEditing=editKey===lineKey;
-                          return(
-                            <div key={li} style={{padding:'0.5rem 0.75rem 0.5rem 2rem',borderBottom:li<dayLines.length-1?'1px solid var(--border)':'none'}}>
-                              {isEditing?(
-                                <div>
-                                  <div className="fg" style={{marginBottom:'0.35rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
-                                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.35rem',marginBottom:'0.35rem'}}>
-                                    <div className="fg" style={{marginBottom:0}}><label>Heures</label><input type="number" step="0.25" value={editData.heures} onChange={e=>setEditData(p=>({...p,heures:parseFloat(e.target.value)||0}))}/></div>
-                                    <div className="fg" style={{marginBottom:0}}><label>Dépl.(min)</label><input type="number" value={editData.deplacement} onChange={e=>setEditData(p=>({...p,deplacement:parseInt(e.target.value)||0}))}/></div>
-                                  </div>
-                                  <div className="fg" style={{marginBottom:'0.35rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
-                                  <div style={{display:'flex',gap:'0.35rem'}}>
-                                    <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEditLine}>✓ Sauvegarder</button>
-                                    <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditKey(null)}>Annuler</button>
-                                  </div>
-                                </div>
-                              ):(
-                                <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
-                                  <div style={{flex:1}}>
-                                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
-                                      {line.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:line.jobColor,flexShrink:0}}></div>}
-                                      <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{line.job||'—'}</span>
-                                      {line.heures>0&&<span style={{fontSize:11,color:'var(--success)',fontWeight:700,marginLeft:'auto'}}>{hToQuart(line.heures)}</span>}
-                                    </div>
-                                    {(line.heure||line.heureOut)&&<div style={{fontSize:10,color:'var(--muted)'}}>🕐 {line.heure||'—'}{line.heureOut?' → '+line.heureOut:''}</div>}
-                                    {line.deplacement>0&&<div style={{fontSize:10,color:'var(--muted)'}}>🚗 {line.deplacement} min</div>}
-                                    {line.coequipiers&&line.coequipiers.length>0&&<div style={{fontSize:10,color:'var(--muted)'}}>👥 {line.coequipiers.join(', ')}</div>}
-                                    {line.note&&<div style={{fontSize:10,color:'var(--muted)',fontStyle:'italic',marginTop:2}}>"{line.note}"</div>}
-                                    {line.fichiersURL&&line.fichiersURL.length>0&&(
-                                      <div style={{marginTop:3,display:'flex',flexDirection:'column',gap:3}}>
-                                        {line.fichiersURL.map((raw,fi)=>{
-                                          const url=raw.split('|')[0];
-                                          const stored=raw.includes('|')?raw.split('|')[1]:null;
-                                          // Nom stocké → afficher direct
-                                          // Sinon → "Voir fichier" cliquable
-                                          const nom=stored||'Voir fichier Drive';
-                                          const isOT=nom.startsWith('OT_');
-                                          const isAP=nom.startsWith('AP_');
-                                          const icon=isOT?'🔧':isAP?'📋':'📎';
-                                          return(
-                                            <a key={fi} href={url} target="_blank" rel="noreferrer"
-                                              style={{fontSize:10,color:'var(--accent)',background:'rgba(47,129,247,0.1)',borderRadius:4,padding:'2px 7px',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
-                                              {icon} {nom}
-                                            </a>
-                                          );
-                                        })}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <button className="btn-sm"
-                                    style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.5rem',marginTop:2}}
-                                    onClick={()=>{setEditKey(lineKey);setEditLineData(line);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});setExpandedDate(j.date);}}>
-                                    ✏️ Modifier
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {isExpanded&&(
-                      <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)'}}
-                        onClick={e=>e.stopPropagation()}>
                         {dayLines.map((line,li)=>(
-                          <div key={li} style={{padding:'0.5rem 0.75rem 0.5rem 2rem',borderBottom:li<dayLines.length-1?'1px solid var(--border)':'none'}}>
-                            {editKey===("mois:"+i)?(
-                              <div style={{paddingBottom:'0.25rem'}}>
-                                <div className="fg" style={{marginBottom:'0.35rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
-                                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.35rem',marginBottom:'0.35rem'}}>
-                                  <div className="fg" style={{marginBottom:0}}><label>Heures</label><input type="number" step="0.25" value={editData.heures} onChange={e=>setEditData(p=>({...p,heures:parseFloat(e.target.value)||0}))}/></div>
-                                  <div className="fg" style={{marginBottom:0}}><label>Dépl.(min)</label><input type="number" value={editData.deplacement} onChange={e=>setEditData(p=>({...p,deplacement:parseInt(e.target.value)||0}))}/></div>
-                                </div>
-                                <div className="fg" style={{marginBottom:'0.35rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
-                                <div style={{display:'flex',gap:'0.35rem'}}>
-                                  <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEdit}>✓ Sauvegarder</button>
-                                <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditLine(null)}>Annuler</button>
-                                </div>
-                              </div>
-                            ):(
-                              <div style={{display:'flex',alignItems:'flex-start',gap:8}}>
-                                <div style={{flex:1}}>
-                                  {/* Job + heures */}
-                                  <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
-                                    {line.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:line.jobColor,flexShrink:0}}></div>}
-                                    <span style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{line.job||'—'}</span>
-                                    {line.heures>0&&<span style={{fontSize:11,color:'var(--success)',fontWeight:700,marginLeft:'auto'}}>{hToQuart(line.heures)}</span>}
-                                  </div>
-                                  {(line.heure||line.heureOut)&&<div style={{fontSize:10,color:'var(--muted)'}}>🕐 {line.heure||'—'}{line.heureOut?' → '+line.heureOut:''}</div>}
-                                  {line.deplacement>0&&<div style={{fontSize:10,color:'var(--muted)'}}>🚗 {line.deplacement} min</div>}
-                                  {line.coequipiers&&line.coequipiers.length>0&&<div style={{fontSize:10,color:'var(--muted)'}}>👥 {line.coequipiers.join(', ')}</div>}
-                                  {line.note&&<div style={{fontSize:10,color:'var(--muted)',fontStyle:'italic',marginTop:2}}>"{line.note}"</div>}
-                                  {/* Fichiers avec nom complet */}
-                                  {line.fichiersURL&&line.fichiersURL.length>0&&(
-                                    <div style={{marginTop:3,display:'flex',flexDirection:'column',gap:3}}>
-                                      {line.fichiersURL.map((raw,fi)=>{
-                                        const url=raw.split('|')[0];
-                                        const nomRaw=raw.includes('|')?raw.split('|')[1]:null;
-                                        // Extraire le nom depuis l'URL Drive si pas de nom stocké
-                                        let nom=nomRaw;
-                                        if(!nom){
-                                          const url2=raw.split('|')[0];
-                                          // Essayer d'extraire depuis le nom de fichier dans l'URL
-                                          const urlMatch=url2.match(/[?&]name=([^&]+)/);
-                                          if(urlMatch)nom=decodeURIComponent(urlMatch[1]);
-                                          else nom='📄 Voir fichier Drive';
-                                        }
-                                        const isOT=nom.startsWith('OT_');
-                                        const isAP=nom.startsWith('AP_');
-                                        const icon=isOT?'🔧':isAP?'📋':'📎';
-                                        return(
-                                          <a key={fi} href={url} target="_blank" rel="noreferrer"
-                                            style={{fontSize:10,color:'var(--accent)',background:'rgba(47,129,247,0.1)',borderRadius:4,padding:'2px 7px',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
-                                            {icon} {nom}
-                                          </a>
-                                        );
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                                {/* Bouton modifier */}
-                                <button className="btn-sm"
-                                  style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.45rem'}}
-                                  onClick={()=>{
-                                    setExpandedDate(line.date);
-                                    setEditLine(line);
-                                    setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});
-                                  }}>
-                                  ✏️ Modifier
-                                </button>
-                              </div>
-                            )}
+                          <div key={li} style={{borderBottom:li<dayLines.length-1?'1px solid var(--border)':'none'}}>
+                            <LineCard line={line} lineKey={j.date+':'+li}/>
                           </div>
                         ))}
                       </div>
@@ -2257,9 +2121,8 @@ Envoyé depuis PunchPro — Saran Électrique`;
                   </div>
                 );
               })}
-              {/* Total semaine */}
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'0.5rem 0.75rem',background:'var(--bg4)',borderTop:'2px solid var(--border)'}}>
-                <span style={{fontSize:11,color:'var(--muted)',fontWeight:600}}>TOTAL {tab==='today'?"AUJOURD'HUI":'SEMAINE'}</span>
+                <span style={{fontSize:11,color:'var(--muted)',fontWeight:600}}>TOTAL {tab==='today'?"AUJ.":'SEMAINE'}</span>
                 <div style={{display:'flex',alignItems:'center',gap:10}}>
                   {totalDep>0&&<span style={{fontSize:10,color:'var(--muted)'}}>🚗{totalDep}m</span>}
                   {totalOT>0&&<span style={{fontSize:11,color:'var(--warning)',fontWeight:700}}>+{hToQuart(totalOT)} OT</span>}
@@ -2268,60 +2131,55 @@ Envoyé depuis PunchPro — Saran Électrique`;
               </div>
             </div>
           )}
-
-          {/* ── VUE MOIS / TOUT — liste détaillée ── */}
           {(tab==='mois'||tab==='all')&&(
             <div style={{marginBottom:'0.6rem'}}>
-              {allLines.map((line,i)=>(
-                <div key={i} className={'hist-line'+(line.ot>0?' has-ot':'')} style={{borderLeftColor:line.jobColor||'var(--border2)'}}>
-                  {editKey===("mois:"+i)?(
-                    <div className="hist-edit-form">
-                      <div className="fg" style={{marginBottom:'0.45rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
-                      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.45rem',marginBottom:'0.45rem'}}>
-                        <div className="fg" style={{marginBottom:0}}><label>Heures</label><input type="number" step="0.25" value={editData.heures} onChange={e=>setEditData(p=>({...p,heures:parseFloat(e.target.value)||0}))}/></div>
-                        <div className="fg" style={{marginBottom:0}}><label>Dépl. (min)</label><input type="number" value={editData.deplacement} onChange={e=>setEditData(p=>({...p,deplacement:parseInt(e.target.value)||0}))}/></div>
+              {allLines.map((line,i)=>{
+                const lk='list:'+i;
+                return(
+                  <div key={i} className={'hist-line'+(line.ot>0?' has-ot':'')} style={{borderLeftColor:line.jobColor||'var(--border2)'}}>
+                    <div className="hist-header">
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                          {line.date}
+                          {line.type==='confirm'?<span className="badge badge-conf">Confirmé</span>:
+                            line.heures>0?<span className="badge badge-in">{hToQuart(line.heures)}</span>:<span className="badge badge-pend">En cours</span>}
+                          {line.ot>0&&<span className="badge" style={{background:'rgba(210,153,34,0.15)',color:'var(--warning)'}}>+{hToQuart(line.ot)} OT</span>}
+                        </div>
+                        {line.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.heure}{line.heureOut?' → '+line.heureOut:''}</div>}
+                        {line.job&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.job}</div>}
+                        {line.note&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,fontStyle:'italic'}}>"{line.note}"</div>}
                       </div>
-                      <div className="fg" style={{marginBottom:'0.45rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
-                      <div style={{display:'flex',gap:'0.4rem'}}>
-                        <button className="btn-p" style={{marginTop:0,flex:1}} onClick={saveEdit}>✓ Sauvegarder</button>
-                        <button className="btn-s" onClick={()=>setEditLine(null)}>Annuler</button>
+                      <div style={{flexShrink:0}}>
+                        {line.deplacement>0&&<span style={{fontSize:10,color:'var(--muted)'}}>🚗{line.deplacement}m</span>}
                       </div>
                     </div>
-                  ):(
-                    <>
-                      <div className="hist-header">
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
-                            {line.date}
-                            {line.type==='confirm'?<span className="badge badge-conf">Confirmé</span>:
-                              line.heures>0?<span className="badge badge-in">{hToQuart(line.heures)}</span>:<span className="badge badge-pend">En cours</span>}
-                            {line.ot>0&&<span className="badge" style={{background:'rgba(210,153,34,0.15)',color:'var(--warning)'}}>+{hToQuart(line.ot)} OT</span>}
-                          </div>
-                          {line.heure&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.heure}{line.heureOut?' → '+line.heureOut:''}</div>}
-                          {line.job&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{line.job}</div>}
-                          {line.note&&<div style={{fontSize:11,color:'var(--muted)',marginTop:2,fontStyle:'italic'}}>"{line.note}"</div>}
+                    <div className="hist-actions">
+                      <button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>openEdit(lk,line)}>✏️ Modifier</button>
+                      <button className="btn-sm btn-deny" onClick={()=>handleDelete(line)}>🗑 Supprimer</button>
+                    </div>
+                    {editKey===lk&&(
+                      <div style={{padding:'0.5rem',background:'var(--bg3)',borderRadius:8,marginTop:'0.35rem'}}>
+                        <div className="fg" style={{marginBottom:'0.3rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
+                        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.3rem',marginBottom:'0.3rem'}}>
+                          <div className="fg" style={{marginBottom:0}}><label>Heures</label><input type="number" step="0.25" value={editData.heures} onChange={e=>setEditData(p=>({...p,heures:parseFloat(e.target.value)||0}))}/></div>
+                          <div className="fg" style={{marginBottom:0}}><label>Dépl.(min)</label><input type="number" value={editData.deplacement} onChange={e=>setEditData(p=>({...p,deplacement:parseInt(e.target.value)||0}))}/></div>
                         </div>
-                        <div style={{flexShrink:0}}>
-                          {line.deplacement>0&&<span style={{fontSize:10,color:'var(--warning)'}}>🚗{line.deplacement}m</span>}
+                        <div className="fg" style={{marginBottom:'0.3rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
+                        <div style={{display:'flex',gap:'0.3rem'}}>
+                          <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEdit}>✓ Sauvegarder</button>
+                          <button className="btn-s" style={{fontSize:11}} onClick={closeEdit}>Annuler</button>
                         </div>
                       </div>
-                      <div className="hist-actions">
-                        <button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>{setEditLine(line);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});}}>✏️ Modifier</button>
-                        <button className="btn-sm btn-deny" onClick={()=>handleDelete(line)}>🗑 Supprimer</button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
+                    )}
+                  </div>
+                );
+              })}
               {allLines.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:12}}>Aucune entrée.</div>}
             </div>
           )}
-
-          {/* ── BOUTON CONFIRMER MA SEMAINE ── */}
           {tab==='semaine'&&(
             <button className="btn-p" style={{marginTop:'0.5rem',background:'linear-gradient(135deg,#1a237e,#283593)'}}
-              disabled={sending||joursView.length===0}
-              onClick={confirmerSemaine}>
+              disabled={sending||joursView.length===0} onClick={confirmerSemaine}>
               {sending?'⏳ Envoi...':`📧 Confirmer ma semaine ${curWeek}`}
             </button>
           )}
