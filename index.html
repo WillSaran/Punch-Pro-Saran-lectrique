@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v134';
+const APP_VERSION='v135';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1976,7 +1976,12 @@ Envoyé depuis PunchPro — Saran Électrique`;
       const to='info@saranelectrique.com';
       const subject='Résumé semaine '+curWeek+' — '+emp.nom;
       const message='To: '+to+'\r\nSubject: '+subject+'\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n'+body;
-      const encoded=btoa(unescape(encodeURIComponent(message))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      // Encoder correctement en UTF-8 avec TextEncoder (supporte les accents)
+      const encoder=new TextEncoder();
+      const bytes=encoder.encode(message);
+      let binary='';
+      bytes.forEach(b=>binary+=String.fromCharCode(b));
+      const encoded=btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 
       const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
         method:'POST',
@@ -2057,14 +2062,13 @@ Envoyé depuis PunchPro — Saran Électrique`;
                 const dayLines=allLines.filter(l=>l.date===j.date);
                 return(
                   <div key={j.date}>
-                    {/* Ligne résumé — cliquable */}
-                    <div onClick={()=>setExpandedDate(isExpanded?null:j.date)}
-                      style={{display:'flex',alignItems:'center',gap:8,padding:'0.5rem 0.75rem',
+                    {/* Ligne résumé */}
+                    <div style={{display:'flex',alignItems:'center',gap:8,padding:'0.5rem 0.75rem',
                         borderBottom:(isExpanded||idx<joursView.length-1)?'1px solid var(--border)':'none',
-                        background:isExpanded?'rgba(47,129,247,0.08)':(idx%2===0?'var(--bg3)':'var(--bg2)'),
-                        cursor:'pointer',touchAction:'manipulation'}}>
-                      {/* Expand indicator */}
-                      <div style={{fontSize:10,color:'var(--muted)',flexShrink:0,width:14,textAlign:'center'}}>
+                        background:isExpanded?'rgba(47,129,247,0.08)':(idx%2===0?'var(--bg3)':'var(--bg2)')}}>
+                      {/* Expand indicator — seule zone cliquable pour toggle */}
+                      <div onClick={()=>setExpandedDate(isExpanded?null:j.date)}
+                        style={{fontSize:10,color:'var(--muted)',flexShrink:0,width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4,background:'var(--bg4)',cursor:'pointer',touchAction:'manipulation'}}>
                         {isExpanded?'▼':'▶'}
                       </div>
                       {/* Jour + Date */}
@@ -2107,7 +2111,7 @@ Envoyé depuis PunchPro — Saran Électrique`;
                                 <div className="fg" style={{marginBottom:'0.35rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
                                 <div style={{display:'flex',gap:'0.35rem'}}>
                                   <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEdit}>✓ Sauvegarder</button>
-                                  <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditLine(null)}>Annuler</button>
+                                <button className="btn-s" style={{fontSize:11}} onClick={()=>setEditLine(null)}>Annuler</button>
                                 </div>
                               </div>
                             ):(
@@ -2145,8 +2149,12 @@ Envoyé depuis PunchPro — Saran Électrique`;
                                 {/* Bouton modifier */}
                                 <button className="btn-sm"
                                   style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0,fontSize:10,padding:'0.2rem 0.45rem'}}
-                                  onClick={()=>{setEditLine(line);setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});}}>
-                                  ✏️
+                                  onClick={()=>{
+                                    setExpandedDate(line.date);
+                                    setEditLine(line);
+                                    setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});
+                                  }}>
+                                  ✏️ Modifier
                                 </button>
                               </div>
                             )}
