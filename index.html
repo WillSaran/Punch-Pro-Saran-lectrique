@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v139';
+const APP_VERSION='v140';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -270,19 +270,23 @@ function combinePts(pts){
     if(processed.has(p.row))continue;
     if(p.type==='confirm'){
       processed.add(p.row);
-      const h=Math.round((p.heures||0)*4)/4;
-      const ot=Math.max(0,Math.round((h-8)*4)/4);
-      lines.push({date:p.date,type:'confirm',job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:null,semaine:p.semaine,nom:p.nom,ot});
+      const h=Math.floor((p.heures||0)*4)/4; // arrondi vers le bas
+      lines.push({date:p.date,type:'confirm',job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:null,semaine:p.semaine,nom:p.nom,ot:0});
     }else if(p.type==='in'){
       processed.add(p.row);
       const matchOut=sorted.find(o=>o.type==='out'&&o.nom===p.nom&&!processed.has(o.row)&&new Date(o.datetime)>new Date(p.datetime));
-      let h=0,ot=0;
+      let h=0;
       if(matchOut){
         processed.add(matchOut.row);
-        h=Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/3600000*4)/4;
-        ot=Math.max(0,Math.round((h-8)*4)/4);
+        // Si heures confirmées dans col K, utiliser ces heures sinon calculer
+        const storedH=parseFloat(matchOut.heures)||0;
+        if(storedH>0){
+          h=Math.floor(storedH*4)/4;
+        }else{
+          h=Math.floor((new Date(matchOut.datetime)-new Date(p.datetime))/3600000*4)/4;
+        }
       }
-      lines.push({date:p.date,type:'pair',heure:p.heure,heureOut:matchOut?matchOut.heure:'',job:matchOut?matchOut.job:p.job,jobColor:matchOut?matchOut.jobColor:p.jobColor,heures:matchOut?h:null,deplacement:matchOut?matchOut.deplacement:p.deplacement,note:matchOut?matchOut.note:p.note,fichiersURL:matchOut?matchOut.fichiersURL:p.fichiersURL,coequipiers:matchOut?matchOut.coequipiers:p.coequipiers,inRow:p.row,outRow:matchOut?matchOut.row:null,semaine:p.semaine,nom:p.nom,ot});
+      lines.push({date:p.date,type:'pair',heure:p.heure,heureOut:matchOut?matchOut.heure:'',job:matchOut?matchOut.job:p.job,jobColor:matchOut?matchOut.jobColor:p.jobColor,heures:matchOut?h:null,deplacement:matchOut?matchOut.deplacement:p.deplacement,note:matchOut?matchOut.note:p.note,fichiersURL:matchOut?matchOut.fichiersURL:p.fichiersURL,coequipiers:matchOut?matchOut.coequipiers:p.coequipiers,inRow:p.row,outRow:matchOut?matchOut.row:null,semaine:p.semaine,nom:p.nom,ot:0});
     }
   }
   return lines.sort((a,b)=>new Date(b.date)-new Date(a.date));
@@ -584,7 +588,7 @@ async function getPointages(sid,filter){
   return rows;
 }
 async function updatePointageData(sid,row,data){
-  // Mettre à jour job, couleur, déplacement, heures, note, fichiers, coéquipiers
+  // Mettre à jour colonnes H-N : Job, CouleurJob, Dépl, Heures, Note, Fichiers, Coéquipiers
   await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
     spreadsheetId:sid,
     range:'Pointages!H'+row+':N'+row,
@@ -593,12 +597,22 @@ async function updatePointageData(sid,row,data){
       data.job||'',
       data.jobColor||'',
       data.deplacement||0,
-      data.heures||0,  // col K — HeuresConfirmées
+      data.heures||0,
       data.note||'',
       (data.fichiersURL||[]).join(' | '),
       (data.coequipiers||[]).join(', ')
     ]]}
   }));
+  // Si c'est un punch OUT modifié, changer le type en "confirm" pour
+  // que les heures modifiées soient utilisées (pas recalculées depuis timestamps)
+  if(data.type==='pair'&&data.heures>0){
+    await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId:sid,
+      range:'Pointages!B'+row,
+      valueInputOption:'RAW',
+      resource:{values:[['confirm']]}
+    }));
+  }
 }
 async function updatePointageFichiers(sid,row,urls){
   await gapi.client.sheets.spreadsheets.values.update({
@@ -1119,7 +1133,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
 // Convertit minutes en affichage quarts (ex: 465 → "7h45")
 function minsToQuart(mins){const h=Math.floor(mins/60);const m=mins%60;return h+'h'+(m>0?String(m).padStart(2,'0'):'');}
 // Snap aux quarts d'heure
-function snapToQuart(mins){return Math.round(mins/15)*15;}
+function snapToQuart(mins){return Math.floor(mins/15)*15;} // arrondi vers le bas
 // Formater heures en quarts (ex: 7.75 → "7h45", 8.5 → "8h30")
 function hToQuart(h){const totalMins=Math.round(h*60/15)*15;return minsToQuart(totalMins);}
 
@@ -1915,7 +1929,8 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const allLines=combinePts(getFiltered());
   const totalH=Math.round(allLines.reduce((s,l)=>s+(l.heures||0),0)*4)/4;
   const totalDep=Math.round(allLines.reduce((s,l)=>s+(l.deplacement||0),0));
-  const totalOT=Math.round(Math.max(0,allLines.reduce((s,l)=>s+(l.ot||0),0))*4)/4;
+  // OT = heures au-delà de 40h/semaine (pas par journée)
+  const totalOT=Math.round(Math.max(0,totalH-40)*4)/4;
 
   // Vue semaine — grouper par jour
   const joursView=(()=>{
@@ -1943,8 +1958,16 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   async function saveEdit(){
     if(!editLine)return;
     try{
-      if(editLine.inRow)await updatePointageData(sid,editLine.inRow,{...editData,fichiersURL:editLine.fichiersURL,coequipiers:editLine.coequipiers});
-      await addMessage(sid,emp.nom,'Modification',editLine.date+' — '+editData.job+', '+editData.heures+'h');
+      const row=editLine.outRow||editLine.inRow;
+      if(row){
+        await updatePointageData(sid,row,{
+          ...editData,
+          type:editLine.type,
+          fichiersURL:editLine.fichiersURL,
+          coequipiers:editLine.coequipiers
+        });
+      }
+      await addMessage(sid,emp.nom,'Modification',editLine.date+' — '+editData.job+', '+hToQuart(editData.heures));
       notify('✅ Modifié','success');
       closeEdit();await load();
     }catch(e){notify('Erreur: '+e.message,'err');}
