@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v144';
+const APP_VERSION='v145';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -271,20 +271,18 @@ function combinePts(pts){
     if(p.type==='confirm'){
       processed.add(p.row);
       const h=Math.round((p.heures||0)*4)/4;
-      lines.push({date:p.date,type:'confirm',job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:null,semaine:p.semaine,nom:p.nom,ot:0});
+      // Chercher un punch IN lié (même nom, juste avant ce confirm dans la même journée)
+      const matchIn=sorted.find(o=>o.type==='in'&&o.nom===p.nom&&!processed.has(o.row)&&o.date===p.date&&new Date(o.datetime)<new Date(p.datetime));
+      if(matchIn)processed.add(matchIn.row);
+      lines.push({date:p.date,type:'confirm',heure:matchIn?matchIn.heure:'',heureOut:p.heure,job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:matchIn?matchIn.row:p.row,outRow:p.row,semaine:p.semaine,nom:p.nom,ot:0});
     }else if(p.type==='in'){
       processed.add(p.row);
       const matchOut=sorted.find(o=>o.type==='out'&&o.nom===p.nom&&!processed.has(o.row)&&new Date(o.datetime)>new Date(p.datetime));
       let h=0;
       if(matchOut){
         processed.add(matchOut.row);
-        // Si heures confirmées dans col K, utiliser ces heures sinon calculer
         const storedH=parseFloat(matchOut.heures)||0;
-        if(storedH>0){
-          h=Math.round(storedH*4)/4;
-        }else{
-          h=Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/3600000*4)/4;
-        }
+        h=storedH>0?Math.round(storedH*4)/4:Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/3600000*4)/4;
       }
       lines.push({date:p.date,type:'pair',heure:p.heure,heureOut:matchOut?matchOut.heure:'',job:matchOut?matchOut.job:p.job,jobColor:matchOut?matchOut.jobColor:p.jobColor,heures:matchOut?h:null,deplacement:matchOut?matchOut.deplacement:p.deplacement,note:matchOut?matchOut.note:p.note,fichiersURL:matchOut?matchOut.fichiersURL:p.fichiersURL,coequipiers:matchOut?matchOut.coequipiers:p.coequipiers,inRow:p.row,outRow:matchOut?matchOut.row:null,semaine:p.semaine,nom:p.nom,ot:0});
     }
