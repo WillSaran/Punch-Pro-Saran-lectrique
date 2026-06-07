@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v143';
+const APP_VERSION='v144';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1895,7 +1895,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
 }
 
 // ── EMPLOYEE HISTORY ──────────────────────────────────────────────────────────
-function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave}){
+function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,editLine,sid,emp,notify,load}){
   const isEditing=editKey===lineKey;
   if(isEditing) return(
     <div style={{padding:'0.5rem 0.75rem 0.5rem 2.5rem'}}>
@@ -1929,7 +1929,26 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave}){
       </div>
       <div className="fg" style={{marginBottom:'0.4rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
       <div style={{display:'flex',gap:'0.3rem'}}>
-        <button className="btn-p" style={{marginTop:0,flex:1,fontSize:12}} onClick={()=>onSave('save')}>✓ Sauvegarder</button>
+        <button className="btn-p" style={{marginTop:0,flex:1,fontSize:12}} onClick={async()=>{
+          // Sauvegarder directement ici — editData et line sont dans scope local
+          if(!line||!line.inRow&&!line.outRow){notify&&notify('Erreur: ligne introuvable','err');return;}
+          try{
+            const row=line.outRow||line.inRow;
+            await updatePointageData(sid,row,{
+              job:editData.job,
+              jobColor:line.jobColor,
+              deplacement:editData.deplacement,
+              heures:editData.heures,
+              note:editData.note,
+              fichiersURL:line.fichiersURL,
+              coequipiers:line.coequipiers
+            });
+            if(emp&&sid)await addMessage(sid,emp.nom,'Modification',line.date+' — '+editData.job+', '+hToQuart(editData.heures));
+            notify&&notify('✅ Modifié','success');
+            closeEdit();
+            if(load)load();
+          }catch(e){notify&&notify('Erreur: '+e.message,'err');}
+        }}>✓ Sauvegarder</button>
         <button className="btn-s" style={{fontSize:12}} onClick={closeEdit}>Annuler</button>
       </div>
     </div>
@@ -2174,9 +2193,10 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                             <LineCard line={line} lineKey={j.date+':'+li}
                               editKey={editKey} editData={editData}
                               setEditData={setEditData} closeEdit={closeEdit}
+                              editLine={editLine} sid={sid} emp={emp}
+                              notify={notify} load={load}
                               onSave={(action,key,l)=>{
                                 if(action==='open'){openEdit(key,l);}
-                                else{saveEdit();}
                               }}/>
                           </div>
                         ))}
@@ -2249,7 +2269,15 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                         </div>
                         <div className="fg" style={{marginBottom:'0.3rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
                         <div style={{display:'flex',gap:'0.3rem'}}>
-                          <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEdit}>✓ Sauvegarder</button>
+                          <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={async()=>{
+                            if(!editLine||!editLine.inRow&&!editLine.outRow){notify('Erreur: ligne introuvable','err');return;}
+                            try{
+                              const row=editLine.outRow||editLine.inRow;
+                              await updatePointageData(sid,row,{job:editData.job,jobColor:editLine.jobColor,deplacement:editData.deplacement,heures:editData.heures,note:editData.note,fichiersURL:editLine.fichiersURL,coequipiers:editLine.coequipiers});
+                              await addMessage(sid,emp.nom,'Modification',editLine.date+' — '+editData.job+', '+hToQuart(editData.heures));
+                              notify('✅ Modifié','success');closeEdit();await load();
+                            }catch(e){notify('Erreur: '+e.message,'err');}
+                          }}>✓ Sauvegarder</button>
                           <button className="btn-s" style={{fontSize:11}} onClick={closeEdit}>Annuler</button>
                         </div>
                       </div>
