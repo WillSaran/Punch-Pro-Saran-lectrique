@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v141';
+const APP_VERSION='v142';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -270,7 +270,7 @@ function combinePts(pts){
     if(processed.has(p.row))continue;
     if(p.type==='confirm'){
       processed.add(p.row);
-      const h=Math.floor((p.heures||0)*4)/4; // arrondi vers le bas
+      const h=Math.round((p.heures||0)*4)/4;
       lines.push({date:p.date,type:'confirm',job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:p.row,outRow:null,semaine:p.semaine,nom:p.nom,ot:0});
     }else if(p.type==='in'){
       processed.add(p.row);
@@ -281,9 +281,9 @@ function combinePts(pts){
         // Si heures confirmées dans col K, utiliser ces heures sinon calculer
         const storedH=parseFloat(matchOut.heures)||0;
         if(storedH>0){
-          h=Math.floor(storedH*4)/4;
+          h=Math.round(storedH*4)/4;
         }else{
-          h=Math.floor((new Date(matchOut.datetime)-new Date(p.datetime))/3600000*4)/4;
+          h=Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/3600000*4)/4;
         }
       }
       lines.push({date:p.date,type:'pair',heure:p.heure,heureOut:matchOut?matchOut.heure:'',job:matchOut?matchOut.job:p.job,jobColor:matchOut?matchOut.jobColor:p.jobColor,heures:matchOut?h:null,deplacement:matchOut?matchOut.deplacement:p.deplacement,note:matchOut?matchOut.note:p.note,fichiersURL:matchOut?matchOut.fichiersURL:p.fichiersURL,coequipiers:matchOut?matchOut.coequipiers:p.coequipiers,inRow:p.row,outRow:matchOut?matchOut.row:null,semaine:p.semaine,nom:p.nom,ot:0});
@@ -1132,9 +1132,9 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
 // Convertit minutes en affichage quarts (ex: 465 → "7h45")
 function minsToQuart(mins){const h=Math.floor(mins/60);const m=mins%60;return h+'h'+(m>0?String(m).padStart(2,'0'):'');}
 // Snap aux quarts d'heure
-function snapToQuart(mins){return Math.floor(mins/15)*15;} // arrondi vers le bas
+function snapToQuart(mins){return Math.round(mins/15)*15;}
 // Formater heures en quarts (ex: 7.75 → "7h45", 8.5 → "8h30")
-function hToQuart(h){const totalMins=Math.floor(h*60/15)*15;return minsToQuart(totalMins);}
+function hToQuart(h){const totalMins=Math.round(h*60/15)*15;return minsToQuart(totalMins);}
 
 // Picker heure — roulette heures + ±15min pour minutes
 function TimePicker({label,value,onChange,color}){
@@ -2034,7 +2034,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   }
 
   // Composant carte de ligne (jour détail)
-  function LineCard({line,lineKey}){
+  function LineCard({line,lineKey,onSave}){
     const isEditing=editKey===lineKey;
     if(isEditing) return(
       <div style={{padding:'0.5rem 0.75rem 0.5rem 2.5rem'}}>
@@ -2071,7 +2071,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
         </div>
         <div className="fg" style={{marginBottom:'0.4rem'}}><label>Note</label><textarea className="note-input" rows={2} value={editData.note} onChange={e=>setEditData(p=>({...p,note:e.target.value}))}/></div>
         <div style={{display:'flex',gap:'0.3rem'}}>
-          <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={saveEdit}>✓ Sauvegarder</button>
+          <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={onSave}>✓ Sauvegarder</button>
           <button className="btn-s" style={{fontSize:11}} onClick={closeEdit}>Annuler</button>
         </div>
       </div>
@@ -2172,7 +2172,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                       <div style={{background:'var(--bg2)',borderBottom:'1px solid var(--border)'}}>
                         {dayLines.map((line,li)=>(
                           <div key={li} style={{borderBottom:li<dayLines.length-1?'1px solid var(--border)':'none'}}>
-                            <LineCard line={line} lineKey={j.date+':'+li}/>
+                            <LineCard line={line} lineKey={j.date+':'+li} onSave={saveEdit}/>
                           </div>
                         ))}
                       </div>
