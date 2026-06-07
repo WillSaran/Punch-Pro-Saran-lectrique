@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v140';
+const APP_VERSION='v141';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -588,7 +588,8 @@ async function getPointages(sid,filter){
   return rows;
 }
 async function updatePointageData(sid,row,data){
-  // Mettre à jour colonnes H-N : Job, CouleurJob, Dépl, Heures, Note, Fichiers, Coéquipiers
+  if(!row)return;
+  // Étape 1: Écrire toutes les données (H à N)
   await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
     spreadsheetId:sid,
     range:'Pointages!H'+row+':N'+row,
@@ -603,16 +604,14 @@ async function updatePointageData(sid,row,data){
       (data.coequipiers||[]).join(', ')
     ]]}
   }));
-  // Si c'est un punch OUT modifié, changer le type en "confirm" pour
-  // que les heures modifiées soient utilisées (pas recalculées depuis timestamps)
-  if(data.type==='pair'&&data.heures>0){
-    await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
-      spreadsheetId:sid,
-      range:'Pointages!B'+row,
-      valueInputOption:'RAW',
-      resource:{values:[['confirm']]}
-    }));
-  }
+  // Étape 2: Toujours changer le type en "confirm" pour que
+  // les heures manuelles soient lues (pas recalculées depuis timestamps)
+  await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId:sid,
+    range:'Pointages!B'+row,
+    valueInputOption:'RAW',
+    resource:{values:[['confirm']]}
+  }));
 }
 async function updatePointageFichiers(sid,row,urls){
   await gapi.client.sheets.spreadsheets.values.update({
@@ -1135,7 +1134,7 @@ function minsToQuart(mins){const h=Math.floor(mins/60);const m=mins%60;return h+
 // Snap aux quarts d'heure
 function snapToQuart(mins){return Math.floor(mins/15)*15;} // arrondi vers le bas
 // Formater heures en quarts (ex: 7.75 → "7h45", 8.5 → "8h30")
-function hToQuart(h){const totalMins=Math.round(h*60/15)*15;return minsToQuart(totalMins);}
+function hToQuart(h){const totalMins=Math.floor(h*60/15)*15;return minsToQuart(totalMins);}
 
 // Picker heure — roulette heures + ±15min pour minutes
 function TimePicker({label,value,onChange,color}){
