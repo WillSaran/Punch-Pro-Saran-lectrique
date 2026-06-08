@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v147';
+const APP_VERSION='v148';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -226,6 +226,102 @@ const EMP_COLORS=['#2f81f7','#6e40c9','#3fb950','#d29922','#f85149','#0ea5e9','#
   '#7986cb','#33b679','#8e24aa','#e67c73','#f6c026','#f5511d','#039be5','#616161','#3f51b5','#0b8043','#d50000'];
 const GCAL_COLORS={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000','':'#2f81f7'};
 const BOSS_EMAILS=['info@saranelectrique.com','saranelectrique@gmail.com'];
+const STOCK_SHEET_ID='1SoCciTEXkvCu61oFg3UbyParAkoNJfu-GulAdJnB0d0';
+
+// ── CATALOGUE DE MATÉRIAUX ─────────────────────────────────────────────────────
+const CATALOGUE={
+  'Fils':[
+    {code:'LVT2C18',desc:'Fil LVT 2C 18 AWG',unite:'pi'},
+    {code:'NMD2C14',desc:'Fil NMD 2C 14 AWG',unite:'pi'},
+    {code:'NMD2C12RED',desc:'Fil NMD 2C 12 AWG rouge',unite:'pi'},
+    {code:'NMD2C12YEL',desc:'Fil NMD 2C 12 AWG jaune',unite:'pi'},
+    {code:'NMD2C10RED',desc:'Fil NMD 2C 10 AWG rouge',unite:'pi'},
+    {code:'NMD3C14',desc:'Fil NMD 3C 14 AWG',unite:'pi'},
+    {code:'NMD3C10',desc:'Fil NMD 3C 10 AWG',unite:'pi'},
+    {code:'NMD3C8',desc:'Fil NMD 3C 8 AWG',unite:'pi'},
+    {code:'NMD3C6ALU',desc:'Fil NMD 3C 6 AWG alu',unite:'pi'},
+    {code:'RW2WHTALU',desc:'Fil RW90 2C blanc alu',unite:'pi'},
+    {code:'RW250BLWALU',desc:'Fil RW90 250 bleu-blanc alu',unite:'pi'},
+    {code:'RG6U',desc:'Câble coaxial RG6U',unite:'pi'},
+    {code:'CABLE FIBRE',desc:'Câble fibre optique',unite:'pi'},
+    {code:'CAT6 BLEU',desc:'Câble CAT6 bleu',unite:'pi'},
+    {code:'NMWU 14-2',desc:'Fil NMWU 14-2 extérieur',unite:'pi'},
+    {code:'NMWU 12-2',desc:'Fil NMWU 12-2 extérieur',unite:'pi'},
+  ],
+  'Décora':[
+    {code:'T5325-W',desc:'Prise 15A Décora blanche',unite:'un'},
+    {code:'T5825-W',desc:'Prise 20A Décora blanche',unite:'un'},
+    {code:'GFTR-W',desc:'GFI 15A Décora blanc',unite:'un'},
+    {code:'GFTR2-W',desc:'GFI 20A Décora blanc',unite:'un'},
+    {code:'T5633-W',desc:'Prise USB 15A Décora',unite:'un'},
+    {code:'T5833-W',desc:'Prise USB 20A Décora',unite:'un'},
+    {code:'5601-P2W',desc:'Interrupteur simple Décora',unite:'un'},
+    {code:'5603-P2W',desc:'Interrupteur 3-voies Décora',unite:'un'},
+    {code:'5604',desc:'Interrupteur 4-voies Décora',unite:'un'},
+    {code:'1GPJ/1GSW',desc:'Plaque 1 gang',unite:'un'},
+    {code:'2GPJ/2GSW',desc:'Plaque 2 gangs',unite:'un'},
+    {code:'3GPJ/3GSW',desc:'Plaque 3 gangs',unite:'un'},
+    {code:'4GPJ/4GSW',desc:'Plaque 4 gangs',unite:'un'},
+    {code:'SÉCHEUSE 30A',desc:'Prise sécheuse 30A',unite:'un'},
+    {code:'POÊLE 50A',desc:'Prise poêle 50A',unite:'un'},
+    {code:'DVCL153',desc:'Variateur Décora 150W',unite:'un'},
+    {code:'FLP4',desc:'Luminaire FLP4',unite:'un',options:['3000K','4000K','CCT']},
+    {code:'FLP4G',desc:'Luminaire encastré FLP4G',unite:'un',options:['3000K','4000K','CCT']},
+    {code:'CARILLON',desc:'Carillon de porte',unite:'un'},
+    {code:'TIMER TI072',desc:'Minuterie TI072',unite:'un'},
+    {code:'FEU P1275CA',desc:'Détecteur de fumée',unite:'un'},
+    {code:'MONOX 900-0119',desc:'Détecteur CO',unite:'un'},
+    {code:'RC840',desc:'Relais RC840 120/240V',unite:'un'},
+    {code:'KIT PICO',desc:'Kit Pico Lutron',unite:'un'},
+  ],
+  'Boîtes':[
+    {code:'BC1304LHTQ',desc:'Boîte 1 gang métal 4"',unite:'un'},
+    {code:'BC1104-L',desc:'Boîte 1 gang métal légère',unite:'un'},
+    {code:'BC54151-L',desc:'Boîte 2 gangs métal légère',unite:'un'},
+    {code:'BC54-C1',desc:'Boîte 2 gangs avec clou',unite:'un'},
+    {code:'BC1110',desc:'Boîte 1 gang profonde',unite:'un'},
+    {code:'BC2020',desc:'Boîte 2 gangs métal',unite:'un'},
+    {code:'BC72171-K',desc:'Boîte octogonale',unite:'un'},
+    {code:'BCR2000',desc:'Boîte ronde métal',unite:'un'},
+    {code:'Ring418',desc:'Anneau rallonge 4"',unite:'un'},
+    {code:'DIS 60A NES',desc:'Disconnecteur 60A NES-ACD-2',unite:'un'},
+    {code:'JBX (JRB)',desc:'Boîte jonction JBX',unite:'un'},
+  ],
+  'Conduit':[
+    // Tailles gérées via selector dans l'app
+    {code:'EMT',desc:'Conduit EMT (métallique)',unite:'barre',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'PVC',desc:'Conduit PVC',unite:'barre',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'BEND',desc:'Courbe conduit',unite:'un',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'COUPLING',desc:'Couplage REC',unite:'un',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'STRAP',desc:'Strap/collier RPS',unite:'un',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'CONN-1-VIS',desc:'Connecteur 1 vis CI7',unite:'un',sizes:['1/2"','3/4"','1"']},
+    {code:'CONN-2-VIS',desc:'Connecteur 2 vis CI8',unite:'un',sizes:['1/2"','3/4"','1"']},
+    {code:'RFA BUSHING',desc:'Bague CI27',unite:'un',sizes:['1/2"','3/4"','1"']},
+  ],
+  'Panneaux':[
+    {code:'QO CQO1',desc:'Panneau QO (Square D)',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
+    {code:'CHOM',desc:'Panneau CHOM (Eaton)',unite:'un',options:['24/48cir 125A','42/84cir 200A']},
+    {code:'SIEQ',desc:'Panneau Siemens',unite:'un',options:['40cir 200A','60cir 200A']},
+    {code:'BR DISJ',desc:'Disjoncteur BR/STAB',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A']},
+    {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-100A']},
+    {code:'PCAFI',desc:'Disjoncteur PCAFI (arc fault)',unite:'un',options:['1P-15A','1P-20A']},
+    {code:'PDF',desc:'Disjoncteur PDF (fuite à la terre)',unite:'un',options:['1P-15A','1P-20A']},
+    {code:'DOUBLE',desc:'Disjoncteur double',unite:'un',options:['15/15A','20/20A','15/20A','20/15A']},
+    {code:'LEV-EV',desc:'Chargeur VE Leviton',unite:'un',options:['42W','40P','48W']},
+    {code:'EVC40',desc:'Chargeur VE EVC40',unite:'un',options:['Avec fiche','Sans fiche']},
+  ],
+  'Chauffage':[
+    {code:'STEB',desc:'Plinthe STEB standard',unite:'un',options:['300W','500W','750W','1000W','1250W','1500W','1750W','2000W']},
+    {code:'STEPR',desc:'Plinthe STEPR',unite:'un',options:['500W','1000W','2000W']},
+    {code:'STEMIR',desc:'Plinthe STEMIR (salle de bain)',unite:'un',options:['1000W','1500W','2000W']},
+    {code:'STESK',desc:'Chauffage kick space STESK',unite:'un',options:['1000W blanc','1000W noir']},
+    {code:'STERWF',desc:'Thermostat Wi-Fi STERWF',unite:'un'},
+    {code:'STERWFT1W',desc:'Thermostat Wi-Fi STERWFT1W',unite:'un'},
+    {code:'TH401',desc:'Thermostat mécanique TH401',unite:'un'},
+    {code:'TH450',desc:'Thermostat électronique TH450',unite:'un'},
+    {code:'SIBT1W',desc:'Thermostat SIBT1W',unite:'un'},
+  ],
+};
 const SCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email';
 const DISCOVERY=['https://sheets.googleapis.com/$discovery/rest?version=v4','https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest'];
 let tokenClient=null;
@@ -502,6 +598,113 @@ async function withTokenCheck(fn){
     }
     throw e;
   }
+}
+
+// ── STOCK SHEET API ───────────────────────────────────────────────────────────
+async function getProchainNumeroAppel(){
+  try{
+    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId:STOCK_SHEET_ID,range:'Compteur!B1'
+    }));
+    const last=parseInt(res.result.values?.[0]?.[0])||0;
+    return{num:last+1,label:'E-'+String(last+1).padStart(3,'0')};
+  }catch(e){return{num:1,label:'E-001'};}
+}
+
+async function incrementerCompteurAppel(){
+  const {num}=await getProchainNumeroAppel();
+  await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId:STOCK_SHEET_ID,range:'Compteur!B1',valueInputOption:'RAW',
+    resource:{values:[[num]]}
+  }));
+  return 'E-'+String(num).padStart(3,'0');
+}
+
+async function sauvegarderAppelDeService(data){
+  const numero=await incrementerCompteurAppel();
+  const now=new Date();
+  await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.append({
+    spreadsheetId:STOCK_SHEET_ID,range:'Appels de service!A1',
+    valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
+    resource:{values:[[
+      numero,
+      localDateStr(),
+      data.employe||'',
+      data.job||'',
+      data.adresse||'',
+      data.nomClient||'',
+      data.telClient||'',
+      data.courrielClient||'',
+      data.sa01||0,
+      data.sa02||0,
+      data.type||'',
+      data.prixForfaitaire||'',
+      data.deplacement?'Oui':'',
+      data.quincaillerie?'Oui':'',
+      JSON.stringify(data.materiaux||{}),
+      data.remarques||'',
+      'Soumis',
+      now.toISOString()
+    ]]}
+  }));
+  return numero;
+}
+
+async function getStockPersonnalise(){
+  try{
+    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId:STOCK_SHEET_ID,range:'Stock personnalisé!A2:C'
+    }));
+    return(res.result.values||[]).map(r=>({code:r[0]||'',desc:r[1]||'',unite:r[2]||'un'}));
+  }catch(e){return[];}
+}
+
+async function ajouterStockPersonnalise(code,desc,unite,employe){
+  await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.append({
+    spreadsheetId:STOCK_SHEET_ID,range:'Stock personnalisé!A1',
+    valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
+    resource:{values:[[code,desc,unite||'un',employe||'',localDateStr()]]}
+  }));
+}
+
+async function envoyerCommandeCourriel(data,token){
+  const lignes=Object.entries(data.materiaux||{})
+    .filter(([,v])=>v.qty>0)
+    .map(([k,v])=>`  ${k.padEnd(25)} x ${v.qty} ${v.unite||''}`);
+  if(lignes.length===0)return false;
+  const body=`Bonjour,\n\n${data.employe} passe une commande pour la job :\n${data.job||'—'}\n\n`+
+    `MATÉRIAUX REQUIS :\n${lignes.join('\n')}\n\n`+
+    (data.remarques?`REMARQUES :\n${data.remarques}\n\n`:'')+
+    `Date : ${localDateStr()}\n\nEnvoyé depuis PunchPro — Saran Électrique`;
+  const to='info@saranelectrique.com';
+  const subject=(data.job||'Commande')+' — Commande';
+  const msgHeader='To: '+to+'\r\nSubject: '+subject+'\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
+  const bodyBytes=new TextEncoder().encode(body);
+  let b64='';
+  for(let i=0;i<bodyBytes.length;i+=57){
+    const chunk=bodyBytes.slice(i,i+57);let bin='';
+    chunk.forEach(b=>bin+=String.fromCharCode(b));b64+=btoa(bin)+'\r\n';
+  }
+  const encoded=btoa(msgHeader+b64).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({raw:encoded})
+  });
+  return res.ok;
+}
+
+async function getHistoriqueAppels(){
+  try{
+    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId:STOCK_SHEET_ID,range:'Appels de service!A2:R'
+    }));
+    return(res.result.values||[]).map(r=>({
+      numero:r[0]||'',date:r[1]||'',employe:r[2]||'',job:r[3]||'',
+      adresse:r[4]||'',nomClient:r[5]||'',type:r[10]||'',
+      statut:r[16]||'',dateSubmit:r[17]||''
+    }));
+  }catch(e){return[];}
 }
 
 async function getEmployees(sid){
@@ -1893,6 +2096,344 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
 }
 
 // ── EMPLOYEE HISTORY ──────────────────────────────────────────────────────────
+// ── APPEL DE SERVICE ─────────────────────────────────────────────────────────
+function AppelDeService({emp,job,adresse,onClose,notify}){
+  const [loading,setLoading]=useState(true);
+  const [numero,setNumero]=useState('...');
+  const [nomClient,setNomClient]=useState('');
+  const [telClient,setTelClient]=useState('');
+  const [courrielClient,setCourrielClient]=useState('');
+  const [sa01,setSa01]=useState(0); // heures compagnon
+  const [sa02,setSa02]=useState(0); // heures apprenti
+  const [type,setType]=useState('');
+  const [prixForfaitaire,setPrixForfaitaire]=useState('');
+  const [deplacement,setDeplacement]=useState(false);
+  const [quincaillerie,setQuincaillerie]=useState(false);
+  const [remarques,setRemarques]=useState('');
+  const [materiaux,setMateriaux]=useState({}); // {code_option: {qty,unite,desc}}
+  const [expandedCat,setExpandedCat]=useState(null);
+  const [stockPerso,setStockPerso]=useState([]);
+  const [newItemCode,setNewItemCode]=useState('');
+  const [newItemDesc,setNewItemDesc]=useState('');
+  const [newItemQty,setNewItemQty]=useState(1);
+  const [saving,setSaving]=useState(false);
+  const [tab,setTab]=useState('form'); // 'form' | 'materiaux'
+
+  useEffect(()=>{
+    (async()=>{
+      const {label}=await getProchainNumeroAppel();
+      setNumero(label);
+      const perso=await getStockPersonnalise();
+      setStockPerso(perso);
+      setLoading(false);
+    })();
+  },[]);
+
+  function setQty(key,desc,unite,delta){
+    setMateriaux(prev=>{
+      const cur=prev[key]?.qty||0;
+      const next=Math.max(0,cur+delta);
+      if(next===0){const u={...prev};delete u[key];return u;}
+      return {...prev,[key]:{qty:next,unite,desc}};
+    });
+  }
+  function setQtyDirect(key,desc,unite,val){
+    const q=parseInt(val)||0;
+    setMateriaux(prev=>{
+      if(q<=0){const u={...prev};delete u[key];return u;}
+      return {...prev,[key]:{qty:q,unite,desc}};
+    });
+  }
+
+  const totalItems=Object.values(materiaux).reduce((s,v)=>s+v.qty,0);
+
+  async function soumettre(){
+    setSaving(true);
+    try{
+      const numero=await sauvegarderAppelDeService({
+        employe:emp.nom,job,adresse,nomClient,telClient,courrielClient,
+        sa01,sa02,type,prixForfaitaire,deplacement,quincaillerie,
+        materiaux,remarques
+      });
+      notify('✅ Appel '+numero+' soumis!','success');
+      onClose();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+    setSaving(false);
+  }
+
+  async function commander(){
+    setSaving(true);
+    try{
+      const token=gapi.client.getToken()?.access_token;
+      if(!token){notify('Pas de token Google','err');setSaving(false);return;}
+      const ok=await envoyerCommandeCourriel({employe:emp.nom,job,adresse,materiaux,remarques},token);
+      if(ok)notify('✅ Commande envoyée à info@saranelectrique.com!','success');
+      else notify('Erreur envoi courriel','err');
+    }catch(e){notify('Erreur: '+e.message,'err');}
+    setSaving(false);
+  }
+
+  async function ajouterItem(){
+    if(!newItemCode.trim())return;
+    const key=newItemCode.trim();
+    const desc=newItemDesc.trim()||key;
+    setMateriaux(prev=>({...prev,[key]:{qty:newItemQty,unite:'un',desc}}));
+    // Mémoriser dans Stock personnalisé
+    const exists=stockPerso.find(s=>s.code===key);
+    if(!exists){
+      await ajouterStockPersonnalise(key,desc,'un',emp.nom);
+      setStockPerso(p=>[...p,{code:key,desc,unite:'un'}]);
+    }
+    setNewItemCode('');setNewItemDesc('');setNewItemQty(1);
+  }
+
+  if(loading)return(<div style={{textAlign:'center',padding:'3rem',color:'var(--muted)'}}>⏳ Chargement...</div>);
+
+  // Tous les items avec quantité > 0
+  const selectedItems=Object.entries(materiaux).filter(([,v])=>v.qty>0);
+
+  return(
+    <div style={{maxWidth:560,width:'100%'}}>
+      {/* En-tête */}
+      <div style={{background:'linear-gradient(135deg,#1a237e,#283593)',borderRadius:12,padding:'0.75rem 1rem',marginBottom:'0.75rem'}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+          <div>
+            <div style={{fontSize:11,color:'rgba(255,255,255,0.7)',marginBottom:2}}>APPEL DE SERVICE</div>
+            <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.4rem',color:'#ffffff'}}>{numero}</div>
+          </div>
+          <button onClick={onClose} style={{background:'rgba(255,255,255,0.15)',border:'none',borderRadius:8,padding:'0.3rem 0.6rem',color:'white',cursor:'pointer',fontSize:12}}>← Retour</button>
+        </div>
+        {job&&<div style={{fontSize:11,color:'rgba(255,255,255,0.85)',marginTop:6,fontWeight:500}}>{job}</div>}
+        {adresse&&<div style={{fontSize:10,color:'rgba(255,255,255,0.7)',marginTop:2}}>📍 {adresse}</div>}
+      </div>
+
+      {/* Onglets */}
+      <div className="tabs" style={{marginBottom:'0.6rem'}}>
+        <div className={'tab'+(tab==='form'?' active':'')} onClick={()=>setTab('form')}>Infos</div>
+        <div className={'tab'+(tab==='materiaux'?' active':'')} onClick={()=>setTab('materiaux')}>
+          Matériaux {totalItems>0&&<span style={{background:'var(--accent)',color:'white',borderRadius:10,fontSize:9,padding:'1px 5px',marginLeft:4}}>{totalItems}</span>}
+        </div>
+      </div>
+
+      {tab==='form'&&(
+        <div>
+          {/* Info client */}
+          <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}>
+            <div className="csec" style={{marginBottom:'0.5rem'}}>Client</div>
+            <div className="fg" style={{marginBottom:'0.35rem'}}><label>Nom</label><input value={nomClient} onChange={e=>setNomClient(e.target.value)} placeholder="Nom du client"/></div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.35rem'}}>
+              <div className="fg" style={{marginBottom:0}}><label>Téléphone</label><input value={telClient} onChange={e=>setTelClient(e.target.value)} placeholder="(xxx) xxx-xxxx" type="tel"/></div>
+              <div className="fg" style={{marginBottom:0}}><label>Courriel</label><input value={courrielClient} onChange={e=>setCourrielClient(e.target.value)} placeholder="@" type="email"/></div>
+            </div>
+          </div>
+
+          {/* Heures */}
+          <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}>
+            <div className="csec" style={{marginBottom:'0.5rem'}}>Heures</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.75rem'}}>
+              {[['sa01','SA01 — Compagnon',sa01,setSa01],['sa02','SA02 — Apprenti',sa02,setSa02]].map(([id,label,val,setVal])=>(
+                <div key={id} style={{textAlign:'center'}}>
+                  <div style={{fontSize:10,color:'var(--muted)',marginBottom:6}}>{label}</div>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                    <button className="dur-btn" style={{width:30,height:30,fontSize:16}} onClick={()=>setVal(v=>Math.max(0,Math.round((v-0.25)*4)/4))}>−</button>
+                    <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.3rem',color:'var(--accent)',minWidth:50,textAlign:'center'}}>{hToQuart(val)}</div>
+                    <button className="dur-btn" style={{width:30,height:30,fontSize:16}} onClick={()=>setVal(v=>Math.round((v+0.25)*4)/4)}>+</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Type */}
+          <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}>
+            <div className="csec" style={{marginBottom:'0.5rem'}}>Type de travail</div>
+            <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap'}}>
+              {['À facturer','Ordre de travail','Prix forfaitaire'].map(t=>(
+                <div key={t} onClick={()=>setType(type===t?'':t)}
+                  style={{padding:'0.3rem 0.7rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
+                    fontWeight:type===t?700:400,
+                    background:type===t?'rgba(47,129,247,0.15)':'var(--bg4)',
+                    border:'1px solid '+(type===t?'var(--accent)':'var(--border)'),
+                    color:type===t?'var(--accent)':'var(--muted)'}}>
+                  {t}
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:'0.4rem',marginTop:'0.4rem',flexWrap:'wrap'}}>
+              {[['deplacement','🚗 Déplacement',deplacement,setDeplacement],['quincaillerie','🔧 Quincaillerie',quincaillerie,setQuincaillerie]].map(([id,label,val,setVal])=>(
+                <div key={id} onClick={()=>setVal(v=>!v)}
+                  style={{padding:'0.3rem 0.7rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
+                    fontWeight:val?700:400,
+                    background:val?'rgba(47,129,247,0.15)':'var(--bg4)',
+                    border:'1px solid '+(val?'var(--accent)':'var(--border)'),
+                    color:val?'var(--accent)':'var(--muted)'}}>
+                  {label}
+                </div>
+              ))}
+            </div>
+            {type==='Prix forfaitaire'&&(
+              <div className="fg" style={{marginTop:'0.4rem',marginBottom:0}}>
+                <label>Montant ($)</label>
+                <input value={prixForfaitaire} onChange={e=>setPrixForfaitaire(e.target.value)} placeholder="ex: 450.00" type="number"/>
+              </div>
+            )}
+          </div>
+
+          {/* Remarques */}
+          <div className="fg" style={{marginBottom:'0.6rem'}}><label>Remarques</label><textarea className="note-input" rows={3} value={remarques} onChange={e=>setRemarques(e.target.value)} placeholder="Notes, instructions spéciales..."/></div>
+        </div>
+      )}
+
+      {tab==='materiaux'&&(
+        <div>
+          {/* Liste des catégories */}
+          {Object.entries(CATALOGUE).map(([cat,items])=>{
+            const catQty=items.reduce((s,item)=>{
+              const keys=item.options?item.options.map(o=>item.code+'|'+o):[item.code];
+              return s+keys.reduce((ss,k)=>ss+(materiaux[k]?.qty||0),0);
+            },0);
+            const isOpen=expandedCat===cat;
+            return(
+              <div key={cat} style={{marginBottom:'0.4rem',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+                {/* Header catégorie */}
+                <div onClick={()=>setExpandedCat(isOpen?null:cat)}
+                  style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.5rem 0.75rem',background:'var(--bg3)',cursor:'pointer',touchAction:'manipulation'}}>
+                  <span style={{fontWeight:600,fontSize:12}}>{cat}</span>
+                  <div style={{display:'flex',alignItems:'center',gap:8}}>
+                    {catQty>0&&<span style={{background:'var(--accent)',color:'white',borderRadius:10,fontSize:9,padding:'1px 6px',fontWeight:700}}>{catQty}</span>}
+                    <span style={{color:'var(--muted)',fontSize:11}}>{isOpen?'▼':'▶'}</span>
+                  </div>
+                </div>
+                {/* Items de la catégorie */}
+                {isOpen&&(
+                  <div style={{background:'var(--bg2)'}}>
+                    {items.map((item,ii)=>{
+                      // Items avec options (taille ou modèle)
+                      if(item.options||item.sizes){
+                        const opts=item.options||item.sizes;
+                        return(
+                          <div key={ii} style={{borderTop:'1px solid var(--border)',padding:'0.5rem 0.75rem'}}>
+                            <div style={{fontSize:11,fontWeight:600,color:'var(--text)',marginBottom:6}}>{item.code} — {item.desc}</div>
+                            {opts.map(opt=>{
+                              const key=item.code+'|'+opt;
+                              const qty=materiaux[key]?.qty||0;
+                              return(
+                                <div key={opt} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.2rem 0',borderBottom:'1px solid var(--border)'}}>
+                                  <span style={{fontSize:11,color:'var(--muted)',flex:1}}>{opt}</span>
+                                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                                    <button className="dur-btn" style={{width:26,height:26,fontSize:13}} onClick={()=>setQty(key,item.desc+' '+opt,item.unite,-1)}>−</button>
+                                    <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',color:qty>0?'var(--accent)':'var(--muted)',minWidth:28,textAlign:'center'}}>{qty||'—'}</div>
+                                    <button className="dur-btn" style={{width:26,height:26,fontSize:13}} onClick={()=>setQty(key,item.desc+' '+opt,item.unite,1)}>+</button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      }
+                      // Item simple
+                      const key=item.code;
+                      const qty=materiaux[key]?.qty||0;
+                      return(
+                        <div key={ii} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.4rem 0.75rem',borderTop:'1px solid var(--border)'}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:11,fontWeight:500,color:'var(--text)'}}>{item.code}</div>
+                            <div style={{fontSize:10,color:'var(--muted)'}}>{item.desc}</div>
+                          </div>
+                          <div style={{display:'flex',alignItems:'center',gap:6}}>
+                            <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setQty(key,item.desc,item.unite,-1)}>−</button>
+                            <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1.1rem',color:qty>0?'var(--accent)':'var(--muted)',minWidth:32,textAlign:'center'}}>{qty||'—'}</div>
+                            <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setQty(key,item.desc,item.unite,1)}>+</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Stock personnalisé mémorisé */}
+          {stockPerso.length>0&&(
+            <div style={{marginBottom:'0.4rem',border:'1px solid var(--border)',borderRadius:10,overflow:'hidden'}}>
+              <div onClick={()=>setExpandedCat(expandedCat==='_perso'?null:'_perso')}
+                style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.5rem 0.75rem',background:'var(--bg3)',cursor:'pointer'}}>
+                <span style={{fontWeight:600,fontSize:12}}>⭐ Stock personnalisé</span>
+                <span style={{color:'var(--muted)',fontSize:11}}>{expandedCat==='_perso'?'▼':'▶'}</span>
+              </div>
+              {expandedCat==='_perso'&&(
+                <div style={{background:'var(--bg2)'}}>
+                  {stockPerso.map((item,ii)=>{
+                    const qty=materiaux[item.code]?.qty||0;
+                    return(
+                      <div key={ii} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.4rem 0.75rem',borderTop:'1px solid var(--border)'}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:500}}>{item.code}</div>
+                          <div style={{fontSize:10,color:'var(--muted)'}}>{item.desc}</div>
+                        </div>
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setQty(item.code,item.desc,item.unite,-1)}>−</button>
+                          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1.1rem',color:qty>0?'var(--accent)':'var(--muted)',minWidth:32,textAlign:'center'}}>{qty||'—'}</div>
+                          <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setQty(item.code,item.desc,item.unite,1)}>+</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Ajouter item libre */}
+          <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',border:'1px dashed var(--border)'}}>
+            <div className="csec" style={{marginBottom:'0.5rem'}}>➕ Autre matériau</div>
+            <div className="fg" style={{marginBottom:'0.35rem'}}><label>Code / Nom</label><input value={newItemCode} onChange={e=>setNewItemCode(e.target.value)} placeholder="ex: GFTR-BK"/></div>
+            <div className="fg" style={{marginBottom:'0.35rem'}}><label>Description</label><input value={newItemDesc} onChange={e=>setNewItemDesc(e.target.value)} placeholder="ex: GFI 15A noir"/></div>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.35rem'}}>
+              <label style={{fontSize:10,color:'var(--muted)',flexShrink:0}}>Quantité</label>
+              <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setNewItemQty(q=>Math.max(1,q-1))}>−</button>
+              <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1.1rem',color:'var(--accent)',minWidth:32,textAlign:'center'}}>{newItemQty}</div>
+              <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setNewItemQty(q=>q+1)}>+</button>
+            </div>
+            <button className="btn-s" style={{width:'100%',fontSize:11}} onClick={ajouterItem} disabled={!newItemCode.trim()}>
+              ➕ Ajouter et mémoriser
+            </button>
+          </div>
+
+          {/* Résumé sélection */}
+          {selectedItems.length>0&&(
+            <div style={{marginTop:'0.6rem',background:'var(--bg3)',borderRadius:10,padding:'0.75rem'}}>
+              <div className="csec" style={{marginBottom:'0.4rem'}}>Résumé ({selectedItems.length} items)</div>
+              {selectedItems.map(([k,v])=>(
+                <div key={k} style={{display:'flex',justifyContent:'space-between',fontSize:11,padding:'0.15rem 0',borderBottom:'1px solid var(--border)'}}>
+                  <span style={{color:'var(--text)'}}>{v.desc||k}</span>
+                  <span style={{color:'var(--accent)',fontWeight:700,minWidth:40,textAlign:'right'}}>×{v.qty}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Boutons d'action */}
+      <div style={{display:'flex',flexDirection:'column',gap:'0.4rem',marginTop:'0.75rem'}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.4rem'}}>
+          <button className="btn-s" style={{fontSize:12}} disabled={saving||totalItems===0} onClick={commander}>
+            {saving?'⏳':'📦'} Commander
+          </button>
+          <button className="btn-p" style={{marginTop:0,fontSize:12}} disabled={saving} onClick={soumettre}>
+            {saving?'⏳ Sauvegarde...':'✅ Soumettre '+numero}
+          </button>
+        </div>
+        <button className="btn-s" style={{fontSize:11,opacity:0.7}} onClick={onClose}>
+          💾 Fermer sans soumettre
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,editLine,sid,emp,notify,load}){
   const isEditing=editKey===lineKey;
   if(isEditing) return(
@@ -2794,12 +3335,32 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
             <div className="ps"><div className="v">{calcH(rpts.filter(p=>p.mois===curMois))}h</div><div className="l">Mois</div></div>
             <div className="ps"><div className="v">{Math.round(rpts.filter(p=>p.semaine===curWeek&&(p.type==='in'||p.type==='confirm')).reduce((s,p)=>s+(p.deplacement||0),0))}m</div><div className="l">Dépl.</div></div>
           </div>
-          <button className="btn-s" style={{marginTop:'0.75rem',width:'100%'}} onClick={reset}>← Retour à l'accueil</button>
+          {/* Bouton appel de service après punch OUT ou confirm */}
+          {(result.type==='out'||result.type==='confirm')&&(
+            <button className="btn-s" style={{marginTop:'0.6rem',width:'100%',borderColor:'rgba(47,129,247,0.4)',color:'var(--accent)',fontSize:12}}
+              onClick={()=>setStep('appel-service')}>
+              📋 Créer un appel de service
+            </button>
+          )}
+          <button className="btn-s" style={{marginTop:'0.4rem',width:'100%'}} onClick={reset}>← Retour à l'accueil</button>
         </div>
       </div>
               );
   }
   if(step==='result'&&result&&result.err)return(<div className="welcome"><div className="punch-result err"><div style={{fontSize:'1.8rem',marginBottom:8}}>❌</div><div style={{fontFamily:'var(--font-head)',fontWeight:700}}>PIN incorrect</div><button style={{background:'none',border:'none',color:'var(--muted)',fontSize:11,cursor:'pointer',marginTop:'0.55rem',textDecoration:'underline'}} onClick={reset}>← Retour</button></div></div>);
+
+  // ── APPEL DE SERVICE ──
+  if(step==='appel-service')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+      <AppelDeService
+        emp={selEmp||{nom:'',couleur:'#2f81f7',code:'??'}}
+        job={selJob||result?.job||''}
+        adresse={jobs.find(j=>j.title===(selJob||result?.job))?.location||result?.location||''}
+        notify={notify}
+        onClose={()=>{reset();}}
+      />
+    </div>
+  );
 
   // ── PIN PADS ──
   if(step==='pin')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch IN" onSubmit={pin=>handlePunch(pin,'in')} onCancel={goBack}/></div>);
