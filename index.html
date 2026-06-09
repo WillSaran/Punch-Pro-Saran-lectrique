@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v149';
+const APP_VERSION='v150';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -3035,86 +3035,226 @@ function AddressInput({value,onChange,placeholder,style}){
 }
 
 // ── JOB SUMMARY ──────────────────────────────────────────────────────────────
-function JobSummary({jobs,emp}){
-  const [activeTab,setActiveTab]=useState('today');
+// ── AGENDA EMPLOYÉ ───────────────────────────────────────────────────────────
+function AgendaEmp({jobs,emp,notify,onBack}){
+  const [commandeJob,setCommandeJob]=useState(null);
   const today=localDateStr();
-  const tomorrow=localDateStr(new Date(Date.now()+86400000));
-  const dateRef=activeTab==='today'?today:tomorrow;
-  const label=activeTab==='today'?"aujourd'hui":'demain';
-  const jobsDuJour=(jobs||[]).filter(j=>(j.start||'').slice(0,10)===dateRef);
 
-  // Séparer les jobs de l'employé vs les autres
-  function isEmpJob(j){
-    if(!emp)return false;
-    const t=(j.title||'').toLowerCase();
-    const code=(emp.code||'').toLowerCase();
-    const nom=(emp.nom||'').toLowerCase();
-    // Match si couleur correspond ou si code/nom dans le titre
-    const colorMatch=emp.couleur&&j.gcalColor&&colorDist(j.gcalColor,emp.couleur)<80;
-    const nameMatch=code&&t.includes(code)||nom.split(' ').some(n=>n.length>2&&t.includes(n.toLowerCase()));
-    return colorMatch||nameMatch;
-  }
+  // Grouper les jobs par date
+  const parDate={};
+  jobs.forEach(j=>{
+    const d=new Date(j.start).toDateString();
+    if(!parDate[d])parDate[d]=[];
+    parDate[d].push(j);
+  });
 
-  const mesJobs=jobsDuJour.filter(j=>isEmpJob(j));
-  const autresJobs=jobsDuJour.filter(j=>!isEmpJob(j));
+  const joursFr=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const moisFr=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
 
-  if(!jobs||jobs.length===0)return(
-    <div style={{maxWidth:360,width:'100%',marginTop:'1rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>Chargement de l'agenda...</div>
+  if(commandeJob)return(
+    <div style={{width:'100%'}}>
+      <CommandeRapide
+        job={commandeJob.title} adresse={commandeJob.location||''}
+        emp={emp} notify={notify}
+        onClose={()=>setCommandeJob(null)}/>
+    </div>
   );
 
-  function JobCard({j}){
-    return(
-      <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',marginBottom:'0.4rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)')}}>
-        <div style={{fontWeight:600,fontSize:12,color:'var(--text)',marginBottom:j.description||j.location?4:0}}>{j.title}</div>
-        {j.description&&<div style={{fontSize:11,color:'var(--muted)',lineHeight:1.4,marginBottom:j.location?3:0}}>{j.description}</div>}
-        {j.location&&(
-          <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
-            <span style={{fontSize:11,color:'var(--muted)',flex:1}}>📍 {j.location}</span>
-            <a href={'https://maps.google.com/?q='+encodeURIComponent(j.location)} target="_blank" rel="noreferrer"
-              style={{background:'rgba(47,129,247,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.18rem 0.5rem',fontSize:10,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
-              🗺 Maps
-            </a>
-          </div>
-        )}
+  return(
+    <div style={{width:'100%',maxWidth:560}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.75rem'}}>
+        <button className="btn-s" style={{fontSize:11,padding:'0.25rem 0.6rem'}} onClick={onBack}>← Retour</button>
+        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>📅 Agenda — {emp?.nom}</div>
       </div>
-    );
+
+      {Object.entries(parDate).length===0&&(
+        <div style={{color:'var(--muted)',textAlign:'center',padding:'2rem',fontSize:13}}>Aucun événement à venir.</div>
+      )}
+
+      {Object.entries(parDate).map(([dateStr,dayJobs])=>{
+        const d=new Date(dateStr);
+        const dateLabel=localDateStr(d);
+        const isToday=dateLabel===today;
+        const isTomorrow=dateLabel===localDateStr(new Date(Date.now()+86400000));
+
+        return(
+          <div key={dateStr} style={{marginBottom:'0.75rem'}}>
+            {/* En-tête de date */}
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.3rem',paddingLeft:2}}>
+              <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:12,color:'var(--accent)'}}>
+                {isToday?"Aujourd'hui":isTomorrow?'Demain':joursFr[d.getDay()]+' '+d.getDate()+' '+moisFr[d.getMonth()]}
+              </div>
+              <div style={{flex:1,height:1,background:'var(--border)'}}></div>
+            </div>
+
+            {/* Jobs du jour */}
+            {dayJobs.map((j,i)=>(
+              <div key={i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.55rem 0.7rem',
+                marginBottom:'0.35rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)'),
+                display:'flex',alignItems:'flex-start',gap:8}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
+                  {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>📍 {j.location}</div>}
+                  <div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>
+                    🕐 {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+                    {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+                  </div>
+                  {j.description&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontStyle:'italic',
+                    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.description}</div>}
+                </div>
+                <button onClick={()=>setCommandeJob(j)}
+                  style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
+                    color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
+                    cursor:'pointer',touchAction:'manipulation',marginTop:2,whiteSpace:'nowrap'}}>
+                  📦 Commander
+                </button>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── COMMANDE RAPIDE ──────────────────────────────────────────────────────────
+function CommandeRapide({job,adresse,emp,notify,onClose}){
+  const [items,setItems]=useState(''); // texte libre
+  const [remarques,setRemarques]=useState('');
+  const [sending,setSending]=useState(false);
+
+  async function envoyer(){
+    if(!items.trim()){notify('Entrez au moins un item','err');return;}
+    setSending(true);
+    try{
+      const token=gapi.client.getToken()?.access_token;
+      if(!token){notify('Pas de token Google','err');setSending(false);return;}
+      const body='Bonjour,\n\n'+(emp?.nom||'Un employé')+' passe une commande pour :\n'+
+        (job||'—')+(adresse?'\n📍 '+adresse:'')+'\n\n'+
+        'MATÉRIAUX REQUIS :\n'+items+'\n\n'+
+        (remarques?'REMARQUES :\n'+remarques+'\n\n':'')+
+        'Date : '+localDateStr()+'\n\nEnvoyé depuis PunchPro — Saran Électrique';
+      const to='info@saranelectrique.com';
+      const subject=(job||'Commande')+' — Commande de matériaux';
+      const hdr='To: '+to+'\r\nSubject: '+subject+'\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
+      const bytes=new TextEncoder().encode(body);
+      let b64='';
+      for(let i=0;i<bytes.length;i+=57){
+        const c=bytes.slice(i,i+57);let bin='';c.forEach(b=>bin+=String.fromCharCode(b));b64+=btoa(bin)+'\r\n';
+      }
+      const encoded=btoa(hdr+b64).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
+        method:'POST',
+        headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+        body:JSON.stringify({raw:encoded})
+      });
+      if(res.ok){notify('✅ Commande envoyée!','success');onClose();}
+      else{const e=await res.json();notify('Erreur: '+(e?.error?.message||res.status),'err');}
+    }catch(e){notify('Erreur: '+e.message,'err');}
+    setSending(false);
   }
 
   return(
-    <div style={{maxWidth:360,width:'100%',marginTop:'1rem'}}>
-      <div style={{display:'flex',gap:'0.35rem',marginBottom:'0.6rem'}}>
-        {[['today',"📅 Aujourd'hui"],['tomorrow','📅 Demain']].map(([k,l])=>(
-          <div key={k} onClick={()=>setActiveTab(k)} style={{padding:'0.25rem 0.75rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:activeTab===k?700:400,background:activeTab===k?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(activeTab===k?'var(--accent)':'var(--border)'),color:activeTab===k?'var(--accent)':'var(--muted)'}}>
-            {l}
-          </div>
-        ))}
+    <div style={{background:'var(--bg)',borderRadius:14,padding:'1rem',maxWidth:420,width:'100%'}}>
+      <div style={{background:'linear-gradient(135deg,#e65100,#f57c00)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.75rem'}}>
+        <div style={{fontSize:10,color:'rgba(255,255,255,0.8)',marginBottom:2}}>COMMANDE DE MATÉRIAUX</div>
+        <div style={{fontWeight:700,fontSize:13,color:'white'}}>{job||'—'}</div>
+        {adresse&&<div style={{fontSize:10,color:'rgba(255,255,255,0.75)',marginTop:2}}>📍 {adresse}</div>}
       </div>
-      {jobsDuJour.length===0?(
-        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>Aucune job à l'agenda {label}</div>
+      <div className="fg" style={{marginBottom:'0.5rem'}}>
+        <label>Matériaux requis</label>
+        <textarea className="note-input" rows={5}
+          value={items}
+          onChange={e=>setItems(e.target.value)}
+          placeholder={"ex:\nNMD2C14 × 50pi\nPrise 15A × 4\nGFI 20A × 2\n..."}
+          style={{fontSize:12,lineHeight:1.6}}/>
+      </div>
+      <div className="fg" style={{marginBottom:'0.75rem'}}>
+        <label>Remarques / Livraison</label>
+        <textarea className="note-input" rows={2}
+          value={remarques}
+          onChange={e=>setRemarques(e.target.value)}
+          placeholder="ex: Besoin pour demain 7h"/>
+      </div>
+      <div style={{display:'flex',gap:'0.4rem'}}>
+        <button className="btn-p" style={{marginTop:0,flex:1,background:'linear-gradient(135deg,#e65100,#f57c00)'}}
+          disabled={sending} onClick={envoyer}>
+          {sending?'⏳ Envoi...':'📧 Envoyer la commande'}
+        </button>
+        <button className="btn-s" style={{flexShrink:0}} onClick={onClose}>✕</button>
+      </div>
+    </div>
+  );
+}
+
+// ── JOB SUMMARY (accueil) ─────────────────────────────────────────────────────
+function JobSummary({jobs,emp,notify}){
+  const [dayTab,setDayTab]=useState('today');
+  const [commandeJob,setCommandeJob]=useState(null);
+  const today=localDateStr();
+  const tomorrow=localDateStr(new Date(Date.now()+86400000));
+
+  const todayJobs=jobs.filter(j=>{
+    const start=new Date(j.start);
+    return start.toDateString()===new Date(today).toDateString();
+  });
+  const tomorrowJobs=jobs.filter(j=>{
+    const start=new Date(j.start);
+    return start.toDateString()===new Date(tomorrow).toDateString();
+  });
+  const shown=dayTab==='today'?todayJobs:tomorrowJobs;
+
+  if(commandeJob)return(
+    <div style={{width:'100%',marginTop:'0.75rem'}}>
+      <CommandeRapide
+        job={commandeJob.title} adresse={commandeJob.location||''}
+        emp={emp} notify={notify}
+        onClose={()=>setCommandeJob(null)}/>
+    </div>
+  );
+
+  return(
+    <div style={{width:'100%',marginTop:'0.75rem'}}>
+      <div className="tabs" style={{marginBottom:'0.5rem'}}>
+        <div className={'tab'+(dayTab==='today'?' active':'')} onClick={()=>setDayTab('today')}>
+          Aujourd'hui {todayJobs.length>0&&<span style={{fontSize:9,marginLeft:3,opacity:0.8}}>({todayJobs.length})</span>}
+        </div>
+        <div className={'tab'+(dayTab==='tomorrow'?' active':'')} onClick={()=>setDayTab('tomorrow')}>
+          Demain {tomorrowJobs.length>0&&<span style={{fontSize:9,marginLeft:3,opacity:0.8}}>({tomorrowJobs.length})</span>}
+        </div>
+      </div>
+      {shown.length===0?(
+        <div style={{color:'var(--muted)',fontSize:12,textAlign:'center',padding:'0.75rem'}}>
+          Aucune job {dayTab==='today'?"aujourd'hui":'demain'}.
+        </div>
       ):(
-        <>
-          {mesJobs.length>0&&(
-            <>
-              <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>
-                Mes jobs
+        <div>
+          {shown.map((j,i)=>(
+            <div key={i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',
+              borderLeft:'3px solid '+(j.gcalColor||'var(--accent)'),
+              display:'flex',alignItems:'center',gap:8}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
+                {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📍 {j.location}</div>}
+                <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>
+                  {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+                  {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+                </div>
               </div>
-              {mesJobs.map((j,i)=><JobCard key={i} j={j}/>)}
-            </>
-          )}
-          {autresJobs.length>0&&(
-            <>
-              {mesJobs.length>0&&<div style={{borderTop:'1px solid var(--border)',margin:'0.5rem 0'}}/>}
-              <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>
-                {mesJobs.length>0?'Autres jobs':'Toutes les jobs'}
-              </div>
-              {autresJobs.map((j,i)=><JobCard key={i} j={j}/>)}
-            </>
-          )}
-        </>
+              <button onClick={()=>setCommandeJob(j)}
+                style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
+                  color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
+                  cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+                📦 Commander
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
 }
+
 
 function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders}){
   const now=useClock();
@@ -3168,7 +3308,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       else if(mode==='confirm')setStep('confirm');
       else setStep('punch-in');
     }
-    else if(step==='history'||step==='projets'||step==='ordres-travail')setStep('mode');
+    else if(step==='history'||step==='projets'||step==='agenda-emp')setStep('mode');
     else setStep('emps');
   }
 
@@ -3362,6 +3502,14 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
     </div>
   );
 
+  // ── AGENDA EMPLOYÉ ──
+  if(step==='agenda-emp')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'0.75rem'}}>
+      <TimeHeader/>
+      <AgendaEmp jobs={jobs} emp={selEmp} notify={notify} onBack={()=>setStep('mode')}/>
+    </div>
+  );
+
   // ── PIN PADS ──
   if(step==='pin')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch IN" onSubmit={pin=>handlePunch(pin,'in')} onCancel={goBack}/></div>);
   if(step==='pin-out')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch OUT" onSubmit={pin=>handlePunch(pin,'out')} onCancel={goBack}/></div>);
@@ -3533,14 +3681,14 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
           <div className="mode-icon">📁</div>
           <div><div className="mode-title">Projets</div><div className="mode-desc">Jobs en cours, heures, fichiers</div></div>
         </div>
-        <div className="mode-btn" onClick={()=>setStep('ordres-travail')}>
-          <div className="mode-icon">🔧</div>
-          <div><div className="mode-title">Mes ordres de travail</div><div className="mode-desc">Voir les OT sauvegardés par job</div></div>
+        <div className="mode-btn" onClick={()=>setStep('agenda-emp')}>
+          <div className="mode-icon">📅</div>
+          <div><div className="mode-title">Agenda</div><div className="mode-desc">Voir les jobs, passer une commande</div></div>
         </div>
       </div>
 
       {/* Résumé jobs — onglets Aujourd'hui / Demain */}
-      <JobSummary jobs={jobs} emp={selEmp}/>
+      <JobSummary jobs={jobs} emp={selEmp} notify={notify}/>
     </div>
 
   // ── EMP GRID ──
