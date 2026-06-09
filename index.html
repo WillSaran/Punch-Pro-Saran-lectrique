@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v150';
+const APP_VERSION='v151';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2674,7 +2674,11 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
         b64+=btoa(bin)+'\r\n';
       }
       const fullMsg=msgHeader+b64;
-      const encoded=btoa(fullMsg).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+      // Encode safely - header is ASCII, full message safe for latin1 btoa
+      const fullBytes2=new Uint8Array(fullMsg.length);
+      for(let i=0;i<fullMsg.length;i++) fullBytes2[i]=fullMsg.charCodeAt(i)&0xff;
+      let fullBin2='';fullBytes2.forEach(b=>fullBin2+=String.fromCharCode(b));
+      const encoded=btoa(fullBin2).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
       const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
         method:'POST',
         headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},
@@ -3119,69 +3123,159 @@ function AgendaEmp({jobs,emp,notify,onBack}){
 
 // ── COMMANDE RAPIDE ──────────────────────────────────────────────────────────
 function CommandeRapide({job,adresse,emp,notify,onClose}){
-  const [items,setItems]=useState(''); // texte libre
+  const [materiaux,setMateriaux]=useState({});
   const [remarques,setRemarques]=useState('');
   const [sending,setSending]=useState(false);
+  const [expandedCat,setExpandedCat]=useState(null);
+
+  function setQty(key,desc,unite,delta){
+    setMateriaux(prev=>{
+      const cur=prev[key]?.qty||0;
+      const next=Math.max(0,cur+delta);
+      if(next===0){const u={...prev};delete u[key];return u;}
+      return {...prev,[key]:{qty:next,unite,desc}};
+    });
+  }
+  const totalItems=Object.values(materiaux).reduce((s,v)=>s+v.qty,0);
+  const selectedItems=Object.entries(materiaux).filter(([,v])=>v.qty>0);
+
+  function encodeEmail(to,subject,body){
+    // subject: strip accents to keep ASCII only
+    const safeSub=subject.normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\x20-\x7E]/g,"?");
+    const hdr="To: "+to+"\r\nSubject: "+safeSub+"\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
+    // Encode body as UTF-8 base64
+    const bodyBytes=new TextEncoder().encode(body);
+    let b64="";
+    for(let i=0;i<bodyBytes.length;i+=57){
+      const chunk=bodyBytes.slice(i,i+57);
+      let bin="";chunk.forEach(b=>bin+=String.fromCharCode(b));
+      b64+=btoa(bin)+"\r\n";
+    }
+    // Encode full message: header is ASCII so safe for btoa
+    const full=hdr+b64;
+    const fullBytes=new Uint8Array(full.length);
+    for(let i=0;i<full.length;i++) fullBytes[i]=full.charCodeAt(i)&0xff;
+    let fullBin="";fullBytes.forEach(b=>fullBin+=String.fromCharCode(b));
+    return btoa(fullBin).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+  }
 
   async function envoyer(){
-    if(!items.trim()){notify('Entrez au moins un item','err');return;}
+    if(totalItems===0&&!remarques.trim()){notify("Ajoutez des items ou une remarque","err");return;}
     setSending(true);
     try{
       const token=gapi.client.getToken()?.access_token;
-      if(!token){notify('Pas de token Google','err');setSending(false);return;}
-      const body='Bonjour,\n\n'+(emp?.nom||'Un employé')+' passe une commande pour :\n'+
-        (job||'—')+(adresse?'\n📍 '+adresse:'')+'\n\n'+
-        'MATÉRIAUX REQUIS :\n'+items+'\n\n'+
-        (remarques?'REMARQUES :\n'+remarques+'\n\n':'')+
-        'Date : '+localDateStr()+'\n\nEnvoyé depuis PunchPro — Saran Électrique';
-      const to='info@saranelectrique.com';
-      const subject=(job||'Commande')+' — Commande de matériaux';
-      const hdr='To: '+to+'\r\nSubject: '+subject+'\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
-      const bytes=new TextEncoder().encode(body);
-      let b64='';
-      for(let i=0;i<bytes.length;i+=57){
-        const c=bytes.slice(i,i+57);let bin='';c.forEach(b=>bin+=String.fromCharCode(b));b64+=btoa(bin)+'\r\n';
-      }
-      const encoded=btoa(hdr+b64).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-      const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
-        method:'POST',
-        headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      if(!token){notify("Pas de token Google","err");setSending(false);return;}
+      const lignes=selectedItems.map(([k,v])=>"  "+v.desc.padEnd(30)+" x "+v.qty+" "+v.unite);
+      const body="Bonjour,\n\n"+(emp?.nom||"Un employe")+" passe une commande pour :\n"+
+        (job||"---")+(adresse?"\nAdresse : "+adresse:"")+"\n\n"+
+        (lignes.length>0?"MATERIAUX REQUIS :\n"+lignes.join("\n")+"\n\n":"")+
+        (remarques?"REMARQUES :\n"+remarques+"\n\n":"")+
+        "Date : "+localDateStr()+"\nEnvoye depuis PunchPro - Saran Electrique";
+      const encoded=encodeEmail("info@saranelectrique.com",(job||"Commande")+" - Commande de materiaux",body);
+      const res=await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send",{
+        method:"POST",
+        headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
         body:JSON.stringify({raw:encoded})
       });
-      if(res.ok){notify('✅ Commande envoyée!','success');onClose();}
-      else{const e=await res.json();notify('Erreur: '+(e?.error?.message||res.status),'err');}
-    }catch(e){notify('Erreur: '+e.message,'err');}
+      if(res.ok){notify("✅ Commande envoyee!","success");onClose();}
+      else{const e=await res.json();notify("Erreur: "+(e?.error?.message||res.status),"err");}
+    }catch(e){notify("Erreur: "+e.message,"err");}
     setSending(false);
   }
 
   return(
-    <div style={{background:'var(--bg)',borderRadius:14,padding:'1rem',maxWidth:420,width:'100%'}}>
-      <div style={{background:'linear-gradient(135deg,#e65100,#f57c00)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.75rem'}}>
-        <div style={{fontSize:10,color:'rgba(255,255,255,0.8)',marginBottom:2}}>COMMANDE DE MATÉRIAUX</div>
-        <div style={{fontWeight:700,fontSize:13,color:'white'}}>{job||'—'}</div>
-        {adresse&&<div style={{fontSize:10,color:'rgba(255,255,255,0.75)',marginTop:2}}>📍 {adresse}</div>}
+    <div style={{background:"var(--bg)",borderRadius:14,padding:"1rem",maxWidth:480,width:"100%"}}>
+      <div style={{background:"linear-gradient(135deg,#e65100,#f57c00)",borderRadius:10,padding:"0.65rem 0.85rem",marginBottom:"0.75rem",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8}}>
+        <div style={{flex:1}}>
+          <div style={{fontSize:10,color:"rgba(255,255,255,0.8)",marginBottom:2}}>COMMANDE DE MATÉRIAUX</div>
+          <div style={{fontWeight:700,fontSize:13,color:"white"}}>{job||"—"}</div>
+          {adresse&&<div style={{fontSize:10,color:"rgba(255,255,255,0.75)",marginTop:2}}>📍 {adresse}</div>}
+        </div>
+        {totalItems>0&&<div style={{background:"rgba(255,255,255,0.2)",borderRadius:20,padding:"2px 8px",fontSize:11,fontWeight:700,color:"white",flexShrink:0}}>{totalItems} items</div>}
       </div>
-      <div className="fg" style={{marginBottom:'0.5rem'}}>
-        <label>Matériaux requis</label>
-        <textarea className="note-input" rows={5}
-          value={items}
-          onChange={e=>setItems(e.target.value)}
-          placeholder={"ex:\nNMD2C14 × 50pi\nPrise 15A × 4\nGFI 20A × 2\n..."}
-          style={{fontSize:12,lineHeight:1.6}}/>
+      <div style={{marginBottom:"0.5rem"}}>
+        {Object.entries(CATALOGUE).map(([cat,items])=>{
+          const catQty=items.reduce((s,item)=>{
+            const keys=item.options?item.options.map(o=>item.code+"|"+o):[item.code];
+            return s+keys.reduce((ss,k)=>ss+(materiaux[k]?.qty||0),0);
+          },0);
+          const isOpen=expandedCat===cat;
+          return(
+            <div key={cat} style={{marginBottom:"0.3rem",border:"1px solid var(--border)",borderRadius:9,overflow:"hidden"}}>
+              <div onClick={()=>setExpandedCat(isOpen?null:cat)}
+                style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.45rem 0.65rem",background:"var(--bg3)",cursor:"pointer",touchAction:"manipulation"}}>
+                <span style={{fontWeight:600,fontSize:12}}>{cat}</span>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  {catQty>0&&<span style={{background:"#f57c00",color:"white",borderRadius:10,fontSize:9,padding:"1px 6px",fontWeight:700}}>{catQty}</span>}
+                  <span style={{color:"var(--muted)",fontSize:11}}>{isOpen?"▼":"▶"}</span>
+                </div>
+              </div>
+              {isOpen&&(
+                <div style={{background:"var(--bg2)"}}>
+                  {items.map((item,ii)=>{
+                    if(item.options||item.sizes){
+                      const opts=item.options||item.sizes;
+                      return(
+                        <div key={ii} style={{borderTop:"1px solid var(--border)",padding:"0.4rem 0.65rem"}}>
+                          <div style={{fontSize:11,fontWeight:600,color:"var(--text)",marginBottom:5}}>{item.code} — {item.desc}</div>
+                          {opts.map(opt=>{
+                            const key=item.code+"|"+opt;const qty=materiaux[key]?.qty||0;
+                            return(
+                              <div key={opt} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.2rem 0",borderBottom:"1px solid var(--border)"}}>
+                                <span style={{fontSize:11,color:"var(--muted)",flex:1}}>{opt}</span>
+                                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                                  <button className="dur-btn" style={{width:26,height:26,fontSize:13}} onClick={()=>setQty(key,item.desc+" "+opt,item.unite,-1)}>−</button>
+                                  <div style={{fontFamily:"var(--font-head)",fontWeight:700,fontSize:"1rem",color:qty>0?"#f57c00":"var(--muted)",minWidth:26,textAlign:"center"}}>{qty||"—"}</div>
+                                  <button className="dur-btn" style={{width:26,height:26,fontSize:13}} onClick={()=>setQty(key,item.desc+" "+opt,item.unite,1)}>+</button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    }
+                    const key=item.code;const qty=materiaux[key]?.qty||0;
+                    return(
+                      <div key={ii} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.35rem 0.65rem",borderTop:"1px solid var(--border)"}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:500,color:"var(--text)"}}>{item.code}</div>
+                          <div style={{fontSize:9,color:"var(--muted)"}}>{item.desc}</div>
+                        </div>
+                        <div style={{display:"flex",alignItems:"center",gap:5}}>
+                          <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setQty(key,item.desc,item.unite,-1)}>−</button>
+                          <div style={{fontFamily:"var(--font-head)",fontWeight:700,fontSize:"1.1rem",color:qty>0?"#f57c00":"var(--muted)",minWidth:30,textAlign:"center"}}>{qty||"—"}</div>
+                          <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setQty(key,item.desc,item.unite,1)}>+</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-      <div className="fg" style={{marginBottom:'0.75rem'}}>
+      {selectedItems.length>0&&(
+        <div style={{background:"rgba(245,124,0,0.08)",border:"1px solid rgba(245,124,0,0.3)",borderRadius:9,padding:"0.6rem 0.75rem",marginBottom:"0.5rem"}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#f57c00",marginBottom:4,textTransform:"uppercase"}}>Résumé commande</div>
+          {selectedItems.map(([k,v])=>(
+            <div key={k} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"0.1rem 0"}}>
+              <span style={{color:"var(--text)"}}>{v.desc||k}</span>
+              <span style={{color:"#f57c00",fontWeight:700}}>×{v.qty}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="fg" style={{marginBottom:"0.65rem"}}>
         <label>Remarques / Livraison</label>
-        <textarea className="note-input" rows={2}
-          value={remarques}
-          onChange={e=>setRemarques(e.target.value)}
-          placeholder="ex: Besoin pour demain 7h"/>
+        <textarea className="note-input" rows={2} value={remarques} onChange={e=>setRemarques(e.target.value)} placeholder="ex: Besoin pour demain 7h"/>
       </div>
-      <div style={{display:'flex',gap:'0.4rem'}}>
-        <button className="btn-p" style={{marginTop:0,flex:1,background:'linear-gradient(135deg,#e65100,#f57c00)'}}
-          disabled={sending} onClick={envoyer}>
-          {sending?'⏳ Envoi...':'📧 Envoyer la commande'}
+      <div style={{display:"flex",gap:"0.4rem"}}>
+        <button className="btn-p" style={{marginTop:0,flex:1,background:"linear-gradient(135deg,#e65100,#f57c00)",fontSize:12}}
+          disabled={sending||(totalItems===0&&!remarques.trim())} onClick={envoyer}>
+          {sending?"⏳ Envoi...":"📧 Envoyer la commande"}
         </button>
-        <button className="btn-s" style={{flexShrink:0}} onClick={onClose}>✕</button>
+        <button className="btn-s" style={{flexShrink:0,padding:"0 0.65rem"}} onClick={onClose}>✕</button>
       </div>
     </div>
   );
