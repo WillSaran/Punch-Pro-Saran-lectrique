@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v151';
+const APP_VERSION='v152';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -248,6 +248,19 @@ const CATALOGUE={
     {code:'NMWU 14-2',desc:'Fil NMWU 14-2 extérieur',unite:'pi'},
     {code:'NMWU 12-2',desc:'Fil NMWU 12-2 extérieur',unite:'pi'},
   ],
+  'Boîtes':[
+    {code:'BC1304LHTQ',desc:'Boîte 1 gang métal 4"',unite:'un'},
+    {code:'BC1104-L',desc:'Boîte 1 gang métal légère',unite:'un'},
+    {code:'BC54151-L',desc:'Boîte 2 gangs métal légère',unite:'un'},
+    {code:'BC54-C1',desc:'Boîte 2 gangs avec clou',unite:'un'},
+    {code:'BC1110',desc:'Boîte 1 gang profonde',unite:'un'},
+    {code:'BC2020',desc:'Boîte 2 gangs métal',unite:'un'},
+    {code:'BC72171-K',desc:'Boîte octogonale',unite:'un'},
+    {code:'BCR2000',desc:'Boîte ronde métal',unite:'un'},
+    {code:'Ring418',desc:'Anneau rallonge 4"',unite:'un'},
+    {code:'DIS 60A NES',desc:'Disconnecteur 60A NES-ACD-2',unite:'un'},
+    {code:'JBX (JRB)',desc:'Boîte jonction JBX',unite:'un'},
+  ],
   'Décora':[
     {code:'T5325-W',desc:'Prise 15A Décora blanche',unite:'un'},
     {code:'T5825-W',desc:'Prise 20A Décora blanche',unite:'un'},
@@ -274,21 +287,7 @@ const CATALOGUE={
     {code:'RC840',desc:'Relais RC840 120/240V',unite:'un'},
     {code:'KIT PICO',desc:'Kit Pico Lutron',unite:'un'},
   ],
-  'Boîtes':[
-    {code:'BC1304LHTQ',desc:'Boîte 1 gang métal 4"',unite:'un'},
-    {code:'BC1104-L',desc:'Boîte 1 gang métal légère',unite:'un'},
-    {code:'BC54151-L',desc:'Boîte 2 gangs métal légère',unite:'un'},
-    {code:'BC54-C1',desc:'Boîte 2 gangs avec clou',unite:'un'},
-    {code:'BC1110',desc:'Boîte 1 gang profonde',unite:'un'},
-    {code:'BC2020',desc:'Boîte 2 gangs métal',unite:'un'},
-    {code:'BC72171-K',desc:'Boîte octogonale',unite:'un'},
-    {code:'BCR2000',desc:'Boîte ronde métal',unite:'un'},
-    {code:'Ring418',desc:'Anneau rallonge 4"',unite:'un'},
-    {code:'DIS 60A NES',desc:'Disconnecteur 60A NES-ACD-2',unite:'un'},
-    {code:'JBX (JRB)',desc:'Boîte jonction JBX',unite:'un'},
-  ],
   'Conduit':[
-    // Tailles gérées via selector dans l'app
     {code:'EMT',desc:'Conduit EMT (métallique)',unite:'barre',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
     {code:'PVC',desc:'Conduit PVC',unite:'barre',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
     {code:'BEND',desc:'Courbe conduit',unite:'un',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
@@ -302,13 +301,15 @@ const CATALOGUE={
     {code:'QO CQO1',desc:'Panneau QO (Square D)',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
     {code:'CHOM',desc:'Panneau CHOM (Eaton)',unite:'un',options:['24/48cir 125A','42/84cir 200A']},
     {code:'SIEQ',desc:'Panneau Siemens',unite:'un',options:['40cir 200A','60cir 200A']},
+    {code:'LEV-EV',desc:'Chargeur VE Leviton',unite:'un',options:['42W','40P','48W']},
+    {code:'EVC40',desc:'Chargeur VE EVC40',unite:'un',options:['Avec fiche','Sans fiche']},
+  ],
+  'Disjoncteurs':[
     {code:'BR DISJ',desc:'Disjoncteur BR/STAB',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A']},
     {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-100A']},
     {code:'PCAFI',desc:'Disjoncteur PCAFI (arc fault)',unite:'un',options:['1P-15A','1P-20A']},
     {code:'PDF',desc:'Disjoncteur PDF (fuite à la terre)',unite:'un',options:['1P-15A','1P-20A']},
     {code:'DOUBLE',desc:'Disjoncteur double',unite:'un',options:['15/15A','20/20A','15/20A','20/15A']},
-    {code:'LEV-EV',desc:'Chargeur VE Leviton',unite:'un',options:['42W','40P','48W']},
-    {code:'EVC40',desc:'Chargeur VE EVC40',unite:'un',options:['Avec fiche','Sans fiche']},
   ],
   'Chauffage':[
     {code:'STEB',desc:'Plinthe STEB standard',unite:'un',options:['300W','500W','750W','1000W','1250W','1500W','1750W','2000W']},
@@ -3040,13 +3041,14 @@ function AddressInput({value,onChange,placeholder,style}){
 
 // ── JOB SUMMARY ──────────────────────────────────────────────────────────────
 // ── AGENDA EMPLOYÉ ───────────────────────────────────────────────────────────
-function AgendaEmp({jobs,emp,notify,onBack}){
+function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
   const [commandeJob,setCommandeJob]=useState(null);
   const today=localDateStr();
 
-  // Grouper les jobs par date
+  // Grouper les jobs par date — aujourd'hui et plus tard seulement
   const parDate={};
-  jobs.forEach(j=>{
+  const nowDate=new Date(); nowDate.setHours(0,0,0,0);
+  jobs.filter(j=>new Date(j.start)>=nowDate).forEach(j=>{
     const d=new Date(j.start).toDateString();
     if(!parDate[d])parDate[d]=[];
     parDate[d].push(j);
@@ -3122,7 +3124,7 @@ function AgendaEmp({jobs,emp,notify,onBack}){
 }
 
 // ── COMMANDE RAPIDE ──────────────────────────────────────────────────────────
-function CommandeRapide({job,adresse,emp,notify,onClose}){
+function CommandeRapide({job,adresse,emp,notify,onClose,jobId,calendarIds}){
   const [materiaux,setMateriaux]=useState({});
   const [remarques,setRemarques]=useState('');
   const [sending,setSending]=useState(false);
@@ -3138,6 +3140,28 @@ function CommandeRapide({job,adresse,emp,notify,onClose}){
   }
   const totalItems=Object.values(materiaux).reduce((s,v)=>s+v.qty,0);
   const selectedItems=Object.entries(materiaux).filter(([,v])=>v.qty>0);
+
+  // Écrire la commande dans la description de l'événement Google Agenda
+  async function ajouterCommandeAgenda(jobId,lignes,remarques){
+    if(!jobId)return;
+    try{
+      const calIds=(typeof calendarIds!=='undefined'?calendarIds:'saranelectrique@gmail.com').split(',');
+      for(const calId of calIds){
+        try{
+          const evtRes=await withTokenCheck(()=>gapi.client.calendar.events.get({calendarId:calId.trim(),eventId:jobId}));
+          const evt=evtRes.result;
+          const now=new Date().toLocaleString('fr-CA');
+          const commandeTxt='\n\n--- COMMANDE '+(emp?.nom||'')+' '+now+' ---\n'+lignes.join('\n')+(remarques?'\nRemarques: '+remarques:'');
+          const newDesc=(evt.description||'')+commandeTxt;
+          await withTokenCheck(()=>gapi.client.calendar.events.patch({
+            calendarId:calId.trim(),eventId:jobId,
+            resource:{description:newDesc}
+          }));
+          return;
+        }catch(e){}
+      }
+    }catch(e){console.log('Agenda update skipped:',e.message);}
+  }
 
   function encodeEmail(to,subject,body){
     // subject: strip accents to keep ASCII only
@@ -3177,7 +3201,12 @@ function CommandeRapide({job,adresse,emp,notify,onClose}){
         headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
         body:JSON.stringify({raw:encoded})
       });
-      if(res.ok){notify("✅ Commande envoyee!","success");onClose();}
+      if(res.ok){
+        notify("✅ Commande envoyee!","success");
+        // Ajouter la commande dans la description de l'événement
+        if(jobId)await ajouterCommandeAgenda(jobId,lignes,remarques);
+        onClose();
+      }
       else{const e=await res.json();notify("Erreur: "+(e?.error?.message||res.status),"err");}
     }catch(e){notify("Erreur: "+e.message,"err");}
     setSending(false);
@@ -3223,10 +3252,11 @@ function CommandeRapide({job,adresse,emp,notify,onClose}){
                             return(
                               <div key={opt} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0.2rem 0",borderBottom:"1px solid var(--border)"}}>
                                 <span style={{fontSize:11,color:"var(--muted)",flex:1}}>{opt}</span>
-                                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                                <div style={{display:"flex",alignItems:"center",gap:3}}>
                                   <button className="dur-btn" style={{width:26,height:26,fontSize:13}} onClick={()=>setQty(key,item.desc+" "+opt,item.unite,-1)}>−</button>
                                   <div style={{fontFamily:"var(--font-head)",fontWeight:700,fontSize:"1rem",color:qty>0?"#f57c00":"var(--muted)",minWidth:26,textAlign:"center"}}>{qty||"—"}</div>
-                                  <button className="dur-btn" style={{width:26,height:26,fontSize:13}} onClick={()=>setQty(key,item.desc+" "+opt,item.unite,1)}>+</button>
+                                  <button className="dur-btn" style={{width:26,height:26,fontSize:12}} onClick={()=>setQty(key,item.desc+" "+opt,item.unite,1)}>+1</button>
+                                  <button className="dur-btn" style={{width:30,height:26,fontSize:11}} onClick={()=>setQty(key,item.desc+" "+opt,item.unite,10)}>+10</button>
                                 </div>
                               </div>
                             );
@@ -3241,10 +3271,12 @@ function CommandeRapide({job,adresse,emp,notify,onClose}){
                           <div style={{fontSize:11,fontWeight:500,color:"var(--text)"}}>{item.code}</div>
                           <div style={{fontSize:9,color:"var(--muted)"}}>{item.desc}</div>
                         </div>
-                        <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setQty(key,item.desc,item.unite,-1)}>−</button>
-                          <div style={{fontFamily:"var(--font-head)",fontWeight:700,fontSize:"1.1rem",color:qty>0?"#f57c00":"var(--muted)",minWidth:30,textAlign:"center"}}>{qty||"—"}</div>
-                          <button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setQty(key,item.desc,item.unite,1)}>+</button>
+                        <div style={{display:"flex",alignItems:"center",gap:3}}>
+                          <button className="dur-btn" style={{width:26,height:26,fontSize:13}} onClick={()=>setQty(key,item.desc,item.unite,-1)}>−</button>
+                          <div style={{fontFamily:"var(--font-head)",fontWeight:700,fontSize:"1rem",color:qty>0?"#f57c00":"var(--muted)",minWidth:30,textAlign:"center"}}>{qty||"—"}</div>
+                          <button className="dur-btn" style={{width:28,height:26,fontSize:12}} onClick={()=>setQty(key,item.desc,item.unite,1)}>+1</button>
+                          <button className="dur-btn" style={{width:30,height:26,fontSize:11}} onClick={()=>setQty(key,item.desc,item.unite,10)}>+10</button>
+                          {cat==='Fils'&&<button className="dur-btn" style={{width:32,height:26,fontSize:10,color:'var(--warning)'}} onClick={()=>setQty(key,item.desc,item.unite,50)}>+50</button>}
                         </div>
                       </div>
                     );
@@ -3282,7 +3314,7 @@ function CommandeRapide({job,adresse,emp,notify,onClose}){
 }
 
 // ── JOB SUMMARY (accueil) ─────────────────────────────────────────────────────
-function JobSummary({jobs,emp,notify}){
+function JobSummary({jobs,emp,notify,calendarIds}){
   const [dayTab,setDayTab]=useState('today');
   const [commandeJob,setCommandeJob]=useState(null);
   const today=localDateStr();
@@ -3302,6 +3334,8 @@ function JobSummary({jobs,emp,notify}){
     <div style={{width:'100%',marginTop:'0.75rem'}}>
       <CommandeRapide
         job={commandeJob.title} adresse={commandeJob.location||''}
+        jobId={commandeJob.id||null}
+        calendarIds={calendarIds}
         emp={emp} notify={notify}
         onClose={()=>setCommandeJob(null)}/>
     </div>
@@ -3600,7 +3634,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
   if(step==='agenda-emp')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'0.75rem'}}>
       <TimeHeader/>
-      <AgendaEmp jobs={jobs} emp={selEmp} notify={notify} onBack={()=>setStep('mode')}/>
+      <AgendaEmp jobs={jobs} emp={selEmp} notify={notify} calendarIds={calendarIds} onBack={()=>setStep('mode')}/>
     </div>
   );
 
@@ -3782,7 +3816,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       </div>
 
       {/* Résumé jobs — onglets Aujourd'hui / Demain */}
-      <JobSummary jobs={jobs} emp={selEmp} notify={notify}/>
+      <JobSummary jobs={jobs} emp={selEmp} notify={notify} calendarIds={calendarIds}/>
     </div>
 
   // ── EMP GRID ──
