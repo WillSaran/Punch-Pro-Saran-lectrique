@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v156';
+const APP_VERSION='v157';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1361,7 +1361,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
 }
 
 // Convertit minutes en affichage quarts (ex: 465 → "7h45")
-function minsToQuart(mins){const h=Math.floor(mins/60);const m=mins%60;return h+'h'+(m>0?String(m).padStart(2,'0'):'');}
+function minsToQuart(mins){const h=Math.floor(mins/60);const m=mins%60;return h+'h'+String(m).padStart(2,'0');}
 // Snap aux quarts d'heure
 function snapToQuart(mins){return Math.round(mins/15)*15;}
 // Formater heures en quarts (ex: 7.75 → "7h45", 8.5 → "8h30")
@@ -1381,7 +1381,8 @@ function TimePicker({label,value,onChange,color}){
   return(
     <div style={{textAlign:'center',marginBottom:'0.5rem'}}>
       <div style={{fontSize:10,color:'var(--muted)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.04em'}}>{label}</div>
-      <div style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:12,padding:'0.35rem 0.65rem',display:'inline-flex',alignItems:'center',gap:'0.45rem'}}>
+      <div style={{background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:12,padding:'0.35rem 0.5rem',display:'inline-flex',alignItems:'center',gap:'0.35rem'}}>
+        <button className="dur-btn" style={{width:30,height:30,fontSize:12,fontWeight:700,touchAction:'manipulation',flexShrink:0}} onClick={()=>setH(h-1)} title="−1 heure">−1h</button>
         <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3,width:34}}>
           <button className="dur-btn" style={{width:34,height:28,fontSize:15,touchAction:'manipulation',flexShrink:0}} onClick={()=>setH(h+1)}>+</button>
           <div onWheel={handleWheelH} style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.9rem',color:col,lineHeight:1,minWidth:44,textAlign:'center',cursor:'ns-resize',userSelect:'none',flexShrink:0}} title="Scroll pour changer">{String(h).padStart(2,'0')}</div>
@@ -1393,6 +1394,7 @@ function TimePicker({label,value,onChange,color}){
           <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.9rem',color:col,lineHeight:1,minWidth:44,textAlign:'center',flexShrink:0}}>{String(m).padStart(2,'0')}</div>
           <button className="dur-btn" style={{width:34,height:28,fontSize:15,touchAction:'manipulation',flexShrink:0}} onClick={()=>addMins(-15)}>−</button>
         </div>
+        <button className="dur-btn" style={{width:30,height:30,fontSize:12,fontWeight:700,touchAction:'manipulation',flexShrink:0}} onClick={()=>setH(h+1)} title="+1 heure">+1h</button>
       </div>
     </div>
   );
@@ -3120,14 +3122,23 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
   const [commandeJob,setCommandeJob]=useState(null);
   const today=localDateStr();
 
-  // Grouper les jobs par date — aujourd'hui et plus tard seulement
+  // Vérifier si une job est assignée à l'employé connecté (même logique que AdminView.getAssignees)
+  function isAssignedToMe(job){
+    if(!emp||!emp.nom)return true;
+    const txt=(job.title+' '+(job.description||'')).toLowerCase();
+    return txt.includes(emp.nom.toLowerCase())||(emp.code&&txt.includes(emp.code.toLowerCase()));
+  }
+
+  // Grouper les jobs par date — aujourd'hui et plus tard seulement, filtrées pour cet employé
   const parDate={};
   const nowDate=new Date(); nowDate.setHours(0,0,0,0);
-  jobs.filter(j=>new Date(j.start)>=nowDate).forEach(j=>{
-    const d=new Date(j.start).toDateString();
-    if(!parDate[d])parDate[d]=[];
-    parDate[d].push(j);
-  });
+  jobs.filter(j=>new Date(j.start)>=nowDate&&isAssignedToMe(j))
+    .sort((a,b)=>new Date(a.start)-new Date(b.start))
+    .forEach(j=>{
+      const d=new Date(j.start).toDateString();
+      if(!parDate[d])parDate[d]=[];
+      parDate[d].push(j);
+    });
 
   const joursFr=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   const moisFr=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
@@ -3171,10 +3182,13 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
             {/* Jobs du jour */}
             {dayJobs.map((j,i)=>(
               <div key={i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.55rem 0.7rem',
-                marginBottom:'0.35rem',borderLeft:'3px solid '+(j.gcalColor||'var(--accent)'),
+                marginBottom:'0.35rem',borderLeft:'3px solid '+(emp?.couleur||j.gcalColor||'var(--accent)'),
                 display:'flex',alignItems:'flex-start',gap:8}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
+                  <div style={{display:'flex',alignItems:'center',gap:6}}>
+                    {emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
+                    <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
+                  </div>
                   {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>📍 {j.location}</div>}
                   <div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>
                     🕐 {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
@@ -3395,14 +3409,23 @@ function JobSummary({jobs,emp,notify,calendarIds}){
   const today=localDateStr();
   const tomorrow=localDateStr(new Date(Date.now()+86400000));
 
-  const todayJobs=jobs.filter(j=>{
+  // Vérifier si une job est assignée à l'employé connecté (même logique que AdminView.getAssignees)
+  function isAssignedToMe(job){
+    if(!emp||!emp.nom)return true; // si pas d'employé, ne pas filtrer
+    const txt=(job.title+' '+(job.description||'')).toLowerCase();
+    return txt.includes(emp.nom.toLowerCase())||(emp.code&&txt.includes(emp.code.toLowerCase()));
+  }
+
+  const myJobs=jobs.filter(isAssignedToMe);
+
+  const todayJobs=myJobs.filter(j=>{
     const start=new Date(j.start);
     return start.toDateString()===new Date(today).toDateString();
-  });
-  const tomorrowJobs=jobs.filter(j=>{
+  }).sort((a,b)=>new Date(a.start)-new Date(b.start));
+  const tomorrowJobs=myJobs.filter(j=>{
     const start=new Date(j.start);
     return start.toDateString()===new Date(tomorrow).toDateString();
-  });
+  }).sort((a,b)=>new Date(a.start)-new Date(b.start));
   const shown=dayTab==='today'?todayJobs:tomorrowJobs;
 
   if(commandeJob)return(
@@ -3434,10 +3457,13 @@ function JobSummary({jobs,emp,notify,calendarIds}){
         <div>
           {shown.map((j,i)=>(
             <div key={i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',
-              borderLeft:'3px solid '+(j.gcalColor||'var(--accent)'),
+              borderLeft:'3px solid '+(emp?.couleur||j.gcalColor||'var(--accent)'),
               display:'flex',alignItems:'center',gap:8}}>
               <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
+                <div style={{display:'flex',alignItems:'center',gap:6}}>
+                  {emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
+                  <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
+                </div>
                 {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📍 {j.location}</div>}
                 <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>
                   {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
