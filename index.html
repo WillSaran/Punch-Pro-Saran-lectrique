@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v152';
+const APP_VERSION='v153';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -815,6 +815,18 @@ async function updatePointageData(sid,row,data){
     resource:{values:[['confirm']]}
   }));
 }
+// Mettre à jour la date (col D), la semaine (col F) et le mois (col G) d'une ligne
+async function majDatePointage(sid,row,newDate,newSemaine,newMois){
+  if(!row)return;
+  await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId:sid,range:'Pointages!D'+row,valueInputOption:'RAW',
+    resource:{values:[[newDate]]}
+  }));
+  await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
+    spreadsheetId:sid,range:'Pointages!F'+row+':G'+row,valueInputOption:'RAW',
+    resource:{values:[[newSemaine,newMois]]}
+  }));
+}
 async function updatePointageFichiers(sid,row,urls){
   await gapi.client.sheets.spreadsheets.values.update({
     spreadsheetId:sid,range:'Pointages!M'+row,valueInputOption:'RAW',
@@ -1268,7 +1280,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
                 <div style={{width:9,height:9,borderRadius:'50%',background:j.gcalColor||'var(--accent)',flexShrink:0}}></div>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:600}}>{j.title}</div>
-                  <div style={{fontSize:11,color:'var(--muted)'}}>{j.start?j.start.slice(0,10):''}{j.location?' · '+j.location:''}</div>
+                  <div style={{fontSize:11,color:'var(--muted)'}}>{j.start?localDateStr(new Date(j.start)):''}{j.location?' · '+j.location:''}</div>
                   {matchIn&&<div style={{fontSize:10,color:'var(--success)'}}>✓ Punch IN trouvé à {matchIn.heure}</div>}
                 </div>
               </div>
@@ -1322,7 +1334,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
         <div className="csec">Déplacement (minutes)</div>
         <div className="travel-opts">{travelOpts.map(v=>(<div key={v} className={'travel-opt'+(deplacement===v?' sel':'')} onClick={()=>setDeplacement(v)}><div className="tv">{v}</div><div className="tl">min</div></div>))}</div>
       </div>
-      {coeqEmps.length>0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}><div className="csec">Heures coéquipiers</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'flex',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',color:'var(--accent)',minWidth:50,textAlign:'center'}}>{hToQuart(val)}</div><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
+      {coeqEmps.length>0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}><div className="csec">Heures coéquipiers</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'flex',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14,flexShrink:0}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',color:'var(--accent)',minWidth:64,textAlign:'center',flexShrink:0}}>{hToQuart(val)}</div><button className="dur-btn" style={{width:28,height:28,fontSize:14,flexShrink:0}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
       <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: travail terminé..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
       {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:'📎 '+nom;return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} jobLocation={selJobData&&selJobData.location||''} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
@@ -1420,7 +1432,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
         <div className="dur-section">
           <div className="csec">Coéquipiers</div>
           <div className="teammate-list">{teammates.map(t=>{const sel=coequipiers.includes(t.nom);return(<div key={t.nom} className={'teammate-chip'+(sel?' sel':'')} style={{borderColor:sel?t.couleur:'var(--border)',background:sel?rgba(t.couleur,0.15):'transparent'}} onClick={()=>toggleCoeq(t.nom)}><div className="emp-av" style={{background:t.couleur,width:18,height:18,fontSize:7}}>{t.code}</div><span style={{color:sel?t.couleur:'var(--muted)'}}>{t.nom}</span></div>);})}</div>
-          {coeqEmps.length>0&&(<div style={{marginTop:'0.65rem',borderTop:'1px solid var(--border)',paddingTop:'0.65rem'}}><div className="csec">Heures par coéquipier</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'flex',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',color:'var(--accent)',minWidth:50,textAlign:'center'}}>{hToQuart(val)}</div><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
+          {coeqEmps.length>0&&(<div style={{marginTop:'0.65rem',borderTop:'1px solid var(--border)',paddingTop:'0.65rem'}}><div className="csec">Heures par coéquipier</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'flex',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14,flexShrink:0}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',color:'var(--accent)',minWidth:64,textAlign:'center',flexShrink:0}}>{hToQuart(val)}</div><button className="dur-btn" style={{width:28,height:28,fontSize:14,flexShrink:0}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
         </div>
       )}
       <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: matériel manquant..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
@@ -1475,12 +1487,12 @@ function buildProjets(calJobs,pts){
       map[key]={
         key,code,adresse,
         nom:code==='PARTICULIER'?(adresse||job.title):(code+' — '+(adresse||job.title)),
-        jobs:[],po:'',dateDebut:job.start?job.start.slice(0,10):'',
+        jobs:[],po:'',dateDebut:job.start?localDateStr(new Date(job.start)):'',
         couleur:job.gcalColor||'#2f81f7'
       };
     }
     if(!map[key].jobs.includes(job.title))map[key].jobs.push(job.title);
-    if(job.start&&job.start<(map[key].dateDebut||'9999'))map[key].dateDebut=job.start.slice(0,10);
+    if(job.start&&localDateStr(new Date(job.start))<(map[key].dateDebut||'9999'))map[key].dateDebut=localDateStr(new Date(job.start));
   }
   // Also from pointages (jobs punched that may not be in calendar)
   for(const p of pts){
@@ -2028,7 +2040,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
   function colorMatch(job){return colorDist(job.gcalColor,emp.couleur)<90;}
 
   // Filtrer: aujourd'hui par défaut, ou tout si showAll
-  const todayJobs=jobs.filter(j=>(j.start||'').slice(0,10)===today);
+  const todayJobs=jobs.filter(j=>j.start&&localDateStr(new Date(j.start))===today);
   const baseJobs=showAll?jobs:todayJobs;
 
   const sorted=[...baseJobs].sort((a,b)=>{
@@ -2070,7 +2082,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
       )}
       <div style={{overflowY:'auto',maxHeight:'calc(100vh - 280px)'}}>
         {sorted.map(job=>{
-          const isToday=(job.start||'').slice(0,10)===today;
+          const isToday=job.start&&localDateStr(new Date(job.start))===today;
           const isMatch=matches(job);
           const isCMatch=!isMatch&&colorMatch(job);
           return(
@@ -2236,9 +2248,9 @@ function AppelDeService({emp,job,adresse,onClose,notify}){
                 <div key={id} style={{textAlign:'center'}}>
                   <div style={{fontSize:10,color:'var(--muted)',marginBottom:6}}>{label}</div>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-                    <button className="dur-btn" style={{width:30,height:30,fontSize:16}} onClick={()=>setVal(v=>Math.max(0,Math.round((v-0.25)*4)/4))}>−</button>
-                    <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.3rem',color:'var(--accent)',minWidth:50,textAlign:'center'}}>{hToQuart(val)}</div>
-                    <button className="dur-btn" style={{width:30,height:30,fontSize:16}} onClick={()=>setVal(v=>Math.round((v+0.25)*4)/4)}>+</button>
+                    <button className="dur-btn" style={{width:30,height:30,fontSize:16,flexShrink:0}} onClick={()=>setVal(v=>Math.max(0,Math.round((v-0.25)*4)/4))}>−</button>
+                    <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.3rem',color:'var(--accent)',minWidth:64,textAlign:'center',flexShrink:0}}>{hToQuart(val)}</div>
+                    <button className="dur-btn" style={{width:30,height:30,fontSize:16,flexShrink:0}} onClick={()=>setVal(v=>Math.round((v+0.25)*4)/4)}>+</button>
                   </div>
                 </div>
               ))}
@@ -2439,16 +2451,21 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,ed
   const isEditing=editKey===lineKey;
   if(isEditing) return(
     <div style={{padding:'0.5rem 0.75rem 0.5rem 2.5rem'}}>
+      <div className="fg" style={{marginBottom:'0.4rem'}}>
+        <label>Date</label>
+        <input type="date" value={editData.date||line.date} onChange={e=>setEditData(p=>({...p,date:e.target.value}))}
+          style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem 0.5rem',width:'100%',fontSize:13}}/>
+      </div>
       <div className="fg" style={{marginBottom:'0.4rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
       <div style={{marginBottom:'0.4rem'}}>
         <label style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:6}}>Heures travaillées</label>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <button className="dur-btn" style={{width:36,height:36,fontSize:18,touchAction:'manipulation'}}
+          <button className="dur-btn" style={{width:36,height:36,fontSize:18,touchAction:'manipulation',flexShrink:0}}
             onClick={()=>setEditData(p=>({...p,heures:Math.max(0,Math.round((p.heures-0.25)*4)/4)}))}>−</button>
-          <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.6rem',color:'var(--accent)',minWidth:70,textAlign:'center'}}>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.6rem',color:'var(--accent)',minWidth:78,textAlign:'center',flexShrink:0}}>
             {hToQuart(editData.heures||0)}
           </div>
-          <button className="dur-btn" style={{width:36,height:36,fontSize:18,touchAction:'manipulation'}}
+          <button className="dur-btn" style={{width:36,height:36,fontSize:18,touchAction:'manipulation',flexShrink:0}}
             onClick={()=>setEditData(p=>({...p,heures:Math.round((p.heures+0.25)*4)/4}))}>+</button>
         </div>
       </div>
@@ -2474,6 +2491,7 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,ed
           if(!line||!line.inRow&&!line.outRow){notify&&notify('Erreur: ligne introuvable','err');return;}
           try{
             const row=line.outRow||line.inRow;
+            const newDate=editData.date||line.date;
             await updatePointageData(sid,row,{
               job:editData.job,
               jobColor:line.jobColor,
@@ -2483,7 +2501,14 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,ed
               fichiersURL:line.fichiersURL,
               coequipiers:line.coequipiers
             });
-            if(emp&&sid)await addMessage(sid,emp.nom,'Modification',line.date+' — '+editData.job+', '+hToQuart(editData.heures));
+            // Si la date a changé, mettre à jour col D (DateStr) + F (Semaine) + G (Mois) sur la/les lignes
+            if(newDate!==line.date){
+              const d=new Date(newDate+'T12:00:00');
+              const newSem=getWeek(d),newMois=getMois(d);
+              if(line.outRow)await majDatePointage(sid,line.outRow,newDate,newSem,newMois);
+              if(line.inRow&&line.inRow!==line.outRow)await majDatePointage(sid,line.inRow,newDate,newSem,newMois);
+            }
+            if(emp&&sid)await addMessage(sid,emp.nom,'Modification',newDate+' — '+editData.job+', '+hToQuart(editData.heures));
             notify&&notify('✅ Modifié','success');
             closeEdit();
             if(load)load();
@@ -2603,7 +2628,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   function openEdit(key,line){
     setEditKey(key);
     setEditLine(line);
-    setEditData({job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});
+    setEditData({date:line.date,job:line.job||'',heures:line.heures||0,deplacement:line.deplacement||0,note:line.note||''});
     // Garder la journée ouverte
     setExpandedDate(line.date);
   }
@@ -2857,9 +2882,9 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                                   <div style={{marginBottom:'0.35rem'}}>
                                     <label style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase',display:'block',marginBottom:4}}>Heures</label>
                                     <div style={{display:'flex',alignItems:'center',gap:8}}>
-                                      <button className="dur-btn" style={{width:32,height:32,fontSize:16}} onClick={()=>setEditData(p=>({...p,heures:Math.max(0,Math.round((p.heures-0.25)*4)/4)}))}>−</button>
-                                      <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.3rem',color:'var(--accent)',minWidth:55,textAlign:'center'}}>{hToQuart(editData.heures||0)}</div>
-                                      <button className="dur-btn" style={{width:32,height:32,fontSize:16}} onClick={()=>setEditData(p=>({...p,heures:Math.round((p.heures+0.25)*4)/4}))}>+</button>
+                                      <button className="dur-btn" style={{width:32,height:32,fontSize:16,flexShrink:0}} onClick={()=>setEditData(p=>({...p,heures:Math.max(0,Math.round((p.heures-0.25)*4)/4)}))}>−</button>
+                                      <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.3rem',color:'var(--accent)',minWidth:64,textAlign:'center',flexShrink:0}}>{hToQuart(editData.heures||0)}</div>
+                                      <button className="dur-btn" style={{width:32,height:32,fontSize:16,flexShrink:0}} onClick={()=>setEditData(p=>({...p,heures:Math.round((p.heures+0.25)*4)/4}))}>+</button>
                                     </div>
                                   </div>
                                   <div style={{marginBottom:'0.35rem'}}>
@@ -2923,7 +2948,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                 <label style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:4}}>Heures</label>
                 <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <button className="dur-btn" style={{width:32,height:32,fontSize:16,touchAction:'manipulation'}} onClick={()=>setNewEntry(p=>({...p,heures:Math.max(0,Math.round((p.heures-0.25)*4)/4)}))}>−</button>
-                  <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.3rem',color:'var(--accent)',minWidth:55,textAlign:'center'}}>{hToQuart(newEntry.heures)}</div>
+                  <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.3rem',color:'var(--accent)',minWidth:64,textAlign:'center',flexShrink:0}}>{hToQuart(newEntry.heures)}</div>
                   <button className="dur-btn" style={{width:32,height:32,fontSize:16,touchAction:'manipulation'}} onClick={()=>setNewEntry(p=>({...p,heures:Math.round((p.heures+0.25)*4)/4}))}>+</button>
                 </div>
               </div>
@@ -3682,7 +3707,8 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       <TimeHeader/>
       <JobSelector jobs={jobs} emp={selEmp}
         onSelect={(t,c)=>{setSelJob(t);setSelJobColor(c);
-          const jDate=(jobs.find(j=>j.title===t)?.start||'').slice(0,10);
+          const startIso=jobs.find(j=>j.title===t)?.start||'';
+          const jDate=startIso?localDateStr(new Date(startIso)):'';
           setSelJobDate(jDate);
           if(mode==='out')setStep('duration-out');
           else if(mode==='confirm')setStep('confirm');
