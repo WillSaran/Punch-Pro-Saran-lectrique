@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v155';
+const APP_VERSION='v156';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -343,6 +343,8 @@ function getWeek(d){
 }
 function getMois(d){const dt=new Date(d);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');}
 function localDateStr(d){const dt=d||new Date();return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
+// Parse un nombre qui peut utiliser la virgule comme séparateur décimal (locale FR du compte Google)
+function safeFloat(v){if(v===null||v===undefined||v==='')return 0;return parseFloat(String(v).replace(',','.'))||0;}
 function parseDriveFolders(raw){
   if(!raw)return[];
   return raw.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean).map(s=>{
@@ -378,7 +380,7 @@ function combinePts(pts){
       let h=0;
       if(matchOut){
         processed.add(matchOut.row);
-        const storedH=parseFloat(matchOut.heures)||0;
+        const storedH=safeFloat(matchOut.heures);
         h=storedH>0?Math.round(storedH*4)/4:Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/3600000*4)/4;
       }
       lines.push({date:p.date,type:'pair',heure:p.heure,heureOut:matchOut?matchOut.heure:'',job:matchOut?matchOut.job:p.job,jobColor:matchOut?matchOut.jobColor:p.jobColor,heures:matchOut?h:null,deplacement:matchOut?matchOut.deplacement:p.deplacement,note:matchOut?matchOut.note:p.note,fichiersURL:matchOut?matchOut.fichiersURL:p.fichiersURL,coequipiers:matchOut?matchOut.coequipiers:p.coequipiers,inRow:p.row,outRow:matchOut?matchOut.row:null,semaine:p.semaine,nom:p.nom,ot:0});
@@ -712,7 +714,7 @@ async function getEmployees(sid){
   try{
     const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:H'}));
     return (res.result.values||[]).map((r,i)=>({
-      nom:r[0]||'',pin:r[1]||'',statut:r[2]||'out',heuresBanque:parseFloat(r[3])||0,
+      nom:r[0]||'',pin:r[1]||'',statut:r[2]||'out',heuresBanque:safeFloat(r[3]),
       couleur:r[4]||EMP_COLORS[i%EMP_COLORS.length],code:r[5]||(r[0]||'??').substring(0,2).toUpperCase(),
       email:r[6]||'',telephone:r[7]||'',row:i+2
     }));
@@ -760,7 +762,7 @@ async function addPointage(sid,emp,type,data){
       const rows=recent.result.values||[];
       const dup=rows.find(r=>
         r[0]===emp.nom && r[1]==='confirm' && r[3]===dateStr &&
-        (r[7]||'')===(data.job||'') && parseFloat(r[10])===parseFloat(data.heures||0) &&
+        (r[7]||'')===(data.job||'') && safeFloat(r[10])===safeFloat(data.heures||0) &&
         (r[11]||'')===(data.note||'') &&
         (now.getTime()-new Date(r[2]).getTime())<120000 // moins de 2 minutes
       );
@@ -785,8 +787,8 @@ async function getPointages(sid,filter){
   const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Pointages!A2:N'}));
   let rows=(res.result.values||[]).map((r,i)=>({
     nom:r[0],type:r[1],datetime:r[2],date:r[3],heure:r[4],semaine:r[5],mois:r[6],
-    job:r[7]||'',jobColor:r[8]||'',deplacement:parseFloat(r[9])||0,
-    heures:parseFloat(r[10])||0,note:r[11]||'',
+    job:r[7]||'',jobColor:r[8]||'',deplacement:safeFloat(r[9]),
+    heures:safeFloat(r[10]),note:r[11]||'',
     fichiersURL:(r[12]||'').split(' | ').filter(Boolean),
     coequipiers:(r[13]||'').split(', ').filter(Boolean),
     row:i+2
@@ -856,7 +858,7 @@ async function deletePointageRow(sid,row){
 async function getHeuresBanque(sid){
   try{
     const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'HeuresEnBanque!A2:E'});
-    return (res.result.values||[]).map((r,i)=>({nom:r[0],semaine:r[1],heures:parseFloat(r[2])||0,statut:r[3]||'pending',date:r[4],row:i+2}));
+    return (res.result.values||[]).map((r,i)=>({nom:r[0],semaine:r[1],heures:safeFloat(r[2]),statut:r[3]||'pending',date:r[4],row:i+2}));
   }catch{return[];}
 }
 async function addHeuresBanque(sid,nom,semaine,heures){
@@ -1552,7 +1554,7 @@ async function getPOs(sid){
 // ── PROJECT DETAIL ────────────────────────────────────────────────────────────
 function EventCard({j,isPast,projPts,editEvtAddr,setEditEvtAddr,editEvtAddrVal,setEditEvtAddrVal,saveEvtAddress,pAdresse}){
   const evtPts=(projPts||[]).filter(p2=>p2.job===j.title);
-  const heures=evtPts.filter(p2=>p2.type==='out'||p2.type==='confirm').reduce((a,p2)=>a+(parseFloat(p2.heures)||0),0);
+  const heures=evtPts.filter(p2=>p2.type==='out'||p2.type==='confirm').reduce((a,p2)=>a+safeFloat(p2.heures),0);
   const fichiers=evtPts.flatMap(p2=>p2.fichiersURL||[]).filter(Boolean);
   const isEditingAddr=editEvtAddr===j.id;
   return(
@@ -1851,7 +1853,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
       if(!cj||!cj.location)return;
       const key=(cj.location||'').trim().toLowerCase();
       if(!map[key])return;
-      if(p.type==='out'||p.type==='confirm'){map[key].heures+=parseFloat(p.heures)||0;if(p.nom)map[key].personnes.add(p.nom);}
+      if(p.type==='out'||p.type==='confirm'){map[key].heures+=safeFloat(p.heures);if(p.nom)map[key].personnes.add(p.nom);}
     });
     // Événements SANS adresse — regroupés par préfixe
     const noAddrMap={};
