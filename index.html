@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v161';
+const APP_VERSION='v162';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -668,6 +668,42 @@ async function ajouterStockPersonnalise(code,desc,unite,employe){
     valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
     resource:{values:[[code,desc,unite||'un',employe||'',localDateStr()]]}
   }));
+}
+
+// ── STOCK CAMIONS (synchronisé entre appareils via Sheets) ────────────────────
+// Onglet "Stock Camions": colonne A = ID camion, colonne B = texte de la liste, colonne C = dernière maj
+async function getStockCamion(camionId){
+  try{
+    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId:STOCK_SHEET_ID,range:'Stock Camions!A2:C'
+    }));
+    const rows=res.result.values||[];
+    const row=rows.find(r=>r[0]===camionId);
+    return row?(row[1]||''):'';
+  }catch(e){return'';}
+}
+
+async function setStockCamion(camionId,texte){
+  try{
+    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId:STOCK_SHEET_ID,range:'Stock Camions!A2:A'
+    }));
+    const rows=res.result.values||[];
+    const idx=rows.findIndex(r=>r[0]===camionId);
+    if(idx>=0){
+      const row=idx+2;
+      await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.update({
+        spreadsheetId:STOCK_SHEET_ID,range:'Stock Camions!B'+row+':C'+row,valueInputOption:'RAW',
+        resource:{values:[[texte,new Date().toISOString()]]}
+      }));
+    }else{
+      await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.append({
+        spreadsheetId:STOCK_SHEET_ID,range:'Stock Camions!A1',
+        valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
+        resource:{values:[[camionId,texte,new Date().toISOString()]]}
+      }));
+    }
+  }catch(e){console.error('Erreur sauvegarde stock camion:',e);throw e;}
 }
 
 async function envoyerCommandeCourriel(data,token){
@@ -3294,29 +3330,61 @@ function ConvertisseurPiedsMetres(){
 
 // ── STOCK DES CAMIONS ───────────────────────────────────────────────────────
 function StockCamionBloc({camionId,camionNom,emp,notify}){
-  const storageKey='pp_stock_'+camionId;
-  const [texte,setTexte]=useState(()=>{
-    try{return localStorage.getItem(storageKey)||'';}catch{return'';}
-  });
+  const [texte,setTexte]=useState('');
+  const [loading,setLoading]=useState(true);
   const [showAddItem,setShowAddItem]=useState(false);
+  const [searchCatalogue,setSearchCatalogue]=useState('');
   const [newQty,setNewQty]=useState(1);
-  const [newDesc,setNewDesc]=useState('');
   const [sending,setSending]=useState(false);
+  const [saveStatus,setSaveStatus]=useState(''); // '', 'saving', 'saved'
   const saveTimer=useRef(null);
+  const skipNextSave=useRef(true); // évite d'écraser Sheets au premier chargement
+
+  // Charger depuis Sheets au montage
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const t=await getStockCamion(camionId);
+        skipNextSave.current=true;
+        setTexte(t);
+      }catch(e){console.error(e);}
+      setLoading(false);
+    })();
+  },[camionId]);
 
   function onTexteChange(v){
     setTexte(v);
+    skipNextSave.current=false;
     if(saveTimer.current)clearTimeout(saveTimer.current);
-    saveTimer.current=setTimeout(()=>{localStorage.setItem(storageKey,v);},400);
+    setSaveStatus('saving');
+    saveTimer.current=setTimeout(async()=>{
+      try{
+        await setStockCamion(camionId,v);
+        setSaveStatus('saved');
+        setTimeout(()=>setSaveStatus(''),1500);
+      }catch(e){setSaveStatus('');notify('Erreur sauvegarde: '+e.message,'err');}
+    },800);
   }
 
-  function ajouterItemRapide(){
-    if(!newDesc.trim())return;
-    const ligne=newQty+'x '+newDesc.trim();
+  // Catalogue plat pour recherche (même source que Appel de service)
+  const allCatalogueItems=Object.entries(CATALOGUE).flatMap(([cat,items])=>
+    items.flatMap(item=>{
+      if(item.options||item.sizes){
+        return (item.options||item.sizes).map(opt=>({desc:item.code+' — '+item.desc+' ('+opt+')'}));
+      }
+      return [{desc:item.code+' — '+item.desc}];
+    })
+  );
+  const filteredCatalogue=searchCatalogue.trim()
+    ? allCatalogueItems.filter(it=>it.desc.toLowerCase().includes(searchCatalogue.toLowerCase()))
+    : allCatalogueItems;
+
+  function ajouterItemDuCatalogue(item){
+    const ligne=newQty+'x '+item.desc;
     const next=texte.trim()?texte.replace(/\n+$/,'')+'\n'+ligne:ligne;
     setTexte(next);
-    localStorage.setItem(storageKey,next);
-    setNewQty(1);setNewDesc('');setShowAddItem(false);
+    onTexteChange(next);
+    setNewQty(1);setSearchCatalogue('');
   }
 
   function encodeEmailSafe(to,subject,body){
@@ -3353,7 +3421,8 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
       });
       if(res.ok){
         notify('✅ Commande '+camionNom+' envoyée!','success');
-        setTexte('');localStorage.setItem(storageKey,'');
+        setTexte('');
+        await setStockCamion(camionId,'');
       }else{
         const e=await res.json();notify('Erreur: '+(e?.error?.message||res.status),'err');
       }
@@ -3363,17 +3432,25 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
 
   return(
     <div style={{background:'var(--bg3)',borderRadius:12,padding:'0.7rem 0.85rem',marginBottom:'0.6rem',border:'1px solid var(--border)'}}>
-      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:'0.5rem'}}>
-        <span style={{fontSize:15}}>🚚</span>
-        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13}}>{camionNom}</div>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.5rem'}}>
+        <div style={{display:'flex',alignItems:'center',gap:7}}>
+          <span style={{fontSize:15}}>🚚</span>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13}}>{camionNom}</div>
+        </div>
+        {saveStatus==='saving'&&<span style={{fontSize:9,color:'var(--muted)'}}>⏳ sauvegarde...</span>}
+        {saveStatus==='saved'&&<span style={{fontSize:9,color:'var(--success)'}}>✓ synchronisé</span>}
       </div>
 
-      <textarea
-        value={texte}
-        onChange={e=>onTexteChange(e.target.value)}
-        placeholder={'Écris ici ce qui manque...\nex:\n10x prises Decora blanches\n2x breakers 20A\n1 rouleau NMD90 14/2'}
-        rows={6}
-        style={{width:'100%',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.6rem 0.7rem',color:'var(--text)',fontSize:13,lineHeight:1.6,fontFamily:'var(--font-body)',resize:'vertical'}}/>
+      {loading?(
+        <div style={{textAlign:'center',padding:'1rem',color:'var(--muted)',fontSize:12}}>⏳ Chargement...</div>
+      ):(
+        <textarea
+          value={texte}
+          onChange={e=>onTexteChange(e.target.value)}
+          placeholder={'Écris ici ce qui manque...\nex:\n10x prises Decora blanches\n2x breakers 20A\n1 rouleau NMD90 14/2'}
+          rows={6}
+          style={{width:'100%',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.6rem 0.7rem',color:'var(--text)',fontSize:13,lineHeight:1.6,fontFamily:'var(--font-body)',resize:'vertical'}}/>
+      )}
 
       {!showAddItem?(
         <div style={{display:'flex',gap:6,marginTop:'0.5rem'}}>
@@ -3384,22 +3461,31 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
         </div>
       ):(
         <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.5rem',marginTop:'0.5rem'}}>
-          <div style={{display:'flex',gap:6,marginBottom:'0.4rem'}}>
-            <input type="number" value={newQty} onChange={e=>setNewQty(parseInt(e.target.value)||1)} min={1}
-              style={{width:54,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem',color:'var(--text)',fontSize:13,textAlign:'center'}}/>
-            <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="ex: prises Decora blanches"
-              style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.55rem',color:'var(--text)',fontSize:12}}
-              onKeyDown={e=>{if(e.key==='Enter')ajouterItemRapide();}}/>
+          <div style={{display:'flex',gap:6,marginBottom:'0.4rem',alignItems:'center'}}>
+            <label style={{fontSize:9,color:'var(--muted)',flexShrink:0}}>Qté</label>
+            <button className="dur-btn" style={{width:26,height:26,fontSize:13,flexShrink:0}} onClick={()=>setNewQty(q=>Math.max(1,q-1))}>−</button>
+            <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,color:'var(--accent)',minWidth:24,textAlign:'center'}}>{newQty}</div>
+            <button className="dur-btn" style={{width:26,height:26,fontSize:13,flexShrink:0}} onClick={()=>setNewQty(q=>q+1)}>+</button>
+            <input value={searchCatalogue} onChange={e=>setSearchCatalogue(e.target.value)} placeholder="🔍 Chercher dans le catalogue..."
+              style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.55rem',color:'var(--text)',fontSize:12}}/>
           </div>
-          <div style={{display:'flex',gap:5}}>
-            <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={ajouterItemRapide} disabled={!newDesc.trim()}>✓ Ajouter à la liste</button>
-            <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowAddItem(false);setNewDesc('');}}>Annuler</button>
+          <div style={{maxHeight:200,overflowY:'auto',marginBottom:'0.4rem',border:'1px solid var(--border)',borderRadius:6}}>
+            {filteredCatalogue.length===0?(
+              <div style={{padding:'0.6rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>Aucun résultat.</div>
+            ):filteredCatalogue.slice(0,60).map((it,i)=>(
+              <div key={i} onClick={()=>ajouterItemDuCatalogue(it)}
+                style={{padding:'0.4rem 0.5rem',fontSize:11,color:'var(--text)',borderBottom:'1px solid var(--border)',cursor:'pointer',touchAction:'manipulation'}}>
+                {it.desc}
+              </div>
+            ))}
           </div>
+          <button className="btn-s" style={{width:'100%',fontSize:11}} onClick={()=>{setShowAddItem(false);setSearchCatalogue('');}}>Fermer</button>
         </div>
       )}
     </div>
   );
 }
+
 
 function StockCamions({emp,notify}){
   return(
@@ -3416,28 +3502,58 @@ function StockCamions({emp,notify}){
 
 
 // ── RÉFÉRENCES RAPIDES ────────────────────────────────────────────────────────
-const CHAUFFAGE_PLINTHES=[
-  {wattage:300,code:'B0302W',longueur:'22"'},
-  {wattage:500,code:'B0502W',longueur:'27 7/8"'},
-  {wattage:750,code:'B0752W',longueur:'37 5/8"'},
-  {wattage:1000,code:'B1002W',longueur:'47 1/2"'},
-  {wattage:1250,code:'B1252W',longueur:'57 1/4"'},
-  {wattage:1500,code:'B1502W',longueur:'66 1/4"'},
-  {wattage:1750,code:'B1752W',longueur:'76"'},
-  {wattage:2000,code:'B2002W',longueur:'83 7/8"'},
-  {wattage:2250,code:'B2252W',longueur:'93 3/4"'},
-  {wattage:2500,code:'B2502W',longueur:'102 5/8"'},
+const CHAUFFAGE_BRAVA=[
+  {code:'B0302W',wattage:300,longueur:'22"'},
+  {code:'B0502W',wattage:500,longueur:'27 7/8"'},
+  {code:'B0752W',wattage:750,longueur:'37 5/8"'},
+  {code:'B1002W',wattage:1000,longueur:'47 1/2"'},
+  {code:'B1252W',wattage:1250,longueur:'57 1/4"'},
+  {code:'B1502W',wattage:1500,longueur:'66 1/4"'},
+  {code:'B1752W',wattage:1750,longueur:'76"'},
+  {code:'B2002W',wattage:2000,longueur:'83 7/8"'},
+  {code:'B2252W',wattage:2250,longueur:'93 3/4"'},
+  {code:'B2502W',wattage:2500,longueur:'102 5/8"'},
+];
+
+const CHAUFFAGE_PRIMA_325=[
+  {code:'SPR0502W',wattage:500,longueur:'22 1/4"'},
+  {code:'SPR1002W',wattage:1000,longueur:'36 1/16"'},
+  {code:'SPR1502W',wattage:1500,longueur:'49 7/8"'},
+  {code:'SPR2002W',wattage:2000,longueur:'63 11/16"'},
+];
+
+const CHAUFFAGE_PRIMA_275=[
+  {code:'SPRM0372W',wattage:375,longueur:'22 1/4"'},
+  {code:'SPRM0752W',wattage:750,longueur:'36 1/16"'},
+  {code:'SPRM1252W',wattage:1250,longueur:'49 7/8"'},
+  {code:'SPRM1752W',wattage:1750,longueur:'63 11/16"'},
 ];
 
 // Structure flexible — chaque carte de référence est un objet avec id, titre, icône, et un renderer
 const REFERENCE_CARDS=[
   {
-    id:'chauffage',
-    titre:'Appareils de chauffage',
+    id:'chauffage-brava',
+    titre:'Chauffage — Stelpro Brava',
     icone:'🔥',
     type:'table',
-    colonnes:['Wattage','Code','Longueur'],
-    lignes:CHAUFFAGE_PLINTHES.map(p=>[p.wattage+'W',p.code,p.longueur])
+    colonnes:['Code','Wattage','Longueur'],
+    lignes:CHAUFFAGE_BRAVA.map(p=>[p.code,p.wattage+'W',p.longueur])
+  },
+  {
+    id:'chauffage-prima-325',
+    titre:'Chauffage — Stelpro Prima 325 W/pi',
+    icone:'🔥',
+    type:'table',
+    colonnes:['Code','Wattage','Longueur'],
+    lignes:CHAUFFAGE_PRIMA_325.map(p=>[p.code,p.wattage+'W',p.longueur])
+  },
+  {
+    id:'chauffage-prima-275',
+    titre:'Chauffage — Stelpro Prima 275 W/pi',
+    icone:'🔥',
+    type:'table',
+    colonnes:['Code','Wattage','Longueur'],
+    lignes:CHAUFFAGE_PRIMA_275.map(p=>[p.code,p.wattage+'W',p.longueur])
   }
   // Cartes futures à ajouter ici: bornes de recharge, calibres de fils, capacité des breakers,
   // couleur kelvin et visuel, conversions électriques rapides, références de produits fréquents
