@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v160';
+const APP_VERSION='v161';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -3295,35 +3295,28 @@ function ConvertisseurPiedsMetres(){
 // ── STOCK DES CAMIONS ───────────────────────────────────────────────────────
 function StockCamionBloc({camionId,camionNom,emp,notify}){
   const storageKey='pp_stock_'+camionId;
-  const [items,setItems]=useState(()=>{
-    try{return JSON.parse(localStorage.getItem(storageKey)||'[]');}catch{return[];}
+  const [texte,setTexte]=useState(()=>{
+    try{return localStorage.getItem(storageKey)||'';}catch{return'';}
   });
-  const [showAdd,setShowAdd]=useState(false);
+  const [showAddItem,setShowAddItem]=useState(false);
   const [newQty,setNewQty]=useState(1);
   const [newDesc,setNewDesc]=useState('');
-  const [editIdx,setEditIdx]=useState(null);
-  const [editQty,setEditQty]=useState(1);
-  const [editDesc,setEditDesc]=useState('');
-  const [showCatalogue,setShowCatalogue]=useState(false);
   const [sending,setSending]=useState(false);
-  const [expanded,setExpanded]=useState(false);
+  const saveTimer=useRef(null);
 
-  function persist(next){setItems(next);localStorage.setItem(storageKey,JSON.stringify(next));}
+  function onTexteChange(v){
+    setTexte(v);
+    if(saveTimer.current)clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(()=>{localStorage.setItem(storageKey,v);},400);
+  }
 
-  function addItem(){
+  function ajouterItemRapide(){
     if(!newDesc.trim())return;
-    persist([...items,{qty:newQty,desc:newDesc.trim(),id:Date.now()}]);
-    setNewQty(1);setNewDesc('');setShowAdd(false);setShowCatalogue(false);
-  }
-  function addFromCatalogue(item){
-    persist([...items,{qty:1,desc:item.desc,id:Date.now()}]);
-  }
-  function removeItem(idx){persist(items.filter((_,i)=>i!==idx));}
-  function startEdit(idx){setEditIdx(idx);setEditQty(items[idx].qty);setEditDesc(items[idx].desc);}
-  function saveEdit(idx){
-    const next=[...items];
-    next[idx]={...next[idx],qty:editQty,desc:editDesc.trim()};
-    persist(next);setEditIdx(null);
+    const ligne=newQty+'x '+newDesc.trim();
+    const next=texte.trim()?texte.replace(/\n+$/,'')+'\n'+ligne:ligne;
+    setTexte(next);
+    localStorage.setItem(storageKey,next);
+    setNewQty(1);setNewDesc('');setShowAddItem(false);
   }
 
   function encodeEmailSafe(to,subject,body){
@@ -3344,14 +3337,13 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
   }
 
   async function envoyerCommande(){
-    if(items.length===0){notify('Aucun item à commander','err');return;}
+    if(!texte.trim()){notify('Liste vide','err');return;}
     setSending(true);
     try{
       const token=gapi.client.getToken()?.access_token;
       if(!token){notify('Pas de token Google','err');setSending(false);return;}
-      const lignes=items.map(it=>'  '+String(it.qty).padStart(3)+' x '+it.desc);
       const body='Bonjour,\n\n'+(emp?.nom||'Un employe')+' demande une commande pour '+camionNom+' :\n\n'+
-        lignes.join('\n')+'\n\n'+
+        texte.trim()+'\n\n'+
         'Date : '+localDateStr()+'\nEnvoye depuis PunchPro - Saran Electrique';
       const encoded=encodeEmailSafe('info@saranelectrique.com',camionNom+' - Commande de stock',body);
       const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
@@ -3361,7 +3353,7 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
       });
       if(res.ok){
         notify('✅ Commande '+camionNom+' envoyée!','success');
-        persist([]); // vider la liste après envoi réussi
+        setTexte('');localStorage.setItem(storageKey,'');
       }else{
         const e=await res.json();notify('Erreur: '+(e?.error?.message||res.status),'err');
       }
@@ -3369,106 +3361,40 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
     setSending(false);
   }
 
-  // Catalogue plat pour recherche rapide (réutilise CATALOGUE existant)
-  const allCatalogueItems=Object.entries(CATALOGUE).flatMap(([cat,items])=>
-    items.flatMap(item=>{
-      if(item.options||item.sizes){
-        return (item.options||item.sizes).map(opt=>({desc:item.code+' — '+item.desc+' ('+opt+')'}));
-      }
-      return [{desc:item.code+' — '+item.desc}];
-    })
-  );
-
   return(
     <div style={{background:'var(--bg3)',borderRadius:12,padding:'0.7rem 0.85rem',marginBottom:'0.6rem',border:'1px solid var(--border)'}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',cursor:'pointer'}} onClick={()=>setExpanded(e=>!e)}>
-        <div style={{display:'flex',alignItems:'center',gap:7}}>
-          <span style={{fontSize:15}}>🚚</span>
-          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13}}>{camionNom}</div>
-          {items.length>0&&<span style={{background:'var(--accent)',color:'white',borderRadius:10,fontSize:9,padding:'1px 6px',fontWeight:700}}>{items.length}</span>}
-        </div>
-        <span style={{color:'var(--muted)',fontSize:11}}>{expanded?'▼':'▶'}</span>
+      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:'0.5rem'}}>
+        <span style={{fontSize:15}}>🚚</span>
+        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13}}>{camionNom}</div>
       </div>
 
-      {expanded&&(
-        <div style={{marginTop:'0.6rem'}}>
-          {items.length===0?(
-            <div style={{color:'var(--muted)',fontSize:11,textAlign:'center',padding:'0.5rem'}}>Aucun item. Ajoute ce qui manque dans le camion.</div>
-          ):(
-            <div style={{marginBottom:'0.5rem'}}>
-              {items.map((it,idx)=>(
-                <div key={it.id} style={{background:'var(--bg2)',borderRadius:8,padding:'0.4rem 0.55rem',marginBottom:'0.3rem'}}>
-                  {editIdx===idx?(
-                    <div>
-                      <div style={{display:'flex',gap:6,marginBottom:5}}>
-                        <input type="number" value={editQty} onChange={e=>setEditQty(parseInt(e.target.value)||1)}
-                          style={{width:54,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem',color:'var(--text)',fontSize:13,textAlign:'center'}}/>
-                        <input value={editDesc} onChange={e=>setEditDesc(e.target.value)}
-                          style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem 0.5rem',color:'var(--text)',fontSize:12}}/>
-                      </div>
-                      <div style={{display:'flex',gap:5}}>
-                        <button className="btn-sm" style={{background:'var(--accent)',color:'white',border:'none'}} onClick={()=>saveEdit(idx)}>✓ Sauver</button>
-                        <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>setEditIdx(null)}>Annuler</button>
-                      </div>
-                    </div>
-                  ):(
-                    <div style={{display:'flex',alignItems:'center',gap:8}}>
-                      <span style={{fontFamily:'var(--font-head)',fontWeight:700,color:'var(--accent)',fontSize:13,minWidth:28,textAlign:'center'}}>{it.qty}×</span>
-                      <span style={{flex:1,fontSize:12,color:'var(--text)'}}>{it.desc}</span>
-                      <button onClick={()=>startEdit(idx)} style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:13,padding:'2px 4px'}}>✏️</button>
-                      <button onClick={()=>removeItem(idx)} style={{background:'none',border:'none',color:'var(--danger)',cursor:'pointer',fontSize:13,padding:'2px 4px'}}>🗑️</button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
+      <textarea
+        value={texte}
+        onChange={e=>onTexteChange(e.target.value)}
+        placeholder={'Écris ici ce qui manque...\nex:\n10x prises Decora blanches\n2x breakers 20A\n1 rouleau NMD90 14/2'}
+        rows={6}
+        style={{width:'100%',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.6rem 0.7rem',color:'var(--text)',fontSize:13,lineHeight:1.6,fontFamily:'var(--font-body)',resize:'vertical'}}/>
 
-          {!showAdd?(
-            <div style={{display:'flex',gap:6}}>
-              <button className="btn-s" style={{flex:1,fontSize:11}} onClick={()=>{setShowAdd(true);setShowCatalogue(false);}}>➕ Ajouter un item</button>
-              {items.length>0&&(
-                <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} disabled={sending} onClick={envoyerCommande}>
-                  {sending?'⏳':'📧'} Envoyer ma commande
-                </button>
-              )}
-            </div>
-          ):(
-            <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.5rem'}}>
-              <div style={{display:'flex',gap:6,marginBottom:'0.4rem'}}>
-                <button className={'btn-sm'+(showCatalogue?'':' active')} style={{flex:1,background:!showCatalogue?'var(--accent)':'var(--bg3)',color:!showCatalogue?'white':'var(--muted)',border:'1px solid var(--border)'}} onClick={()=>setShowCatalogue(false)}>✍️ Écrire</button>
-                <button className={'btn-sm'+(showCatalogue?' active':'')} style={{flex:1,background:showCatalogue?'var(--accent)':'var(--bg3)',color:showCatalogue?'white':'var(--muted)',border:'1px solid var(--border)'}} onClick={()=>setShowCatalogue(true)}>📋 Catalogue</button>
-              </div>
-
-              {!showCatalogue?(
-                <div>
-                  <div style={{display:'flex',gap:6,marginBottom:'0.4rem'}}>
-                    <input type="number" value={newQty} onChange={e=>setNewQty(parseInt(e.target.value)||1)} min={1}
-                      style={{width:54,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem',color:'var(--text)',fontSize:13,textAlign:'center'}}/>
-                    <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="ex: prises Decora blanches"
-                      style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.55rem',color:'var(--text)',fontSize:12}}
-                      onKeyDown={e=>{if(e.key==='Enter')addItem();}}/>
-                  </div>
-                  <div style={{display:'flex',gap:5}}>
-                    <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={addItem} disabled={!newDesc.trim()}>✓ Ajouter</button>
-                    <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowAdd(false);setNewDesc('');}}>Annuler</button>
-                  </div>
-                </div>
-              ):(
-                <div>
-                  <div style={{maxHeight:200,overflowY:'auto',marginBottom:'0.4rem'}}>
-                    {allCatalogueItems.map((it,i)=>(
-                      <div key={i} onClick={()=>addFromCatalogue(it)}
-                        style={{padding:'0.4rem 0.5rem',fontSize:11,color:'var(--text)',borderBottom:'1px solid var(--border)',cursor:'pointer',touchAction:'manipulation'}}>
-                        {it.desc}
-                      </div>
-                    ))}
-                  </div>
-                  <button className="btn-s" style={{width:'100%',fontSize:11}} onClick={()=>{setShowAdd(false);setShowCatalogue(false);}}>Fermer</button>
-                </div>
-              )}
-            </div>
-          )}
+      {!showAddItem?(
+        <div style={{display:'flex',gap:6,marginTop:'0.5rem'}}>
+          <button className="btn-s" style={{flex:1,fontSize:11}} onClick={()=>setShowAddItem(true)}>➕ Ajouter un item</button>
+          <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} disabled={sending||!texte.trim()} onClick={envoyerCommande}>
+            {sending?'⏳':'📧'} Envoyer ma commande
+          </button>
+        </div>
+      ):(
+        <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.5rem',marginTop:'0.5rem'}}>
+          <div style={{display:'flex',gap:6,marginBottom:'0.4rem'}}>
+            <input type="number" value={newQty} onChange={e=>setNewQty(parseInt(e.target.value)||1)} min={1}
+              style={{width:54,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem',color:'var(--text)',fontSize:13,textAlign:'center'}}/>
+            <input value={newDesc} onChange={e=>setNewDesc(e.target.value)} placeholder="ex: prises Decora blanches"
+              style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.55rem',color:'var(--text)',fontSize:12}}
+              onKeyDown={e=>{if(e.key==='Enter')ajouterItemRapide();}}/>
+          </div>
+          <div style={{display:'flex',gap:5}}>
+            <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={ajouterItemRapide} disabled={!newDesc.trim()}>✓ Ajouter à la liste</button>
+            <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowAddItem(false);setNewDesc('');}}>Annuler</button>
+          </div>
         </div>
       )}
     </div>
@@ -3487,6 +3413,7 @@ function StockCamions({emp,notify}){
     </div>
   );
 }
+
 
 // ── RÉFÉRENCES RAPIDES ────────────────────────────────────────────────────────
 const CHAUFFAGE_PLINTHES=[
@@ -4328,10 +4255,8 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
         </div>
       </div>
 
-      {/* Tableau de bord rapide */}
-      <ConvertisseurPiedsMetres/>
-      <StockCamions emp={selEmp} notify={notify}/>
-      <ReferencesRapides/>
+      {/* Résumé jobs — onglets Aujourd'hui / Demain */}
+      <JobSummary jobs={jobs} emp={selEmp} notify={notify} calendarIds={calendarIds}/>
     </div>
 
   // ── EMP GRID ──
@@ -4367,8 +4292,12 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
               </div>
             ))}
           </div>
-          {/* Résumé jobs — onglets Aujourd'hui / Demain, toutes équipes */}
-          <JobSummary jobs={jobs} emp={null} notify={notify} calendarIds={calendarIds}/>
+          {/* Tableau de bord rapide — visible avant de sélectionner un profil */}
+          <div style={{width:'100%',maxWidth:560,marginTop:'1rem'}}>
+            <ConvertisseurPiedsMetres/>
+            <StockCamions emp={null} notify={notify}/>
+            <ReferencesRapides/>
+          </div>
         </>
       )}
     </div>
