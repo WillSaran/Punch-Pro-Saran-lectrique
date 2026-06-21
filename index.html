@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v168';
+const APP_VERSION='v169';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1672,36 +1672,25 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
     saveProjData(u);setEditKey(null);
   }
 
-  async function saveEvtAddress(j){
+  function saveEvtAddress(j){
     if(!editEvtAddrVal.trim()){notify('Entrez une adresse','warn');return;}
     const newAddr=editEvtAddrVal.trim();
-    // 1. Sauvegarder localement en priorité — mise à jour immédiate de l'UI
+    // 1. Sauvegarder localement en priorité — mise à jour immédiate de l'UI, ferme le formulaire tout de suite
     const current=addrOverrides||{};
     const updated={...current,[j.id]:newAddr};
     saveAddrOverrides(updated);
-    // 2. Essayer de mettre à jour dans Google Calendar
-    let calUpdated=false;
-    const errors=[];
-    for(const calId of (calendarIds||['primary'])){
-      try{
-        await gapi.client.calendar.events.patch({
-          calendarId:calId,
-          eventId:j.id,
-          resource:{location:newAddr}
-        });
-        calUpdated=true;
-        break;
-      }catch(e){
-        errors.push(calId+': '+(e.result?.error?.message||e.message||'erreur'));
-      }
-    }
-    if(calUpdated){
-      notify('✅ Adresse mise à jour dans l\'agenda!','success');
-    }else{
-      console.warn('Calendar patch failed:',errors);
-      notify('✅ Adresse sauvegardée localement. (Agenda: '+errors[0]+')','success');
-    }
+    notify('✅ Adresse mise à jour!','success');
     setEditEvtAddr(null);setEditEvtAddrVal('');
+    // 2. Synchroniser vers Google Calendar en arrière-plan (ne bloque plus l'UI)
+    (async()=>{
+      for(const calId of (calendarIds||['primary'])){
+        try{
+          await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:newAddr}});
+          return;
+        }catch(e){continue;}
+      }
+      console.warn('Calendar patch failed pour',j.id);
+    })();
   }
 
   async function mergeIntoProject(newAddr){
@@ -2216,17 +2205,30 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
               <AddressInput value={addAddrVal} onChange={setAddAddrVal} placeholder="Entrer l'adresse..." style={{marginBottom:'0.35rem'}}/>
               <div style={{display:'flex',gap:'0.35rem'}}>
                 <button className="btn-p" style={{flex:1,marginTop:0,fontSize:11}}
-                  onClick={async()=>{
+                  onClick={()=>{
                     if(!addAddrVal.trim()){notify('Entrez une adresse','warn');return;}
-                    // Sauvegarder via le vrai système synchronisé (Sheets) — apparaît immédiatement dans la liste des projets
-                    const next={...addrOverrides,[j.id]:addAddrVal.trim()};
+                    const adresseFinale=addAddrVal.trim();
+                    // 1) Sauvegarder immédiatement (synchrone côté state) — l'UI se met à jour tout de suite
+                    //    et l'événement rejoint automatiquement tout projet existant à la même adresse
+                    const next={...addrOverrides,[j.id]:adresseFinale};
                     saveAddrOverrides(next);
-                    for(const calId of (calendarIds||['primary'])){
-                      try{await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:addAddrVal.trim()}});break;}
-                      catch(e){continue;}
+                    // 2) S'assurer que ce projet (ou la génération courante à cette adresse) est "En cours"
+                    //    sauf s'il existe déjà un statut explicite pour cette adresse précise
+                    const key=adresseFinale.toLowerCase();
+                    if(!projData[key]){
+                      const nextProj={...projData,[key]:{statut:'en-cours'}};
+                      saveProjData(nextProj);
                     }
-                    notify('✅ Adresse ajoutée — le projet apparaît dans "En cours"','success');
+                    // Fermer le formulaire et notifier tout de suite — ne pas attendre Calendar
                     setAddAddrJob(null);setAddAddrVal('');
+                    notify('✅ Adresse ajoutée — le projet apparaît dans "En cours"','success');
+                    // 3) Synchroniser vers Google Calendar en arrière-plan (ne bloque plus l'UI)
+                    (async()=>{
+                      for(const calId of (calendarIds||['primary'])){
+                        try{await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:adresseFinale}});break;}
+                        catch(e){continue;}
+                      }
+                    })();
                   }}>✓ Confirmer</button>
                 <button className="btn-s" style={{fontSize:11}} onClick={()=>{setAddAddrJob(null);setAddAddrVal('');}}>Annuler</button>
               </div>
