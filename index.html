@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v167';
+const APP_VERSION='v168';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2094,6 +2094,8 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
         }else{
           noAddrEvents=Object.values(noAddrMap).flat();
         }
+        // Retirer les événements marqués "ignore" (supprimés de la liste par l'utilisateur)
+        noAddrEvents=noAddrEvents.filter(j=>(projData['noaddr:'+j.id]||{}).statut!=='ignore');
         if(noAddrEvents.length===0)return null;
 
         // Grouper par mois (basé sur le premier événement de chaque groupe trié chronologiquement)
@@ -2157,6 +2159,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
 // du champ de saisie d'adresse qui se produisait quand ce composant était redéfini à chaque rendu)
 function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setConfirmCloseNoAddr,addAddrJob,setAddAddrJob,addAddrVal,setAddAddrVal,addrOverrides,saveAddrOverrides,calendarIds,notify}){
   const enCours=estEnCours(j);
+  const [confirmDelete,setConfirmDelete]=useState(false);
   return(
     <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',border:'1px solid var(--border)',borderLeft:'4px solid '+(j.gcalColor||'#666'),opacity:enCours?1:0.8}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
@@ -2174,6 +2177,20 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
                   notify('Projet fermé','success');
                 }}>Oui, fermer</button>
                 <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>setConfirmCloseNoAddr(null)}>Annuler</button>
+              </div>
+            </div>
+          )}
+          {confirmDelete&&(
+            <div style={{marginTop:'0.4rem',background:'rgba(248,81,73,0.08)',borderRadius:6,padding:'0.4rem 0.5rem'}}>
+              <div style={{fontSize:10,color:'var(--danger)',marginBottom:5}}>Retirer cet événement de la liste?</div>
+              <div style={{display:'flex',gap:6}}>
+                <button className="btn-sm btn-deny" onClick={()=>{
+                  const next={...projData,['noaddr:'+j.id]:{statut:'ignore'}};
+                  saveProjData(next);
+                  setConfirmDelete(false);
+                  notify('Événement retiré','success');
+                }}>Oui, retirer</button>
+                <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>setConfirmDelete(false)}>Annuler</button>
               </div>
             </div>
           )}
@@ -2220,6 +2237,10 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
               + Adresse
             </button>
           )}
+          <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem',whiteSpace:'nowrap',color:'var(--danger)',borderColor:'rgba(248,81,73,0.3)'}}
+            onClick={()=>setConfirmDelete(true)}>
+            🗑️ Retirer
+          </button>
         </div>
       </div>
     </div>
@@ -3260,18 +3281,19 @@ function AddressInput({value,onChange,placeholder,style}){
     return()=>document.removeEventListener('mousedown',handler);
   },[]);
 
-  function fetchSuggestions(text){
+  async function fetchSuggestions(text){
     if(!text||text.length<3){setSuggestions([]);setShowSugg(false);return;}
-    if(window.google?.maps?.places){
-      const service=new window.google.maps.places.AutocompleteService();
-      service.getPlacePredictions(
-        {input:text,componentRestrictions:{country:'ca'},types:['address']},
-        (results,status)=>{
-          if(status==='OK'&&results){setSuggestions(results.map(r=>r.description));setShowSugg(true);}
-          else{setSuggestions([]);setShowSugg(false);}
-        }
-      );
-    }
+    if(!window.google?.maps?.importLibrary)return;
+    try{
+      const {AutocompleteSuggestion}=await window.google.maps.importLibrary('places');
+      const {suggestions:results}=await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+        input:text,includedRegionCodes:['ca'],includedPrimaryTypes:['street_address','premise','route']
+      });
+      if(results&&results.length>0){
+        setSuggestions(results.map(r=>r.placePrediction?.text?.text).filter(Boolean));
+        setShowSugg(true);
+      }else{setSuggestions([]);setShowSugg(false);}
+    }catch(e){console.error('Erreur autocomplete adresse:',e);setSuggestions([]);setShowSugg(false);}
   }
 
   function handleChange(e){
@@ -3486,6 +3508,7 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
   const [loading,setLoading]=useState(true);
   const [showAddItem,setShowAddItem]=useState(false);
   const [searchCatalogue,setSearchCatalogue]=useState('');
+  const [expandedCat,setExpandedCat]=useState(null);
   const [newQty,setNewQty]=useState(1);
   const [sending,setSending]=useState(false);
   const [saveStatus,setSaveStatus]=useState(''); // '', 'saving', 'saved'
@@ -3518,18 +3541,21 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
     },800);
   }
 
-  // Catalogue plat pour recherche (même source que Appel de service)
-  const allCatalogueItems=Object.entries(CATALOGUE).flatMap(([cat,items])=>
-    items.flatMap(item=>{
+  // Catalogue groupé par catégorie (même source que Appel de service)
+  const catalogueParCategorie=Object.entries(CATALOGUE).map(([cat,items])=>({
+    cat,
+    items: items.flatMap(item=>{
       if(item.options||item.sizes){
         return (item.options||item.sizes).map(opt=>({desc:item.code+' — '+item.desc+' ('+opt+')'}));
       }
       return [{desc:item.code+' — '+item.desc}];
     })
-  );
-  const filteredCatalogue=searchCatalogue.trim()
-    ? allCatalogueItems.filter(it=>it.desc.toLowerCase().includes(searchCatalogue.toLowerCase()))
-    : allCatalogueItems;
+  }));
+  const searchActive=searchCatalogue.trim().length>0;
+  const catalogueFiltre=catalogueParCategorie.map(({cat,items})=>({
+    cat,
+    items: searchActive ? items.filter(it=>it.desc.toLowerCase().includes(searchCatalogue.toLowerCase())) : items
+  })).filter(({items})=>!searchActive||items.length>0);
 
   function ajouterItemDuCatalogue(item){
     const ligne=newQty+'x '+item.desc;
@@ -3621,17 +3647,33 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
             <input value={searchCatalogue} onChange={e=>setSearchCatalogue(e.target.value)} placeholder="🔍 Chercher dans le catalogue..."
               style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.55rem',color:'var(--text)',fontSize:12}}/>
           </div>
-          <div style={{maxHeight:200,overflowY:'auto',marginBottom:'0.4rem',border:'1px solid var(--border)',borderRadius:6}}>
-            {filteredCatalogue.length===0?(
+          <div style={{maxHeight:260,overflowY:'auto',marginBottom:'0.4rem',border:'1px solid var(--border)',borderRadius:6}}>
+            {catalogueFiltre.length===0?(
               <div style={{padding:'0.6rem',fontSize:11,color:'var(--muted)',textAlign:'center'}}>Aucun résultat.</div>
-            ):filteredCatalogue.slice(0,60).map((it,i)=>(
-              <div key={i} onClick={()=>ajouterItemDuCatalogue(it)}
-                style={{padding:'0.4rem 0.5rem',fontSize:11,color:'var(--text)',borderBottom:'1px solid var(--border)',cursor:'pointer',touchAction:'manipulation'}}>
-                {it.desc}
-              </div>
-            ))}
+            ):catalogueFiltre.map(({cat,items})=>{
+              const isOpen=searchActive||expandedCat===cat;
+              return(
+                <div key={cat} style={{borderBottom:'1px solid var(--border)'}}>
+                  <div onClick={()=>setExpandedCat(expandedCat===cat?null:cat)}
+                    style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.4rem 0.55rem',
+                      background:'var(--bg3)',cursor:'pointer',touchAction:'manipulation'}}>
+                    <span style={{fontWeight:600,fontSize:11}}>{cat}</span>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{fontSize:9,color:'var(--muted)'}}>{items.length}</span>
+                      <span style={{color:'var(--muted)',fontSize:10}}>{isOpen?'▼':'▶'}</span>
+                    </div>
+                  </div>
+                  {isOpen&&items.map((it,i)=>(
+                    <div key={i} onClick={()=>ajouterItemDuCatalogue(it)}
+                      style={{padding:'0.4rem 0.5rem 0.4rem 0.9rem',fontSize:11,color:'var(--text)',borderTop:'1px solid var(--border)',cursor:'pointer',touchAction:'manipulation'}}>
+                      {it.desc}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
           </div>
-          <button className="btn-s" style={{width:'100%',fontSize:11}} onClick={()=>{setShowAddItem(false);setSearchCatalogue('');}}>Fermer</button>
+          <button className="btn-s" style={{width:'100%',fontSize:11}} onClick={()=>{setShowAddItem(false);setSearchCatalogue('');setExpandedCat(null);}}>Fermer</button>
         </div>
       )}
     </div>
