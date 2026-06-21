@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v164';
+const APP_VERSION='v166';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -552,14 +552,14 @@ async function ensureStructure(sid){
 // Lire les projets depuis Sheets → {projData, addrOverrides}
 async function getProjetsFromSheets(sid){
   try{
-    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Projets!A2:E'});
+    const res=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Projets!A2:F'});
     const rows=res.result.values||[];
     const projData={};
     const addrOverrides={};
     rows.forEach(r=>{
       const adresse=(r[0]||'').trim().toLowerCase();
       if(!adresse)return;
-      projData[adresse]={titre:r[1]||'',po:r[2]||'',statut:r[3]||'en-cours'};
+      projData[adresse]={titre:r[1]||'',po:r[2]||'',statut:r[3]||'en-cours',dateFermeture:r[5]||null};
       // AdresseOverrides est un JSON stringifié dans la colonne E
       if(r[4]){try{const ov=JSON.parse(r[4]);Object.assign(addrOverrides,ov);}catch{}}
     });
@@ -573,13 +573,13 @@ async function saveProjetsToSheets(sid,projData,addrOverrides){
     // Regrouper les addrOverrides par adresse de projet
     // On stocke l'objet addrOverrides complet dans la première ligne comme JSON dans col E
     const rows=Object.entries(projData).map(([adresse,d])=>[
-      adresse, d.titre||'', d.po||'', d.statut||'en-cours', ''
+      adresse, d.titre||'', d.po||'', d.statut||'en-cours', '', d.dateFermeture||''
     ]);
     // Stocker addrOverrides dans la première ligne col E
     if(rows.length>0)rows[0][4]=JSON.stringify(addrOverrides||{});
-    else rows.push(['__overrides__','','','',JSON.stringify(addrOverrides||{})]);
+    else rows.push(['__overrides__','','','',JSON.stringify(addrOverrides||{}),'']);
     // Effacer et réécrire
-    await gapi.client.sheets.spreadsheets.values.clear({spreadsheetId:sid,range:'Projets!A2:E'});
+    await gapi.client.sheets.spreadsheets.values.clear({spreadsheetId:sid,range:'Projets!A2:F'});
     if(rows.length>0){
       await gapi.client.sheets.spreadsheets.values.update({
         spreadsheetId:sid,range:'Projets!A2',valueInputOption:'RAW',resource:{values:rows}
@@ -1805,7 +1805,7 @@ function ProjCard({p,statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,edi
 
   function quickToggleClose(e){
     e.stopPropagation();
-    const next={...projData,[p.key]:{...(projData[p.key]||{}),po:p.po,titre:p.titre,statut:'ferme'}};
+    const next={...projData,[p.key]:{...(projData[p.key]||{}),po:p.po,titre:p.titre,statut:'ferme',dateFermeture:new Date().toISOString()}};
     saveProjData(next);
   }
 
@@ -1822,7 +1822,7 @@ function ProjCard({p,statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,edi
       ):(
         <div>
           <div style={{display:'flex',alignItems:'flex-start',gap:8,marginBottom:4}}>
-            <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{p.titre}</div><div style={{fontSize:10,color:'var(--muted)'}}>📍 {p.adresse}</div>{p.po&&<div style={{fontSize:11,color:'var(--accent)',fontWeight:600,marginTop:2}}>PO: {p.po}</div>}</div>
+            <div style={{flex:1,minWidth:0}}><div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{p.titre}{p.key.includes('#gen')&&<span style={{fontSize:9,color:'var(--muted)',fontWeight:400,marginLeft:6}}>(nouveau projet — même adresse)</span>}</div><div style={{fontSize:10,color:'var(--muted)'}}>📍 {p.adresse}</div>{p.po&&<div style={{fontSize:11,color:'var(--accent)',fontWeight:600,marginTop:2}}>PO: {p.po}</div>}</div>
             <div style={{display:'flex',gap:4,flexShrink:0,alignItems:'center'}}>
               <div
                 onClick={isParticulier&&p.statut==='en-cours'?quickToggleClose:undefined}
@@ -1890,23 +1890,59 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
   function getPrefix(t){const u=(t||'').toUpperCase();for(const p of PREFIXES)if(u.startsWith(p))return p;return 'PARTICULIER';}
 
   const memoResult=useMemo(()=>{
-    const map={};
+    // Étape 1 — regrouper tous les jobs par adresse brute
+    const parAdresse={};
     (calJobs||[]).forEach(j=>{
-      // Use override address if available, else use event location
       const addr=(addrOverrides[j.id]||j.location||'').trim();
       if(!addr)return;
       const key=addr.toLowerCase();
-      if(!map[key])map[key]={key,adresse:addr,premierTitre:j.title,jobs:[],heures:0,personnes:new Set()};
-      map[key].jobs.push(j);
+      if(!parAdresse[key])parAdresse[key]={adresse:addr,jobs:[]};
+      parAdresse[key].jobs.push(j);
     });
+
+    // Étape 2 — pour chaque adresse, déterminer si une fermeture antérieure doit séparer
+    // les événements en plusieurs "générations" de projet (nouveau projet après fermeture)
+    const map={};
+    Object.entries(parAdresse).forEach(([baseKey,{adresse,jobs}])=>{
+      jobs.sort((a,b)=>new Date(a.start)-new Date(b.start));
+
+      // Construire la chaîne de générations en suivant les fermetures successives
+      let genIdx=0;
+      let currentKey=baseKey;
+      let currentJobs=[];
+      const flush=()=>{
+        if(currentJobs.length===0)return;
+        map[currentKey]={key:currentKey,adresse,premierTitre:currentJobs[0].title,jobs:[...currentJobs],heures:0,personnes:new Set()};
+      };
+
+      jobs.forEach(j=>{
+        const saved=projData[currentKey];
+        const dateFermeture=saved?.dateFermeture;
+        const estFerme=saved?.statut==='ferme'&&dateFermeture;
+        if(estFerme&&new Date(j.start)>new Date(dateFermeture)){
+          // Cet événement arrive après la fermeture → nouvelle génération de projet
+          flush();
+          genIdx++;
+          currentKey=baseKey+'#gen'+genIdx;
+          currentJobs=[j];
+        }else{
+          currentJobs.push(j);
+        }
+      });
+      flush();
+    });
+
+    // Étape 3 — associer les heures pointées à la bonne génération via le job exact
     (pts||[]).forEach(p=>{
       if(!p.job)return;
       const cj=(calJobs||[]).find(j=>j.title===p.job);
       if(!cj||!cj.location)return;
-      const key=(cj.location||'').trim().toLowerCase();
-      if(!map[key])return;
-      if(p.type==='out'||p.type==='confirm'){map[key].heures+=safeFloat(p.heures);if(p.nom)map[key].personnes.add(p.nom);}
+      // Trouver la génération qui contient ce job précis
+      const target=Object.values(map).find(m=>m.jobs.some(j=>j.id===cj.id));
+      if(!target)return;
+      if(p.type==='out'||p.type==='confirm'){target.heures+=safeFloat(p.heures);if(p.nom)target.personnes.add(p.nom);}
     });
+
     // Événements SANS adresse — regroupés par préfixe
     const noAddrMap={};
     (calJobs||[]).forEach(j=>{
@@ -1920,7 +1956,9 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
       projets: Object.values(map).map(p=>{
         const saved=projData[p.key]||{};
         const titre=saved.titre||p.premierTitre||p.adresse;
-        return{...p,personnes:[...p.personnes],po:saved.po||'',titre,statut:saved.statut||'en-cours',prefix:getPrefix(titre)};
+        // Génération suivante d'un projet déjà fermé démarre "en-cours" par défaut (pas hérité)
+        const statut=saved.statut||'en-cours';
+        return{...p,personnes:[...p.personnes],po:saved.po||'',titre,statut,prefix:getPrefix(titre)};
       }).sort((a,b)=>{const o={'en-cours':0,'a-venir':1,ferme:2};return(o[a.statut]||0)-(o[b.statut]||0)||(a.titre.localeCompare(b.titre));}),
       noAddrMap
     };
@@ -1941,7 +1979,16 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
   projets.filter(p=>p.statut!=='ferme').forEach(p=>{prefixCounts[p.prefix]=(prefixCounts[p.prefix]||0)+1;});
 
   function startEdit(p,e){e&&e.stopPropagation();setEditKey(p.key);setEditPO(p.po);setEditTitre(p.titre);setEditStatut(p.statut);}
-  function saveEdit(){const u={...projData,[editKey]:{...(projData[editKey]||{}),po:editPO,titre:editTitre,statut:editStatut}};saveProjData(u);setEditKey(null);}
+  function saveEdit(){
+    const ancien=projData[editKey]||{};
+    const fermePourLaPremiereFois=editStatut==='ferme'&&ancien.statut!=='ferme';
+    const reouvert=editStatut!=='ferme'&&ancien.statut==='ferme';
+    const u={...projData,[editKey]:{
+      ...ancien,po:editPO,titre:editTitre,statut:editStatut,
+      dateFermeture:fermePourLaPremiereFois?new Date().toISOString():(reouvert?null:ancien.dateFermeture)
+    }};
+    saveProjData(u);setEditKey(null);
+  }
 
   // ── VUE DÉTAIL PROJET ──
   if(selProj){
@@ -2058,77 +2105,6 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
         const estEnCours=j=>(projData['noaddr:'+j.id]||{}).statut==='en-cours';
         const enCoursEvents=sorted.filter(estEnCours);
 
-        function NoAddrCard({j}){
-          const enCours=estEnCours(j);
-          return(
-            <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',border:'1px solid var(--border)',borderLeft:'4px solid '+(j.gcalColor||'#666'),opacity:enCours?1:0.8}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:600,fontSize:12}}>{j.title}</div>
-                  <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}</div>
-                  {confirmCloseNoAddr===j.id&&(
-                    <div style={{marginTop:'0.4rem',background:'rgba(248,81,73,0.08)',borderRadius:6,padding:'0.4rem 0.5rem'}}>
-                      <div style={{fontSize:10,color:'var(--danger)',marginBottom:5}}>Fermer ce projet en cours?</div>
-                      <div style={{display:'flex',gap:6}}>
-                        <button className="btn-sm btn-deny" onClick={()=>{
-                          const next={...projData,['noaddr:'+j.id]:{statut:'ferme'}};
-                          saveProjData(next);
-                          setConfirmCloseNoAddr(null);
-                          notify('Projet fermé','success');
-                        }}>Oui, fermer</button>
-                        <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>setConfirmCloseNoAddr(null)}>Annuler</button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:5,alignItems:'flex-end',flexShrink:0}}>
-                  {enCours?(
-                    <div onClick={()=>setConfirmCloseNoAddr(j.id)}
-                      style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:'rgba(63,185,80,0.1)',color:'var(--success)',border:'1px solid var(--success)',cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
-                      🟢 En cours
-                    </div>
-                  ):(
-                    <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem',whiteSpace:'nowrap'}}
-                      onClick={()=>{
-                        const next={...projData,['noaddr:'+j.id]:{statut:'en-cours'}};
-                        saveProjData(next);
-                        notify('✅ Marqué comme projet en cours','success');
-                      }}>
-                      ▶ Projet en cours
-                    </button>
-                  )}
-                  {addAddrJob===j.id?(
-                    <div style={{marginTop:'0.2rem'}}>
-                      <AddressInput value={addAddrVal} onChange={setAddAddrVal} placeholder="Entrer l'adresse..." style={{marginBottom:'0.35rem'}}/>
-                      <div style={{display:'flex',gap:'0.35rem'}}>
-                        <button className="btn-p" style={{flex:1,marginTop:0,fontSize:11}}
-                          onClick={async()=>{
-                            if(!addAddrVal.trim()){notify('Entrez une adresse','warn');return;}
-                            // Sauvegarder via le vrai système synchronisé (Sheets) — apparaît immédiatement dans la liste des projets
-                            const next={...addrOverrides,[j.id]:addAddrVal.trim()};
-                            saveAddrOverrides(next);
-                            for(const calId of (calendarIds||['primary'])){
-                              try{await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:addAddrVal.trim()}});break;}
-                              catch(e){continue;}
-                            }
-                            notify('✅ Adresse ajoutée — le projet apparaît dans "En cours"','success');
-                            setAddAddrJob(null);setAddAddrVal('');
-                          }}>✓ Confirmer</button>
-                        <button className="btn-s" style={{fontSize:11}} onClick={()=>{setAddAddrJob(null);setAddAddrVal('');}}>Annuler</button>
-                      </div>
-                    </div>
-                  ):(
-                    <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem',whiteSpace:'nowrap'}}
-                      onClick={()=>{setAddAddrJob(j.id);setAddAddrVal('');}}>
-                      + Adresse
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        }
-
         return(
           <div style={{marginTop:'0.75rem'}}>
             {/* Section "Projets en cours" sans adresse — séparée, en premier */}
@@ -2137,7 +2113,10 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
                 <div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>
                   🟢 Projets en cours sans adresse ({enCoursEvents.length})
                 </div>
-                {enCoursEvents.map((j,i)=><NoAddrCard key={'ec'+i} j={j}/>)}
+                {enCoursEvents.map((j,i)=><NoAddrCard key={'ec'+i} j={j} estEnCours={estEnCours} projData={projData} saveProjData={saveProjData}
+                  confirmCloseNoAddr={confirmCloseNoAddr} setConfirmCloseNoAddr={setConfirmCloseNoAddr}
+                  addAddrJob={addAddrJob} setAddAddrJob={setAddAddrJob} addAddrVal={addAddrVal} setAddAddrVal={setAddAddrVal}
+                  addrOverrides={addrOverrides} saveAddrOverrides={saveAddrOverrides} calendarIds={calendarIds} notify={notify}/>)}
               </div>
             )}
 
@@ -2154,13 +2133,89 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
                     <div style={{fontSize:10,fontWeight:700,color:'var(--muted)'}}>{moisFr[parseInt(m)-1]} {an}</div>
                     <div style={{flex:1,height:1,background:'var(--border)'}}></div>
                   </div>
-                  {eventsRestants.map((j,i)=><NoAddrCard key={moisKey+i} j={j}/>)}
+                  {eventsRestants.map((j,i)=><NoAddrCard key={moisKey+i} j={j} estEnCours={estEnCours} projData={projData} saveProjData={saveProjData}
+                    confirmCloseNoAddr={confirmCloseNoAddr} setConfirmCloseNoAddr={setConfirmCloseNoAddr}
+                    addAddrJob={addAddrJob} setAddAddrJob={setAddAddrJob} addAddrVal={addAddrVal} setAddAddrVal={setAddAddrVal}
+                    addrOverrides={addrOverrides} saveAddrOverrides={saveAddrOverrides} calendarIds={calendarIds} notify={notify}/>)}
                 </div>
               );
             })}
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+// Carte d'un événement sans adresse — composant top-level stable (évite la perte de focus
+// du champ de saisie d'adresse qui se produisait quand ce composant était redéfini à chaque rendu)
+function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setConfirmCloseNoAddr,addAddrJob,setAddAddrJob,addAddrVal,setAddAddrVal,addrOverrides,saveAddrOverrides,calendarIds,notify}){
+  const enCours=estEnCours(j);
+  return(
+    <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',border:'1px solid var(--border)',borderLeft:'4px solid '+(j.gcalColor||'#666'),opacity:enCours?1:0.8}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:600,fontSize:12}}>{j.title}</div>
+          <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}</div>
+          {confirmCloseNoAddr===j.id&&(
+            <div style={{marginTop:'0.4rem',background:'rgba(248,81,73,0.08)',borderRadius:6,padding:'0.4rem 0.5rem'}}>
+              <div style={{fontSize:10,color:'var(--danger)',marginBottom:5}}>Fermer ce projet en cours?</div>
+              <div style={{display:'flex',gap:6}}>
+                <button className="btn-sm btn-deny" onClick={()=>{
+                  const next={...projData,['noaddr:'+j.id]:{statut:'ferme'}};
+                  saveProjData(next);
+                  setConfirmCloseNoAddr(null);
+                  notify('Projet fermé','success');
+                }}>Oui, fermer</button>
+                <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>setConfirmCloseNoAddr(null)}>Annuler</button>
+              </div>
+            </div>
+          )}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:5,alignItems:'flex-end',flexShrink:0}}>
+          {enCours?(
+            <div onClick={()=>setConfirmCloseNoAddr(j.id)}
+              style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:'rgba(63,185,80,0.1)',color:'var(--success)',border:'1px solid var(--success)',cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+              🟢 En cours
+            </div>
+          ):(
+            <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem',whiteSpace:'nowrap'}}
+              onClick={()=>{
+                const next={...projData,['noaddr:'+j.id]:{statut:'en-cours'}};
+                saveProjData(next);
+                notify('✅ Marqué comme projet en cours','success');
+              }}>
+              ▶ Projet en cours
+            </button>
+          )}
+          {addAddrJob===j.id?(
+            <div style={{marginTop:'0.2rem'}}>
+              <AddressInput value={addAddrVal} onChange={setAddAddrVal} placeholder="Entrer l'adresse..." style={{marginBottom:'0.35rem'}}/>
+              <div style={{display:'flex',gap:'0.35rem'}}>
+                <button className="btn-p" style={{flex:1,marginTop:0,fontSize:11}}
+                  onClick={async()=>{
+                    if(!addAddrVal.trim()){notify('Entrez une adresse','warn');return;}
+                    // Sauvegarder via le vrai système synchronisé (Sheets) — apparaît immédiatement dans la liste des projets
+                    const next={...addrOverrides,[j.id]:addAddrVal.trim()};
+                    saveAddrOverrides(next);
+                    for(const calId of (calendarIds||['primary'])){
+                      try{await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:addAddrVal.trim()}});break;}
+                      catch(e){continue;}
+                    }
+                    notify('✅ Adresse ajoutée — le projet apparaît dans "En cours"','success');
+                    setAddAddrJob(null);setAddAddrVal('');
+                  }}>✓ Confirmer</button>
+                <button className="btn-s" style={{fontSize:11}} onClick={()=>{setAddAddrJob(null);setAddAddrVal('');}}>Annuler</button>
+              </div>
+            </div>
+          ):(
+            <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem',whiteSpace:'nowrap'}}
+              onClick={()=>{setAddAddrJob(j.id);setAddAddrVal('');}}>
+              + Adresse
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
