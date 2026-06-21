@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v172';
+const APP_VERSION='v173';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -3833,18 +3833,16 @@ const CHAUFFAGE_PRIMA_275=[
 ];
 
 const BORNES_RECHARGE=[
-  {marque:'FLO',modele:'Maison X3',amperage:'50A (ajustable)',wattage:'12.0 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre ou Aluminium'},
-  {marque:'FLO',modele:'Maison X6',amperage:'50A (ajustable)',wattage:'12.0 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre ou Aluminium'},
-  {marque:'EVduty',modele:'EVC30 (Smart)',amperage:'30A',wattage:'7.2 kW',installation:'Fixe ou NEMA 6-50/14-50',calibre:'8 AWG',materiau:'Cuivre seulement'},
-  {marque:'EVduty',modele:'EVC48',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement'},
-  {marque:'Turogize',modele:'Aurora 40A',amperage:'40A',wattage:'9.6 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
-  {marque:'Turogize',modele:'Aurora 48A',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement'},
-  {marque:'Turogize',modele:'Aurora II',amperage:'40A/48A',wattage:'9.6-11.5 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
-  {marque:'Grizzl-E',modele:'Classic',amperage:'40A',wattage:'9.6 kW',installation:'NEMA 14-50 / 6-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
-  {marque:'Wallbox',modele:'Pulsar Plus 40A',amperage:'40A',wattage:'9.6 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
-  {marque:'Wallbox',modele:'Pulsar Plus 48A',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement'},
-  {marque:'Leviton',modele:'EV40P',amperage:'40A',wattage:'9.6 kW',installation:'NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
-  {marque:'Leviton',modele:'EV480',amperage:'48A',wattage:'11.6 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'FLO',modele:'Maison X3',amperage:'50A',wattage:'12.0 kW',installation:'Fixe ou Prise',calibre:'6 AWG',materiau:'Cuivre ou Aluminium',connecteur:'J1772/NACS'},
+  {marque:'FLO',modele:'Maison X6',amperage:'50A',wattage:'12.0 kW',installation:'Fixe ou Prise',calibre:'6 AWG',materiau:'Cuivre ou Aluminium',connecteur:'J1772/NACS'},
+  {marque:'EVduty',modele:'EVC30 (Smart)',amperage:'30A',wattage:'7.2 kW',installation:'Fixe ou Prise',calibre:'8 AWG',materiau:'Cuivre seulement',connecteur:'J1772'},
+  {marque:'EVduty',modele:'EVC48',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement',connecteur:'J1772'},
+  {marque:'Turogize',modele:'Aurora 40A',amperage:'40A',wattage:'9.6 kW',installation:'Fixe ou Prise',calibre:'6 AWG',materiau:'Cuivre seulement',connecteur:'J1772/NACS'},
+  {marque:'Turogize',modele:'Aurora 48A',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement',connecteur:'J1772/NACS'},
+  {marque:'Grizzl-E',modele:'Classic',amperage:'40A',wattage:'9.6 kW',installation:'Prise',calibre:'6 AWG',materiau:'Cuivre seulement',connecteur:'J1772/NACS'},
+  {marque:'Wallbox',modele:'Pulsar Plus 40A',amperage:'40A',wattage:'9.6 kW',installation:'Fixe ou Prise',calibre:'6 AWG',materiau:'Cuivre seulement',connecteur:'J1772/NACS'},
+  {marque:'Wallbox',modele:'Pulsar Plus 48A',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement',connecteur:'J1772/NACS'},
+  {marque:'Leviton',modele:'EV480',amperage:'48A',wattage:'11.6 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement',connecteur:'J1772'},
 ];
 
 // Structure flexible — chaque carte de référence est un objet avec id, titre, icône, et un renderer
@@ -3865,9 +3863,15 @@ const REFERENCE_CARDS=[
     id:'bornes-recharge',
     titre:'Bornes de recharge VE',
     icone:'🔌',
-    type:'table',
-    colonnes:['Marque / Modèle','Amp.','Wattage','Calibre','Matériau'],
-    lignes:BORNES_RECHARGE.map(b=>[b.marque+' '+b.modele,b.amperage,b.wattage,b.calibre,b.materiau])
+    type:'table-avec-notes',
+    colonnes:['Marque / Modèle','Amp.','Wattage','Installation','Calibre','Connecteur'],
+    lignes:BORNES_RECHARGE.map(b=>[b.marque+' '+b.modele,b.amperage,b.wattage,b.installation,b.calibre+(b.materiau.includes('Aluminium')?' (Al/Cu)':' (Cu)'),b.connecteur]),
+    notes:[
+      {titre:'Puissance',texte:'30A ≈ 7.2 kW (petits trajets) · 40A ≈ 9.6 kW (standard actuel) · 48A/50A ≈ 11.5-12.0 kW (recharge rapide, installation fixe obligatoire)'},
+      {titre:'Installation Québec',texte:'40A: souvent installable avec prise NEMA 14-50. 48A et plus: installation fixe (hardwired) requise avec disjoncteur 60A (règle du 80% de charge continue).'},
+      {titre:'Calibre de fil',texte:'6 AWG cuivre standard pour circuits 40A/48A sur disjoncteur 50A/60A. FLO Maison X3/X6 est la seule gamme acceptant l\'aluminium en entrée directe — réduit les coûts d\'installation.'},
+      {titre:'Connecteurs',texte:'J1772: standard universel (non-Tesla). NACS: connecteur Tesla, maintenant aussi offert par FLO, Grizzl-E, Wallbox et Turogize sur leurs modèles récents.'}
+    ]
   }
   // Cartes futures à ajouter ici: calibres de fils, capacité des breakers,
   // couleur kelvin et visuel, conversions électriques rapides, références de produits fréquents
@@ -3904,6 +3908,41 @@ function ReferenceCard({card}){
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {expanded&&card.type==='table-avec-notes'&&(
+        <div style={{marginTop:'0.6rem'}}>
+          <div style={{overflowX:'auto',marginBottom:'0.75rem'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+              <thead>
+                <tr>
+                  {card.colonnes.map((c,i)=>(
+                    <th key={i} style={{textAlign:'left',padding:'0.3rem 0.4rem',color:'var(--muted)',fontSize:9,textTransform:'uppercase',letterSpacing:'0.03em',borderBottom:'1px solid var(--border)',whiteSpace:'nowrap'}}>{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {card.lignes.map((ligne,ri)=>(
+                  <tr key={ri} style={{borderBottom:'1px solid var(--border)'}}>
+                    {ligne.map((cell,ci)=>(
+                      <td key={ci} style={{padding:'0.35rem 0.4rem',color:ci===0?'var(--accent)':'var(--text)',fontWeight:ci===0?700:400,fontFamily:ci===0?'var(--font-head)':'inherit',whiteSpace:'nowrap'}}>{cell}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {card.notes&&card.notes.length>0&&(
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:'0.6rem'}}>
+              <div style={{fontSize:10,fontWeight:700,color:'var(--warning)',textTransform:'uppercase',letterSpacing:'0.04em',marginBottom:'0.5rem'}}>📋 Points clés</div>
+              {card.notes.map((note,ni)=>(
+                <div key={ni} style={{marginBottom:ni<card.notes.length-1?'0.5rem':0}}>
+                  <div style={{fontSize:11,fontWeight:700,color:'var(--text)',marginBottom:2}}>{note.titre}</div>
+                  <div style={{fontSize:11,color:'var(--muted)',lineHeight:1.5}}>{note.texte}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
       {expanded&&card.type==='table-groupee'&&(
