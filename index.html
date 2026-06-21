@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v166';
+const APP_VERSION='v167';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -286,6 +286,12 @@ const CATALOGUE={
     {code:'MONOX 900-0119',desc:'Détecteur CO',unite:'un'},
     {code:'RC840',desc:'Relais RC840 120/240V',unite:'un'},
     {code:'KIT PICO',desc:'Kit Pico Lutron',unite:'un'},
+  ],
+  'Divers':[
+    {code:'DÉPL STD',desc:'Déplacement standard',unite:'un'},
+    {code:'QUIN',desc:'Quincaillerie diverse (visserie, agrafe, etc.)',unite:'lot'},
+    {code:'MAIN-ŒUVRE',desc:"Main-d'œuvre",unite:'h'},
+    {code:'FORFAIT',desc:'Prix forfaitaire',unite:'un'},
   ],
   'Conduit':[
     {code:'EMT',desc:'Conduit EMT (métallique)',unite:'barre',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
@@ -1854,7 +1860,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
   const [editTitre,setEditTitre]=useState('');
   const [editStatut,setEditStatut]=useState('en-cours');
   const [showClosed,setShowClosed]=useState(false);
-  const [filterPrefix,setFilterPrefix]=useState(null);
+  const [filterPrefix,setFilterPrefix]=useState('PARTICULIER');
   const [search,setSearch]=useState('');
 
   // Charger depuis Sheets, avec migration automatique depuis localStorage
@@ -2016,7 +2022,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
       </div>
       {!showClosed&&(
         <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
-          {[...PREFIXES,'PARTICULIER'].map(p=>{
+          {['PARTICULIER',...PREFIXES].map(p=>{
             const count=prefixCounts[p]||0;
             if(count===0)return null;
             return(<div key={p} onClick={()=>setFilterPrefix(filterPrefix===p?null:p)} style={{padding:'0.2rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:filterPrefix===p?700:400,background:filterPrefix===p?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(filterPrefix===p?'var(--accent)':'var(--border)'),color:filterPrefix===p?'var(--accent)':'var(--muted)'}}>
@@ -2028,7 +2034,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
       {!showClosed&&(<input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Rechercher..." style={{width:'100%',marginBottom:'0.5rem',fontSize:12}}/>)}
       {showClosed&&(
         <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
-          {[...PREFIXES,'PARTICULIER'].map(pfx=>{
+          {['PARTICULIER',...PREFIXES].map(pfx=>{
             const count=fermes.filter(x=>x.prefix===pfx).length;
             if(count===0)return null;
             return(<div key={pfx} onClick={()=>setFilterPrefix(filterPrefix===pfx?null:pfx)} style={{padding:'0.2rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:filterPrefix===pfx?700:400,background:filterPrefix===pfx?'rgba(100,100,100,0.15)':'var(--bg3)',border:'1px solid '+(filterPrefix===pfx?'var(--muted)':'var(--border)'),color:'var(--muted)'}}>
