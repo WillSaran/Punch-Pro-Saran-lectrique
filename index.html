@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v169';
+const APP_VERSION='v170';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1837,7 +1837,7 @@ function ProjCard({p,statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,edi
   );
 }
 
-function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
+function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh}){
   const PREFIXES=['PAY','CRS','ASC','GGP','SAR','BOM','5PIL','RROY','GOU'];
   const STORAGE_KEY='punchpro_projets_v3'; // gardé pour migration
   const [projData,setProjData]=useState({});
@@ -2002,6 +2002,12 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
         <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',flex:1}}>
           Projets <span style={{fontSize:11,color:'var(--muted)',fontWeight:400}}>({showClosed?fermes.length:actifs.length})</span>
         </div>
+        {onRefresh&&(
+          <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem',flexShrink:0}}
+            onClick={()=>{onRefresh();notify&&notify('🔄 Actualisation...','success');}}>
+            ↻ Actualiser
+          </button>
+        )}
         <div style={{display:'flex',gap:'0.3rem'}}>
           <div onClick={()=>{setShowClosed(false);setFilterPrefix(null);}} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:!showClosed?700:400,background:!showClosed?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(!showClosed?'var(--accent)':'var(--border)'),color:!showClosed?'var(--accent)':'var(--muted)'}}>Actifs</div>
           <div onClick={()=>setShowClosed(true)} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:showClosed?700:400,background:showClosed?'rgba(100,100,100,0.15)':'var(--bg3)',border:'1px solid '+(showClosed?'var(--muted)':'var(--border)'),color:'var(--muted)'}}>
@@ -2299,7 +2305,11 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
         <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.65rem',border:'1px solid var(--border2)'}}>
           <div className="fg" style={{marginBottom:'0.4rem'}}><label>Nom du job</label><input placeholder="Ex: Chantier St-Laurent" value={newJobTitle} onChange={e=>setNewJobTitle(e.target.value)}/></div>
           <div className="fg" style={{marginBottom:'0.4rem'}}><label>Adresse (optionnel)</label><AddressInput value={newJobAddress} onChange={setNewJobAddress} placeholder="Ex: 123 rue Principale, Montréal"/></div>
-          <div className="fg" style={{marginBottom:'0.55rem'}}><label>Date</label><input type="date" value={newJobDate} onChange={e=>setNewJobDate(e.target.value)}/></div>
+          <div className="fg" style={{marginBottom:'0.55rem'}}>
+            <label>Date</label>
+            <input type="date" value={newJobDate} onChange={e=>setNewJobDate(e.target.value)}
+              style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box'}}/>
+          </div>
           <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress})}>Créer dans l'agenda</button>
         </div>
       )}
@@ -4125,7 +4135,7 @@ function JobSummary({jobs,emp,notify,calendarIds}){
 }
 
 
-function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders}){
+function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders,refreshKey}){
   const now=useClock();
   const [step,setStep]=useState('emps');
   const isSubmittingRef=useRef(false); // empêche double-soumission (double-clic / réseau lent)
@@ -4161,7 +4171,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       getCalendarJobs(calendarIds).then(setJobs);
       getAllCalendarJobs(calendarIds).then(setAllJobs);
     }
-  },[calendarIds?calendarIds.join(','):'']);
+  },[calendarIds?calendarIds.join(','):'',refreshKey]);
 
   useEffect(()=>{
     if(step==='emps')setNavBack(null);
@@ -4484,9 +4494,15 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
   );
   if(step==='projets'){
     const allPts=ptsForOut.length?ptsForOut:ptsRef.current;
+    const refreshProjets=()=>{
+      if(calendarIds&&calendarIds.length){
+        getCalendarJobs(calendarIds).then(setJobs);
+        getAllCalendarJobs(calendarIds).then(setAllJobs);
+      }
+    };
     return(
       <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
-        <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify} calendarIds={calendarIds}/>
+        <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify} calendarIds={calendarIds} onRefresh={refreshProjets}/>
       </div>
     );
   }
@@ -4936,7 +4952,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
 
       {tab==='projets'&&(
         <div className="card">
-          <ProjectsView sid={sid} pts={pts} emps={emps} calJobs={jobs} isAdmin={true} notify={notify} calendarIds={calendarIds}/>
+          <ProjectsView sid={sid} pts={pts} emps={emps} calJobs={jobs} isAdmin={true} notify={notify} calendarIds={calendarIds} onRefresh={onRefresh}/>
         </div>
       )}
 
@@ -5453,7 +5469,7 @@ function App(){
         </div>
       ):(
         <>
-          {view==='punch'&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} folders={foldersMemo}/>}
+          {view==='punch'&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} folders={foldersMemo} refreshKey={refreshKey}/>}
           {view==='admin'&&isBoss&&<div className="content"><AdminView sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh}/></div>}
         </>
       )}
