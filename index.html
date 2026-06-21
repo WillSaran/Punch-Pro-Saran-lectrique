@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v170';
+const APP_VERSION='v172';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -307,8 +307,6 @@ const CATALOGUE={
     {code:'QO CQO1',desc:'Panneau QO (Square D)',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
     {code:'CHOM',desc:'Panneau CHOM (Eaton)',unite:'un',options:['24/48cir 125A','42/84cir 200A']},
     {code:'SIEQ',desc:'Panneau Siemens',unite:'un',options:['40cir 200A','60cir 200A']},
-    {code:'LEV-EV',desc:'Chargeur VE Leviton',unite:'un',options:['42W','40P','48W']},
-    {code:'EVC40',desc:'Chargeur VE EVC40',unite:'un',options:['Avec fiche','Sans fiche']},
   ],
   'Disjoncteurs':[
     {code:'BR DISJ',desc:'Disjoncteur BR/STAB',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A']},
@@ -327,6 +325,20 @@ const CATALOGUE={
     {code:'TH401',desc:'Thermostat mécanique TH401',unite:'un'},
     {code:'TH450',desc:'Thermostat électronique TH450',unite:'un'},
     {code:'SIBT1W',desc:'Thermostat SIBT1W',unite:'un'},
+  ],
+  'Bornes VE':[
+    {code:'FLO Maison X3',desc:'FLO Maison X3 — 50A',unite:'un'},
+    {code:'FLO Maison X6',desc:'FLO Maison X6 — 50A',unite:'un'},
+    {code:'EVduty EVC30',desc:'EVduty EVC30 (Smart) — 30A',unite:'un'},
+    {code:'EVduty EVC48',desc:'EVduty EVC48 — 48A',unite:'un'},
+    {code:'Turogize Aurora 40A',desc:'Turogize Aurora 40A — 40A',unite:'un'},
+    {code:'Turogize Aurora 48A',desc:'Turogize Aurora 48A — 48A',unite:'un'},
+    {code:'Turogize Aurora II',desc:'Turogize Aurora II — 40A/48A',unite:'un'},
+    {code:'Grizzl-E Classic',desc:'Grizzl-E Classic — 40A',unite:'un'},
+    {code:'Wallbox Pulsar Plus 40A',desc:'Wallbox Pulsar Plus 40A — 40A',unite:'un'},
+    {code:'Wallbox Pulsar Plus 48A',desc:'Wallbox Pulsar Plus 48A — 48A',unite:'un'},
+    {code:'Leviton EV40P',desc:'Leviton EV40P — 40A',unite:'un'},
+    {code:'Leviton EV480',desc:'Leviton EV480 — 48A',unite:'un'},
   ],
 };
 const SCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email';
@@ -1645,6 +1657,8 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
   const [showMerge,setShowMerge]=useState(false);
   const [mergeTarget,setMergeTarget]=useState('');
   const [customMergeAddr,setCustomMergeAddr]=useState('');
+  const [mergeFilterCat,setMergeFilterCat]=useState(null);
+  const [mergeSearch,setMergeSearch]=useState('');
 
   const today=new Date();
   // Sous-préfixes pour trier les événements à l'intérieur d'un projet
@@ -1725,14 +1739,42 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
           <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.5rem'}}>
             Tous les {p.jobs.length} événements prendront l'adresse du projet choisi.
           </div>
-          <select value={mergeTarget} onChange={e=>setMergeTarget(e.target.value)}
-            style={{width:'100%',marginBottom:'0.4rem',padding:'0.4rem',borderRadius:8,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',fontSize:12}}>
-            <option value="">— Choisir un projet —</option>
-            {(allProjets||[]).filter(pr=>pr.key!==p.key).map(pr=>(
-              <option key={pr.key} value={pr.adresse}>{pr.titre} ({pr.adresse.slice(0,30)})</option>
-            ))}
-            <option value="__custom__">✏️ Entrer une adresse manuellement...</option>
-          </select>
+          {(()=>{
+            const candidats=(allProjets||[]).filter(pr=>pr.key!==p.key);
+            const categories=[...new Set(candidats.map(pr=>pr.prefix))].sort((a,b)=>a==='PARTICULIER'?-1:b==='PARTICULIER'?1:a.localeCompare(b));
+            const filtres=candidats.filter(pr=>
+              (!mergeFilterCat||pr.prefix===mergeFilterCat) &&
+              (!mergeSearch.trim()||pr.titre.toLowerCase().includes(mergeSearch.toLowerCase())||pr.adresse.toLowerCase().includes(mergeSearch.toLowerCase()))
+            );
+            return(
+              <>
+                {categories.length>1&&(
+                  <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.4rem'}}>
+                    {categories.map(cat=>(
+                      <div key={cat} onClick={()=>setMergeFilterCat(mergeFilterCat===cat?null:cat)}
+                        style={{padding:'0.18rem 0.55rem',borderRadius:6,fontSize:10,cursor:'pointer',touchAction:'manipulation',
+                          fontWeight:mergeFilterCat===cat?700:400,
+                          background:mergeFilterCat===cat?'rgba(210,153,34,0.2)':'var(--bg3)',
+                          border:'1px solid '+(mergeFilterCat===cat?'var(--warning)':'var(--border)'),
+                          color:mergeFilterCat===cat?'var(--warning)':'var(--muted)'}}>
+                        {cat}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input value={mergeSearch} onChange={e=>setMergeSearch(e.target.value)} placeholder="🔍 Chercher un projet..."
+                  style={{width:'100%',marginBottom:'0.4rem',padding:'0.4rem 0.55rem',borderRadius:8,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',fontSize:12}}/>
+                <select value={mergeTarget} onChange={e=>setMergeTarget(e.target.value)}
+                  style={{width:'100%',marginBottom:'0.4rem',padding:'0.4rem',borderRadius:8,background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--text)',fontSize:12}}>
+                  <option value="">— Choisir un projet ({filtres.length}) —</option>
+                  {filtres.map(pr=>(
+                    <option key={pr.key} value={pr.adresse}>{pr.titre} ({pr.adresse.slice(0,30)})</option>
+                  ))}
+                  <option value="__custom__">✏️ Entrer une adresse manuellement...</option>
+                </select>
+              </>
+            );
+          })()}
           {mergeTarget==='__custom__'&&(
             <AddressInput value={customMergeAddr} onChange={setCustomMergeAddr} placeholder="Adresse du projet de destination..." style={{marginBottom:'0.4rem'}}/>
           )}
@@ -1741,7 +1783,7 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
               onClick={()=>mergeIntoProject(mergeTarget==='__custom__'?customMergeAddr:mergeTarget)}>
               ✓ Fusionner ({p.jobs.length} événements)
             </button>
-            <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowMerge(false);setMergeTarget('');setCustomMergeAddr('');}}>Annuler</button>
+            <button className="btn-s" style={{fontSize:11}} onClick={()=>{setShowMerge(false);setMergeTarget('');setCustomMergeAddr('');setMergeFilterCat(null);setMergeSearch('');}}>Annuler</button>
           </div>
         </div>
       )}
@@ -2155,18 +2197,47 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
 function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setConfirmCloseNoAddr,addAddrJob,setAddAddrJob,addAddrVal,setAddAddrVal,addrOverrides,saveAddrOverrides,calendarIds,notify}){
   const enCours=estEnCours(j);
   const [confirmDelete,setConfirmDelete]=useState(false);
+  const [editingTitre,setEditingTitre]=useState(false);
+  const titreActuel=(projData['noaddr:'+j.id]||{}).titre||j.title;
+  const [titreVal,setTitreVal]=useState(titreActuel);
+
+  function saveTitre(){
+    const t=titreVal.trim();
+    if(!t){notify('Le titre ne peut pas être vide','warn');return;}
+    const next={...projData,['noaddr:'+j.id]:{...(projData['noaddr:'+j.id]||{}),titre:t}};
+    saveProjData(next);
+    setEditingTitre(false);
+    notify('✅ Titre modifié','success');
+  }
+
   return(
     <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',border:'1px solid var(--border)',borderLeft:'4px solid '+(j.gcalColor||'#666'),opacity:enCours?1:0.8}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:600,fontSize:12}}>{j.title}</div>
+          {editingTitre?(
+            <div style={{marginBottom:4}}>
+              <input value={titreVal} onChange={e=>setTitreVal(e.target.value)} autoFocus
+                style={{width:'100%',fontSize:12,fontWeight:600,padding:'0.3rem 0.5rem',background:'var(--bg3)',border:'1px solid var(--accent)',borderRadius:6,color:'var(--text)'}}
+                onKeyDown={e=>{if(e.key==='Enter')saveTitre();if(e.key==='Escape'){setTitreVal(titreActuel);setEditingTitre(false);}}}/>
+              <div style={{display:'flex',gap:5,marginTop:4}}>
+                <button className="btn-sm" style={{background:'var(--accent)',color:'white',border:'none'}} onClick={saveTitre}>✓ Sauver</button>
+                <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>{setTitreVal(titreActuel);setEditingTitre(false);}}>Annuler</button>
+              </div>
+            </div>
+          ):(
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <div style={{fontWeight:600,fontSize:12}}>{titreActuel}</div>
+              <button onClick={()=>{setTitreVal(titreActuel);setEditingTitre(true);}}
+                style={{background:'none',border:'none',color:'var(--muted)',cursor:'pointer',fontSize:11,padding:'1px 3px',flexShrink:0}}>✏️</button>
+            </div>
+          )}
           <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}</div>
           {confirmCloseNoAddr===j.id&&(
             <div style={{marginTop:'0.4rem',background:'rgba(248,81,73,0.08)',borderRadius:6,padding:'0.4rem 0.5rem'}}>
               <div style={{fontSize:10,color:'var(--danger)',marginBottom:5}}>Fermer ce projet en cours?</div>
               <div style={{display:'flex',gap:6}}>
                 <button className="btn-sm btn-deny" onClick={()=>{
-                  const next={...projData,['noaddr:'+j.id]:{statut:'ferme'}};
+                  const next={...projData,['noaddr:'+j.id]:{...(projData['noaddr:'+j.id]||{}),statut:'ferme'}};
                   saveProjData(next);
                   setConfirmCloseNoAddr(null);
                   notify('Projet fermé','success');
@@ -2180,7 +2251,7 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
               <div style={{fontSize:10,color:'var(--danger)',marginBottom:5}}>Retirer cet événement de la liste?</div>
               <div style={{display:'flex',gap:6}}>
                 <button className="btn-sm btn-deny" onClick={()=>{
-                  const next={...projData,['noaddr:'+j.id]:{statut:'ignore'}};
+                  const next={...projData,['noaddr:'+j.id]:{...(projData['noaddr:'+j.id]||{}),statut:'ignore'}};
                   saveProjData(next);
                   setConfirmDelete(false);
                   notify('Événement retiré','success');
@@ -2199,7 +2270,7 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
           ):(
             <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem',whiteSpace:'nowrap'}}
               onClick={()=>{
-                const next={...projData,['noaddr:'+j.id]:{statut:'en-cours'}};
+                const next={...projData,['noaddr:'+j.id]:{...(projData['noaddr:'+j.id]||{}),statut:'en-cours'}};
                 saveProjData(next);
                 notify('✅ Marqué comme projet en cours','success');
               }}>
@@ -3522,6 +3593,7 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
   const [searchCatalogue,setSearchCatalogue]=useState('');
   const [expandedCat,setExpandedCat]=useState(null);
   const [newQty,setNewQty]=useState(1);
+  const [selectedItem,setSelectedItem]=useState(null); // {desc, cat} — item en cours d'ajustement de quantité
   const [sending,setSending]=useState(false);
   const [saveStatus,setSaveStatus]=useState(''); // '', 'saving', 'saved'
   const saveTimer=useRef(null);
@@ -3574,7 +3646,7 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
     const next=texte.trim()?texte.replace(/\n+$/,'')+'\n'+ligne:ligne;
     setTexte(next);
     onTexteChange(next);
-    setNewQty(1);setSearchCatalogue('');
+    setNewQty(1);setSearchCatalogue('');setSelectedItem(null);
   }
 
   function encodeEmailSafe(to,subject,body){
@@ -3652,10 +3724,6 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
       ):(
         <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.5rem',marginTop:'0.5rem'}}>
           <div style={{display:'flex',gap:6,marginBottom:'0.4rem',alignItems:'center'}}>
-            <label style={{fontSize:9,color:'var(--muted)',flexShrink:0}}>Qté</label>
-            <button className="dur-btn" style={{width:26,height:26,fontSize:13,flexShrink:0}} onClick={()=>setNewQty(q=>Math.max(1,q-1))}>−</button>
-            <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,color:'var(--accent)',minWidth:24,textAlign:'center'}}>{newQty}</div>
-            <button className="dur-btn" style={{width:26,height:26,fontSize:13,flexShrink:0}} onClick={()=>setNewQty(q=>q+1)}>+</button>
             <input value={searchCatalogue} onChange={e=>setSearchCatalogue(e.target.value)} placeholder="🔍 Chercher dans le catalogue..."
               style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.55rem',color:'var(--text)',fontSize:12}}/>
           </div>
@@ -3675,17 +3743,46 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
                       <span style={{color:'var(--muted)',fontSize:10}}>{isOpen?'▼':'▶'}</span>
                     </div>
                   </div>
-                  {isOpen&&items.map((it,i)=>(
-                    <div key={i} onClick={()=>ajouterItemDuCatalogue(it)}
-                      style={{padding:'0.4rem 0.5rem 0.4rem 0.9rem',fontSize:11,color:'var(--text)',borderTop:'1px solid var(--border)',cursor:'pointer',touchAction:'manipulation'}}>
-                      {it.desc}
-                    </div>
-                  ))}
+                  {isOpen&&items.map((it,i)=>{
+                    const isSelected=selectedItem&&selectedItem.desc===it.desc&&selectedItem.cat===cat;
+                    const isFils=cat==='Fils';
+                    return(
+                      <div key={i}>
+                        <div onClick={()=>{
+                            if(isSelected){setSelectedItem(null);}
+                            else{setSelectedItem({desc:it.desc,cat});setNewQty(1);}
+                          }}
+                          style={{padding:'0.4rem 0.5rem 0.4rem 0.9rem',fontSize:11,color:isSelected?'var(--accent)':'var(--text)',
+                            fontWeight:isSelected?600:400,borderTop:'1px solid var(--border)',cursor:'pointer',touchAction:'manipulation',
+                            background:isSelected?'rgba(47,129,247,0.08)':'transparent',
+                            display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                          <span>{it.desc}</span>
+                          <span style={{color:'var(--muted)',fontSize:10}}>{isSelected?'▼':''}</span>
+                        </div>
+                        {isSelected&&(
+                          <div style={{padding:'0.5rem 0.6rem',background:'var(--bg2)',borderTop:'1px solid var(--border)'}}>
+                            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:'0.4rem',flexWrap:'wrap'}}>
+                              <label style={{fontSize:9,color:'var(--muted)',flexShrink:0}}>Qté</label>
+                              <button className="dur-btn" style={{width:26,height:26,fontSize:13,flexShrink:0}} onClick={()=>setNewQty(q=>Math.max(1,q-1))}>−</button>
+                              <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,color:'var(--accent)',minWidth:32,textAlign:'center'}}>{newQty}</div>
+                              <button className="dur-btn" style={{width:28,height:26,fontSize:11}} onClick={()=>setNewQty(q=>q+1)}>+1</button>
+                              <button className="dur-btn" style={{width:32,height:26,fontSize:11}} onClick={()=>setNewQty(q=>q+10)}>+10</button>
+                              {isFils&&<button className="dur-btn" style={{width:32,height:26,fontSize:10,color:'var(--warning)'}} onClick={()=>setNewQty(q=>q+50)}>+50</button>}
+                            </div>
+                            <div style={{display:'flex',gap:6}}>
+                              <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} onClick={()=>ajouterItemDuCatalogue(it)}>✓ Ajouter {newQty}x</button>
+                              <button className="btn-s" style={{fontSize:11}} onClick={()=>setSelectedItem(null)}>Annuler</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
           </div>
-          <button className="btn-s" style={{width:'100%',fontSize:11}} onClick={()=>{setShowAddItem(false);setSearchCatalogue('');setExpandedCat(null);}}>Fermer</button>
+          <button className="btn-s" style={{width:'100%',fontSize:11}} onClick={()=>{setShowAddItem(false);setSearchCatalogue('');setExpandedCat(null);setSelectedItem(null);}}>Fermer</button>
         </div>
       )}
     </div>
@@ -3735,6 +3832,21 @@ const CHAUFFAGE_PRIMA_275=[
   {code:'SPRM1752W',wattage:1750,longueur:'63 11/16"'},
 ];
 
+const BORNES_RECHARGE=[
+  {marque:'FLO',modele:'Maison X3',amperage:'50A (ajustable)',wattage:'12.0 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre ou Aluminium'},
+  {marque:'FLO',modele:'Maison X6',amperage:'50A (ajustable)',wattage:'12.0 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre ou Aluminium'},
+  {marque:'EVduty',modele:'EVC30 (Smart)',amperage:'30A',wattage:'7.2 kW',installation:'Fixe ou NEMA 6-50/14-50',calibre:'8 AWG',materiau:'Cuivre seulement'},
+  {marque:'EVduty',modele:'EVC48',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'Turogize',modele:'Aurora 40A',amperage:'40A',wattage:'9.6 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'Turogize',modele:'Aurora 48A',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'Turogize',modele:'Aurora II',amperage:'40A/48A',wattage:'9.6-11.5 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'Grizzl-E',modele:'Classic',amperage:'40A',wattage:'9.6 kW',installation:'NEMA 14-50 / 6-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'Wallbox',modele:'Pulsar Plus 40A',amperage:'40A',wattage:'9.6 kW',installation:'Fixe ou NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'Wallbox',modele:'Pulsar Plus 48A',amperage:'48A',wattage:'11.5 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'Leviton',modele:'EV40P',amperage:'40A',wattage:'9.6 kW',installation:'NEMA 14-50',calibre:'6 AWG',materiau:'Cuivre seulement'},
+  {marque:'Leviton',modele:'EV480',amperage:'48A',wattage:'11.6 kW',installation:'Fixe (Hardwired)',calibre:'6 AWG',materiau:'Cuivre seulement'},
+];
+
 // Structure flexible — chaque carte de référence est un objet avec id, titre, icône, et un renderer
 const REFERENCE_CARDS=[
   {
@@ -3748,8 +3860,16 @@ const REFERENCE_CARDS=[
       {sousTitre:'Stelpro Prima 325 W/pi',lignes:CHAUFFAGE_PRIMA_325.map(p=>[p.code,p.wattage+'W',p.longueur])},
       {sousTitre:'Stelpro Prima 275 W/pi',lignes:CHAUFFAGE_PRIMA_275.map(p=>[p.code,p.wattage+'W',p.longueur])}
     ]
+  },
+  {
+    id:'bornes-recharge',
+    titre:'Bornes de recharge VE',
+    icone:'🔌',
+    type:'table',
+    colonnes:['Marque / Modèle','Amp.','Wattage','Calibre','Matériau'],
+    lignes:BORNES_RECHARGE.map(b=>[b.marque+' '+b.modele,b.amperage,b.wattage,b.calibre,b.materiau])
   }
-  // Cartes futures à ajouter ici: bornes de recharge, calibres de fils, capacité des breakers,
+  // Cartes futures à ajouter ici: calibres de fils, capacité des breakers,
   // couleur kelvin et visuel, conversions électriques rapides, références de produits fréquents
 ];
 
