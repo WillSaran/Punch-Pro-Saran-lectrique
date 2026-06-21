@@ -217,7 +217,7 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v162';
+const APP_VERSION='v163';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1827,7 +1827,7 @@ function ProjCard({p,statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,edi
 }
 
 function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
-  const PREFIXES=['PAY','CRS','ASC','GGP','SAR'];
+  const PREFIXES=['PAY','CRS','ASC','GGP','SAR','BOM','5PIL','RROY','GOU'];
   const STORAGE_KEY='punchpro_projets_v3'; // gardé pour migration
   const [projData,setProjData]=useState({});
   const [addrOverrides,setAddrOverrides]=useState({});
@@ -1913,6 +1913,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
   const projets=memoResult?.projets||[];
   const noAddrMap=memoResult?.noAddrMap||{};
   const [addAddrJob,setAddAddrJob]=useState(null); // job sans adresse en cours d'édition
+  const [confirmCloseNoAddr,setConfirmCloseNoAddr]=useState(null); // id du job sans adresse en attente de confirmation de fermeture
   const [addAddrVal,setAddAddrVal]=useState('');
   const statuts={'en-cours':{label:'En cours',color:'var(--success)',bg:'rgba(63,185,80,0.1)'},'a-venir':{label:'À venir',color:'var(--accent)',bg:'rgba(47,129,247,0.1)'},ferme:{label:'Fermé',color:'var(--muted)',bg:'var(--bg3)'}};
 
@@ -2014,7 +2015,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
         </>);
       })()}
 
-      {/* Événements SANS adresse — affichés en bas de la catégorie filtrée */}
+      {/* Événements SANS adresse — section séparée, groupés par mois, avec statut "Projet en cours" */}
       {!showClosed&&(()=>{
         const prefixKey=filterPrefix||'TOUS';
         // Rassembler tous les events sans adresse selon le filtre
@@ -2025,48 +2026,122 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds}){
           noAddrEvents=Object.values(noAddrMap).flat();
         }
         if(noAddrEvents.length===0)return null;
-        return(
-          <div style={{marginTop:'0.75rem'}}>
-            <div style={{fontSize:10,fontWeight:700,color:'var(--warning)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>
-              ⚠️ Événements sans adresse ({noAddrEvents.length}) — non associés à un projet
-            </div>
-            {noAddrEvents.map((j,i)=>(
-              <div key={i} style={{background:'var(--bg2)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',border:'1px solid var(--border)',borderLeft:'4px solid '+(j.gcalColor||'#666'),opacity:0.8}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                  <div>
-                    <div style={{fontWeight:600,fontSize:12}}>{j.title}</div>
-                    <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}</div>
-                  </div>
+
+        // Grouper par mois (basé sur le premier événement de chaque groupe trié chronologiquement)
+        const moisFr=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+        const sorted=[...noAddrEvents].sort((a,b)=>new Date(a.start)-new Date(b.start));
+        const parMois={};
+        sorted.forEach(j=>{
+          const d=new Date(j.start);
+          const moisKey=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+          if(!parMois[moisKey])parMois[moisKey]=[];
+          parMois[moisKey].push(j);
+        });
+
+        // Séparer ceux marqués "en cours" (stockés dans projData sous clé 'noaddr:'+id)
+        const estEnCours=j=>(projData['noaddr:'+j.id]||{}).statut==='en-cours';
+        const enCoursEvents=sorted.filter(estEnCours);
+
+        function NoAddrCard({j}){
+          const enCours=estEnCours(j);
+          return(
+            <div style={{background:'var(--bg2)',borderRadius:8,padding:'0.55rem 0.75rem',marginBottom:'0.35rem',border:'1px solid var(--border)',borderLeft:'4px solid '+(j.gcalColor||'#666'),opacity:enCours?1:0.8}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:12}}>{j.title}</div>
+                  <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}</div>
+                  {confirmCloseNoAddr===j.id&&(
+                    <div style={{marginTop:'0.4rem',background:'rgba(248,81,73,0.08)',borderRadius:6,padding:'0.4rem 0.5rem'}}>
+                      <div style={{fontSize:10,color:'var(--danger)',marginBottom:5}}>Fermer ce projet en cours?</div>
+                      <div style={{display:'flex',gap:6}}>
+                        <button className="btn-sm btn-deny" onClick={()=>{
+                          const next={...projData,['noaddr:'+j.id]:{statut:'ferme'}};
+                          saveProjData(next);
+                          setConfirmCloseNoAddr(null);
+                          notify('Projet fermé','success');
+                        }}>Oui, fermer</button>
+                        <button className="btn-sm" style={{background:'var(--bg3)',border:'1px solid var(--border)',color:'var(--muted)'}} onClick={()=>setConfirmCloseNoAddr(null)}>Annuler</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:5,alignItems:'flex-end',flexShrink:0}}>
+                  {enCours?(
+                    <div onClick={()=>setConfirmCloseNoAddr(j.id)}
+                      style={{padding:'0.18rem 0.5rem',borderRadius:6,fontSize:10,fontWeight:700,background:'rgba(63,185,80,0.1)',color:'var(--success)',border:'1px solid var(--success)',cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+                      🟢 En cours
+                    </div>
+                  ):(
+                    <button className="btn-s" style={{fontSize:10,padding:'0.18rem 0.5rem',whiteSpace:'nowrap'}}
+                      onClick={()=>{
+                        const next={...projData,['noaddr:'+j.id]:{statut:'en-cours'}};
+                        saveProjData(next);
+                        notify('✅ Marqué comme projet en cours','success');
+                      }}>
+                      ▶ Projet en cours
+                    </button>
+                  )}
                   {addAddrJob===j.id?(
-                    <div style={{marginTop:'0.4rem'}}>
+                    <div style={{marginTop:'0.2rem'}}>
                       <AddressInput value={addAddrVal} onChange={setAddAddrVal} placeholder="Entrer l'adresse..." style={{marginBottom:'0.35rem'}}/>
                       <div style={{display:'flex',gap:'0.35rem'}}>
                         <button className="btn-p" style={{flex:1,marginTop:0,fontSize:11}}
                           onClick={async()=>{
                             if(!addAddrVal.trim()){notify('Entrez une adresse','warn');return;}
-                            // Sauvegarder localement + Calendar
-                            const addrOv=JSON.parse(localStorage.getItem('punchpro_addr_overrides')||'{}');
-                            addrOv[j.id]=addAddrVal.trim();
-                            localStorage.setItem('punchpro_addr_overrides',JSON.stringify(addrOv));
+                            // Sauvegarder via le vrai système synchronisé (Sheets) — apparaît immédiatement dans la liste des projets
+                            const next={...addrOverrides,[j.id]:addAddrVal.trim()};
+                            saveAddrOverrides(next);
                             for(const calId of (calendarIds||['primary'])){
                               try{await gapi.client.calendar.events.patch({calendarId:calId,eventId:j.id,resource:{location:addAddrVal.trim()}});break;}
                               catch(e){continue;}
                             }
-                            notify('✅ Adresse ajoutée! Rafraîchir pour voir.','success');
+                            notify('✅ Adresse ajoutée — le projet apparaît dans "En cours"','success');
                             setAddAddrJob(null);setAddAddrVal('');
                           }}>✓ Confirmer</button>
                         <button className="btn-s" style={{fontSize:11}} onClick={()=>{setAddAddrJob(null);setAddAddrVal('');}}>Annuler</button>
                       </div>
                     </div>
                   ):(
-                    <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem',flexShrink:0,marginLeft:8}}
+                    <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem',whiteSpace:'nowrap'}}
                       onClick={()=>{setAddAddrJob(j.id);setAddAddrVal('');}}>
                       + Adresse
                     </button>
                   )}
                 </div>
               </div>
-            ))}
+            </div>
+          );
+        }
+
+        return(
+          <div style={{marginTop:'0.75rem'}}>
+            {/* Section "Projets en cours" sans adresse — séparée, en premier */}
+            {enCoursEvents.length>0&&(
+              <div style={{marginBottom:'0.75rem'}}>
+                <div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>
+                  🟢 Projets en cours sans adresse ({enCoursEvents.length})
+                </div>
+                {enCoursEvents.map((j,i)=><NoAddrCard key={'ec'+i} j={j}/>)}
+              </div>
+            )}
+
+            <div style={{fontSize:10,fontWeight:700,color:'var(--warning)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.4rem'}}>
+              ⚠️ Événements sans adresse ({noAddrEvents.length}) — non associés à un projet
+            </div>
+            {Object.entries(parMois).map(([moisKey,events])=>{
+              const [an,m]=moisKey.split('-');
+              const eventsRestants=events.filter(j=>!estEnCours(j));
+              if(eventsRestants.length===0)return null;
+              return(
+                <div key={moisKey} style={{marginBottom:'0.6rem'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.3rem'}}>
+                    <div style={{fontSize:10,fontWeight:700,color:'var(--muted)'}}>{moisFr[parseInt(m)-1]} {an}</div>
+                    <div style={{flex:1,height:1,background:'var(--border)'}}></div>
+                  </div>
+                  {eventsRestants.map((j,i)=><NoAddrCard key={moisKey+i} j={j}/>)}
+                </div>
+              );
+            })}
           </div>
         );
       })()}
@@ -3532,28 +3607,16 @@ const CHAUFFAGE_PRIMA_275=[
 // Structure flexible — chaque carte de référence est un objet avec id, titre, icône, et un renderer
 const REFERENCE_CARDS=[
   {
-    id:'chauffage-brava',
-    titre:'Chauffage — Stelpro Brava',
+    id:'chauffage',
+    titre:'Appareils de chauffage',
     icone:'🔥',
-    type:'table',
+    type:'table-groupee',
     colonnes:['Code','Wattage','Longueur'],
-    lignes:CHAUFFAGE_BRAVA.map(p=>[p.code,p.wattage+'W',p.longueur])
-  },
-  {
-    id:'chauffage-prima-325',
-    titre:'Chauffage — Stelpro Prima 325 W/pi',
-    icone:'🔥',
-    type:'table',
-    colonnes:['Code','Wattage','Longueur'],
-    lignes:CHAUFFAGE_PRIMA_325.map(p=>[p.code,p.wattage+'W',p.longueur])
-  },
-  {
-    id:'chauffage-prima-275',
-    titre:'Chauffage — Stelpro Prima 275 W/pi',
-    icone:'🔥',
-    type:'table',
-    colonnes:['Code','Wattage','Longueur'],
-    lignes:CHAUFFAGE_PRIMA_275.map(p=>[p.code,p.wattage+'W',p.longueur])
+    groupes:[
+      {sousTitre:'Stelpro Brava',lignes:CHAUFFAGE_BRAVA.map(p=>[p.code,p.wattage+'W',p.longueur])},
+      {sousTitre:'Stelpro Prima 325 W/pi',lignes:CHAUFFAGE_PRIMA_325.map(p=>[p.code,p.wattage+'W',p.longueur])},
+      {sousTitre:'Stelpro Prima 275 W/pi',lignes:CHAUFFAGE_PRIMA_275.map(p=>[p.code,p.wattage+'W',p.longueur])}
+    ]
   }
   // Cartes futures à ajouter ici: bornes de recharge, calibres de fils, capacité des breakers,
   // couleur kelvin et visuel, conversions électriques rapides, références de produits fréquents
@@ -3590,6 +3653,35 @@ function ReferenceCard({card}){
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {expanded&&card.type==='table-groupee'&&(
+        <div style={{marginTop:'0.6rem'}}>
+          {card.groupes.map((groupe,gi)=>(
+            <div key={gi} style={{marginBottom:gi<card.groupes.length-1?'0.7rem':0}}>
+              <div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.03em',marginBottom:'0.3rem'}}>{groupe.sousTitre}</div>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                  <thead>
+                    <tr>
+                      {card.colonnes.map((c,i)=>(
+                        <th key={i} style={{textAlign:'left',padding:'0.3rem 0.4rem',color:'var(--muted)',fontSize:9,textTransform:'uppercase',letterSpacing:'0.03em',borderBottom:'1px solid var(--border)'}}>{c}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupe.lignes.map((ligne,ri)=>(
+                      <tr key={ri} style={{borderBottom:'1px solid var(--border)'}}>
+                        {ligne.map((cell,ci)=>(
+                          <td key={ci} style={{padding:'0.35rem 0.4rem',color:ci===0?'var(--accent)':'var(--text)',fontWeight:ci===0?700:400,fontFamily:ci===0?'var(--font-head)':'inherit'}}>{cell}</td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
