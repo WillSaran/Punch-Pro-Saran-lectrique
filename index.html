@@ -293,7 +293,13 @@ button{font-family:var(--font-body)}
 //   de préfixes que l'onglet Projets : PAY/CRS/ASC/GGP/SAR/BOM/5PIL/RROY/GOU,
 //   sinon "PARTICULIER"), chaque groupe affichant sa propre date de dernière
 //   activité.
-const APP_VERSION='v184';
+// v185 (2026-07-20): Correctif d'une régression introduite par le
+//   rafraîchissement auto du calendrier (v183) — un échec réseau/API
+//   transitoire pendant un rafraîchissement en arrière-plan pouvait retourner
+//   une liste vide et ÉCRASER les jobs déjà chargés (d'où "les jobs
+//   d'aujourd'hui/de la semaine ont disparu"). On ne remplace plus jamais une
+//   liste de jobs non vide par une liste vide.
+const APP_VERSION='v185';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -4637,8 +4643,15 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
 
   function refreshCalJobs(){
     if(calendarIds&&calendarIds.length){
-      getCalendarJobs(calendarIds).then(setJobs);
-      getAllCalendarJobs(calendarIds).then(setAllJobs);
+      // IMPORTANT : un échec réseau/API transitoire (token expiré, quota, etc.)
+      // fait retourner un tableau vide par getCalendarJobs/getAllCalendarJobs
+      // (les erreurs par calendrier sont avalées en interne). Sans cette garde,
+      // un rafraîchissement en arrière-plan qui échoue silencieusement EFFACE
+      // les jobs déjà chargés (régression v183 : "les jobs d'aujourd'hui ont
+      // disparu"). On ne remplace donc jamais une liste non vide par une liste
+      // vide — seulement par une liste avec du contenu.
+      getCalendarJobs(calendarIds).then(j=>{if(j&&j.length>0)setJobs(j);});
+      getAllCalendarJobs(calendarIds).then(j=>{if(j&&j.length>0)setAllJobs(j);});
     }
   }
   useEffect(()=>{
