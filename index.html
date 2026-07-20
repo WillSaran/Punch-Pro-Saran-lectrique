@@ -240,7 +240,13 @@ button{font-family:var(--font-body)}
 //   Erreurs de chargement du Stock Camions maintenant visibles (au lieu
 //   d'un champ vide silencieux) pour diagnostiquer les problèmes d'accès
 //   Google Sheets selon le compte connecté.
-const APP_VERSION='v177';
+// v178 (2026-07-20): Correctif majeur "Par job" — les heures étaient calculées
+//   en appariant n'importe quel OUT du même employé (peu importe la job ou la
+//   date), donnant des totaux aberrants. Même logique de correction que le
+//   punch-out (job + employé + le plus proche + garde-fou 24h). L'onglet OT
+//   affiche maintenant TOUS les documents joints (pas seulement AP_/OT_),
+//   avec le nom de l'employé et le titre du fichier.
+const APP_VERSION='v178';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -5354,7 +5360,18 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
       if(!p.job||(p.type!=='in'&&p.type!=='confirm'))continue;
       if(!map[p.job])map[p.job]={job:p.job,color:p.jobColor||'#2f81f7',heures:0,deplacement:0,count:0,fichiers:[]};
       if(p.type==='confirm')map[p.job].heures+=p.heures||0;
-      else{const matchOut=pts.find(o=>o.nom===p.nom&&o.type==='out'&&new Date(o.datetime)>new Date(p.datetime));if(matchOut)map[p.job].heures+=Math.round((new Date(matchOut.datetime)-new Date(p.datetime))/360000)/10;}
+      else{
+        // NOUVEAU — même correctif que pour le punch-out: on ne considère que les
+        // OUT du MÊME employé ET de la MÊME job, on prend le plus proche (pas le
+        // premier trouvé), et on ignore les écarts >24h (mauvais appariement ou
+        // oubli de punch-out jamais fermé) pour éviter des heures aberrantes.
+        const candidatsOut=pts.filter(o=>o.nom===p.nom&&o.type==='out'&&(o.job||'')===(p.job||'')&&new Date(o.datetime)>new Date(p.datetime));
+        const matchOut=candidatsOut.sort((a,b)=>new Date(a.datetime)-new Date(b.datetime))[0];
+        if(matchOut){
+          const h=(new Date(matchOut.datetime)-new Date(p.datetime))/3600000;
+          if(h>0&&h<24)map[p.job].heures+=Math.round(h*10)/10;
+        }
+      }
       map[p.job].deplacement+=p.deplacement||0;map[p.job].count++;
       if(p.fichiersURL)p.fichiersURL.forEach(u=>map[p.job].fichiers.push(u));
     }
@@ -5595,31 +5612,33 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
       )}
       {tab==='ot-admin'&&(
         <div className="card">
-          <div className="card-title">🔧 Ordres de travail & Appels de service</div>
+          <div className="card-title">🔧 Documents de job (OT, factures, photos...)</div>
+          <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.65rem'}}>Tous les fichiers joints par les employés en confirmant une job ou en punchant out, avec leur nom et le titre du fichier.</div>
           {loading?<div style={{color:'var(--muted)',fontSize:13}}>Chargement...</div>:(()=>{
-            // Find all entries with AP_ or OT_ files
-            const otEntries=pts.filter(p=>p.fichiersURL&&p.fichiersURL.some(u=>{
-              const name=u.includes('|')?u.split('|')[1]:u;
-              return name&&(name.startsWith('AP_')||name.startsWith('OT_'));
-            }));
+            // Toutes les entrées avec au moins un fichier joint (peu importe le type/dossier choisi)
+            const otEntries=pts.filter(p=>p.fichiersURL&&p.fichiersURL.length>0)
+              .sort((a,b)=>new Date(b.datetime)-new Date(a.datetime));
             if(otEntries.length===0)return <div style={{color:'var(--muted)',fontSize:12,textAlign:'center',padding:'1rem'}}>Aucun document trouvé.</div>;
             return otEntries.map((p,i)=>(
               <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.5rem',borderLeft:'3px solid var(--accent)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
                   <div>
                     <div style={{fontWeight:600,fontSize:13}}>{p.job||'Sans job'}</div>
-                    <div style={{fontSize:11,color:'var(--muted)'}}>{p.nom} · {p.date}</div>
+                    <div style={{fontSize:11,color:'var(--muted)'}}>👷 {p.nom} · {p.date}</div>
                   </div>
                 </div>
                 <div style={{marginTop:'0.4rem',display:'flex',flexDirection:'column',gap:3}}>
-                  {p.fichiersURL.filter(u=>{const n=u.includes('|')?u.split('|')[1]:u;return n&&(n.startsWith('AP_')||n.startsWith('OT_'));}).map((raw,j)=>{
+                  {p.fichiersURL.map((raw,j)=>{
                     const urlClean=raw.split('|')[0];
                     const nom=raw.includes('|')?raw.split('|')[1]:raw;
                     const isOT=nom.startsWith('OT_');
+                    const isAP=nom.startsWith('AP_');
+                    const bg=isOT?'rgba(210,153,34,0.1)':isAP?'rgba(63,185,80,0.1)':'var(--bg2)';
+                    const color=isOT?'var(--warning)':isAP?'var(--success)':'var(--accent)';
                     return(
-                      <div key={j} style={{display:'flex',alignItems:'center',gap:6,background:isOT?'rgba(210,153,34,0.1)':'rgba(63,185,80,0.1)',borderRadius:6,padding:'0.25rem 0.5rem'}}>
-                        <a href={urlClean} target="_blank" rel="noreferrer" style={{flex:1,fontSize:11,color:isOT?'var(--warning)':'var(--success)',textDecoration:'none',fontWeight:600}}>
-                          {isOT?'🔧':'📋'} {nom}
+                      <div key={j} style={{display:'flex',alignItems:'center',gap:6,background:bg,borderRadius:6,padding:'0.25rem 0.5rem'}}>
+                        <a href={urlClean} target="_blank" rel="noreferrer" style={{flex:1,fontSize:11,color,textDecoration:'none',fontWeight:600}}>
+                          {isOT?'🔧':isAP?'📋':'📎'} {nom}
                         </a>
                         <button style={{background:'none',border:'none',color:'var(--danger)',cursor:'pointer',fontSize:11,padding:'0 2px',touchAction:'manipulation'}}
                           onClick={async()=>{
