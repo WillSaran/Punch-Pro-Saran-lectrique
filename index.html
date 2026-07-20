@@ -361,6 +361,16 @@ function getWeek(d){
 }
 function getMois(d){const dt=new Date(d);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');}
 function localDateStr(d){const dt=d||new Date();return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
+function jobCouvreDate(job,dateStr){
+  if(!job||!job.start)return false;
+  const startStr=localDateStr(new Date(job.start));
+  if(!job.end)return startStr===dateStr;
+  const isAllDay=!String(job.start).includes('T');
+  let endD=new Date(job.end);
+  if(isAllDay)endD=new Date(endD.getTime()-1); // Google donne une date de fin EXCLUSIVE pour les événements "toute la journée"
+  const endStr=localDateStr(endD);
+  return dateStr>=startStr && dateStr<=endStr;
+}
 // Parse un nombre qui peut utiliser la virgule comme séparateur décimal (locale FR du compte Google)
 function safeFloat(v){if(v===null||v===undefined||v==='')return 0;return parseFloat(String(v).replace(',','.'))||0;}
 function parseDriveFolders(raw){
@@ -431,7 +441,7 @@ async function getCalendarJobs(calendarIds){
     try{
       const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:50});
       (res.result.items||[]).forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
+        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
       });
     }catch(e){console.error(e);}
   }
@@ -448,7 +458,7 @@ async function getAllCalendarJobs(calendarIds){
     try{
       const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:500});
       (res.result.items||[]).forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
+        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
       });
     }catch(e){console.error(e);}
   }
@@ -1463,6 +1473,9 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
   const [coequipiers,setCoequipiers]=useState([]);
   const [coeqHeures,setCoeqHeures]=useState({});
   const [heuresBanquePrises,setHeuresBanquePrises]=useState(0); // heures prises de la banque
+  // NOUVEAU — date de la job éditable (défaut = date de l'événement agenda choisi,
+  // mais l'employé peut la corriger si jamais il confirme la mauvaise journée)
+  const [dateTravail,setDateTravail]=useState(jobDate||localDateStr());
 
   function timeToMin(t){const[h,m]=(t||'00:00').split(':').map(Number);return h*60+(m||0);}
   const totalMin=Math.max(0,snapToQuart(timeToMin(heureFin)-timeToMin(heureDebut)));
@@ -1479,13 +1492,24 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
 
   function confirm(){
     const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));
-    onConfirm({heures:totalH,heureDebut,heureFin,jobDate,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch});
+    onConfirm({heures:totalH,heureDebut,heureFin,jobDate:dateTravail,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch});
   }
   const coeqEmps=teammates.filter(t=>coequipiers.includes(t.nom));
 
   return(
     <div className="dur-wrap">
-      {jobName&&(<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.45rem 0.7rem',marginBottom:'0.6rem'}}><div style={{width:10,height:10,borderRadius:'50%',background:jobColor||'var(--accent)',flexShrink:0}}></div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{jobName}</div>{jobDate&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>📅 {new Date(jobDate+'T12:00:00').toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}</div>}</div></div>)}
+      {jobName&&(<div style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.45rem 0.7rem',marginBottom:'0.6rem'}}><div style={{width:10,height:10,borderRadius:'50%',background:jobColor||'var(--accent)',flexShrink:0}}></div><div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{jobName}</div>{dateTravail&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>📅 {new Date(dateTravail+'T12:00:00').toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}</div>}</div></div>)}
+      {/* NOUVEAU — date de la job éditable */}
+      <div className="dur-section">
+        <div className="csec">Date de la job</div>
+        <input type="date" value={dateTravail} onChange={e=>setDateTravail(e.target.value)}
+          style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box'}}/>
+        {jobDate&&dateTravail!==jobDate&&(
+          <div style={{fontSize:10,color:'var(--warning)',marginTop:4}}>
+            ⚠️ Différente de la date de l'agenda ({new Date(jobDate+'T12:00:00').toLocaleDateString('fr-CA',{day:'numeric',month:'long'})})
+          </div>
+        )}
+      </div>
       <div className="dur-section">
         <div className="csec">Heures de travail</div>
         <div style={{display:'flex',gap:'1rem',alignItems:'center',justifyContent:'center',flexWrap:'wrap'}}>
@@ -1531,7 +1555,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
           </div>
         )}
       </div>
-      <button className="btn-p" style={{marginTop:'0.4rem'}} onClick={()=>{const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,heureDebut,heureFin,jobDate,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch,heuresBanquePrises});}}>✓ Confirmer la job</button>
+      <button className="btn-p" style={{marginTop:'0.4rem'}} onClick={()=>{const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,heureDebut,heureFin,jobDate:dateTravail,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch,heuresBanquePrises});}}>✓ Confirmer la job</button>
     </div>
   );
 }
@@ -2345,7 +2369,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
   function colorMatch(job){return colorDist(job.gcalColor,emp.couleur)<90;}
 
   // Filtrer: aujourd'hui par défaut, ou tout si showAll
-  const todayJobs=jobs.filter(j=>j.start&&localDateStr(new Date(j.start))===today);
+  const todayJobs=jobs.filter(j=>j.start&&jobCouvreDate(j,today));
   const baseJobs=showAll?jobs:todayJobs;
 
   const sorted=[...baseJobs].sort((a,b)=>{
@@ -3430,10 +3454,10 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
 
   // Grouper les jobs par date (chaîne locale, pas d'objet Date pour éviter le décalage UTC) — aujourd'hui et plus tard
   const parDate={};
-  jobs.filter(j=>localDateStr(new Date(j.start))>=today)
+  jobs.filter(j=>jobCouvreDate(j,today)||localDateStr(new Date(j.start))>today)
     .sort((a,b)=>new Date(a.start)-new Date(b.start))
     .forEach(j=>{
-      const d=localDateStr(new Date(j.start));
+      const d=jobCouvreDate(j,today)?today:localDateStr(new Date(j.start));
       if(!parDate[d])parDate[d]={mine:[],other:[]};
       if(isAssignedToMe(j))parDate[d].mine.push(j);
       else parDate[d].other.push(j);
@@ -4196,13 +4220,13 @@ function JobSummary({jobs,emp,notify,calendarIds}){
   const myJobs=jobs.filter(isAssignedToMe);
   const otherJobs=jobs.filter(j=>!isAssignedToMe(j));
 
-  const todayJobsMine=myJobs.filter(j=>localDateStr(new Date(j.start))===today)
+  const todayJobsMine=myJobs.filter(j=>jobCouvreDate(j,today))
     .sort((a,b)=>new Date(a.start)-new Date(b.start));
-  const tomorrowJobsMine=myJobs.filter(j=>localDateStr(new Date(j.start))===tomorrow)
+  const tomorrowJobsMine=myJobs.filter(j=>jobCouvreDate(j,tomorrow))
     .sort((a,b)=>new Date(a.start)-new Date(b.start));
-  const todayJobsOther=otherJobs.filter(j=>localDateStr(new Date(j.start))===today)
+  const todayJobsOther=otherJobs.filter(j=>jobCouvreDate(j,today))
     .sort((a,b)=>new Date(a.start)-new Date(b.start));
-  const tomorrowJobsOther=otherJobs.filter(j=>localDateStr(new Date(j.start))===tomorrow)
+  const tomorrowJobsOther=otherJobs.filter(j=>jobCouvreDate(j,tomorrow))
     .sort((a,b)=>new Date(a.start)-new Date(b.start));
 
   const todayJobs=todayJobsMine; // pour le compteur dans l'onglet
@@ -4405,11 +4429,22 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
         if(type==='out'){
           // Find the original punch IN (may belong to another employee if this is a coequipier punching out)
           const allPtsForJob=await getPointages(sid,{nom:emp.nom});
-          const origIn=allPtsForJob.find(p=>
+          // NOUVEAU — parmi tous les IN portant ce titre de job, on ne garde que
+          // ceux ENCORE OUVERTS (aucun out/confirm plus récent pour le même job),
+          // puis on prend le plus récent. Évite d'accrocher un vieux jour quand
+          // le même titre de job revient (ex: contrat récurrent, événement répété).
+          const candidatsIn=allPtsForJob.filter(p=>
             p.type==='in' &&
             (p.job||'')===(data.job||'') &&
             (p.nom===emp.nom || (p.coequipiers&&p.coequipiers.includes(emp.nom)))
           );
+          const origIn=candidatsIn
+            .filter(inRow=>!allPtsForJob.some(o=>
+              (o.type==='out'||o.type==='confirm') &&
+              (o.job||'')===(inRow.job||'') &&
+              new Date(o.datetime)>new Date(inRow.datetime)
+            ))
+            .sort((a,b)=>new Date(b.datetime)-new Date(a.datetime))[0];
           // Build full list of coequipiers for this punch OUT
           // If this employee was a coequipier on the original IN, the original puncher is now their coequipier
           let allCoeqs=[...(data.coequipiers||[])];
@@ -4619,8 +4654,9 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       <TimeHeader/>
       <JobSelector jobs={jobs} emp={selEmp}
         onSelect={(t,c)=>{setSelJob(t);setSelJobColor(c);
-          const startIso=jobs.find(j=>j.title===t)?.start||'';
-          const jDate=startIso?localDateStr(new Date(startIso)):'';
+          const jobObj=jobs.find(j=>j.title===t)||null;
+          const todayStr=localDateStr();
+          const jDate=jobObj?(jobCouvreDate(jobObj,todayStr)?todayStr:localDateStr(new Date(jobObj.start))):'';
           setSelJobDate(jDate);
           if(mode==='out')setStep('duration-out');
           else if(mode==='confirm')setStep('confirm');
