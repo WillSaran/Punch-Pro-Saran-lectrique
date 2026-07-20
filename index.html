@@ -269,7 +269,15 @@ button{font-family:var(--font-body)}
 //   fusionnées dans cette nouvelle tuile unique. Menu réordonné: Mon dashboard,
 //   Punch IN/OUT, Confirmer une job, puis Dashboard équipe / Configuration
 //   selon les permissions accordées par l'admin.
-const APP_VERSION='v181';
+// v182 (2026-07-20): Mon dashboard a maintenant 3 onglets — Mes heures, Projets
+//   (renommé, sans "Mes"), et un nouveau "Ordres de travail" qui liste
+//   uniquement les fichiers tagués OT_ (pas les appels de service AP_).
+//   Dans l'onglet Agenda, le filtre de portée devient binaire : "Mes jobs" ou
+//   "Toute l'équipe" (retrait de "Les deux", qui reste dans le sélecteur de
+//   job Punch IN/Confirmer). Quand rien ne s'affiche pour un jour donné, un
+//   message explique maintenant si c'est parce que la/les job(s) de ce jour
+//   sont assignée(s) à toi seulement, ou à d'autres seulement.
+const APP_VERSION='v182';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -3536,7 +3544,7 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
   const [commandeJob,setCommandeJob]=useState(null);
   const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
   const [selDate,setSelDate]=useState(localDateStr());
-  const [scope,setScope]=useState('both'); // 'mine' | 'team' | 'both'
+  const [scope,setScope]=useState('mine'); // 'mine' | 'team'
   const today=localDateStr();
 
   // Vérifier si une job est assignée à l'employé connecté (même logique que AdminView.getAssignees)
@@ -3620,9 +3628,9 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
         <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={nextMonth}>▶</button>
       </div>
 
-      {/* Filtre portée : mes jobs / toute l'équipe / les deux */}
+      {/* Filtre portée : mes jobs / toute l'équipe */}
       <div style={{display:'flex',gap:6,marginBottom:'0.65rem'}}>
-        {[['mine','👤 Mes jobs'],['both','👥 Les deux'],['team','🏗️ Toute l\'équipe']].map(([k,lbl])=>(
+        {[['mine','👤 Mes jobs'],['team','🏗️ Toute l\'équipe']].map(([k,lbl])=>(
           <button key={k} onClick={()=>setScope(k)} className="btn-s" style={{
             fontSize:10,padding:'0.3rem 0.55rem',flex:1,
             background:scope===k?'var(--accent)':'var(--bg3)',
@@ -3671,7 +3679,13 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
         </div>
 
         {visMine.length===0&&visOther.length===0?(
-          <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>Aucun événement ce jour-là.</div>
+          <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>
+            {(selInfo.mine.length+selInfo.other.length)>0?(
+              scope==='team'
+                ?"Il y a bien "+(selInfo.mine.length+selInfo.other.length)+" job(s) ce jour-là, mais assignée(s) à toi seulement — rien pour \"toute l'équipe\"."
+                :"Il y a bien "+(selInfo.mine.length+selInfo.other.length)+" job(s) ce jour-là, mais assignée(s) à d'autres — rien pour \"mes jobs\"."
+            ):"Aucun événement ce jour-là."}
+          </div>
         ):(
           <>
             {visMine.map((j,i)=>(
@@ -4946,7 +4960,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         }}/>
     </div>
 
-  // ── MON DASHBOARD (perso : mes heures + mes projets — distinct du Dashboard équipe) ──
+  // ── MON DASHBOARD (perso : mes heures + projets + OT — distinct du Dashboard équipe) ──
   );
   if(step==='mon-dashboard'){
     const allPts=ptsForOut.length?ptsForOut:ptsRef.current;
@@ -4956,61 +4970,47 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         getAllCalendarJobs(calendarIds).then(setAllJobs);
       }
     };
+    // Ordres de travail : uniquement les fichiers tagués OT_ (pas les appels de service AP_, pas les fichiers ordinaires)
+    const otEntries=allPts.map(p=>({
+      ...p,
+      otFiles:(p.fichiersURL||[]).filter(u=>u&&(u.toLowerCase().includes('ot_')))
+    })).filter(p=>p.otFiles.length>0).sort((a,b)=>new Date(b.datetime||b.date)-new Date(a.datetime||a.date));
     return(
       <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
         <div style={{width:'100%',maxWidth:640}}>
           <div className="tabs" style={{marginBottom:'0.75rem'}}>
             <div className={'tab'+(monDashTab==='heures'?' active':'')} onClick={()=>setMonDashTab('heures')}>📋 Mes heures</div>
-            <div className={'tab'+(monDashTab==='projets'?' active':'')} onClick={()=>setMonDashTab('projets')}>📁 Mes projets</div>
+            <div className={'tab'+(monDashTab==='projets'?' active':'')} onClick={()=>setMonDashTab('projets')}>📁 Projets</div>
+            <div className={'tab'+(monDashTab==='ot'?' active':'')} onClick={()=>setMonDashTab('ot')}>🔧 Ordres de travail</div>
           </div>
           {monDashTab==='heures'?(
             <EmployeeHistory emp={selEmp} sid={sid} notify={notify} folders={folders} calendarIds={calendarIds}/>
-          ):(
+          ):monDashTab==='projets'?(
             <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify} calendarIds={calendarIds} onRefresh={refreshProjets}/>
-          )}
-        </div>
-      </div>
-    );
-  }
-  if(step==='ordres-travail'){
-    // Charger les pts de cet employé pour trouver les OT
-    const allPts=[...ptsForOut,...ptsRef.current];
-    const otEntries=allPts.filter(p=>
-      p.nom===selEmp.nom&&
-      p.fichiersURL&&p.fichiersURL.some(u=>u&&u.includes('drive.google.com'))&&
-      (p.job||p.note)
-    );
-    return(
-      <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
-        <div style={{maxWidth:420,width:'100%'}}>
-          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',marginBottom:'0.75rem'}}>
-            🔧 Mes ordres de travail
-          </div>
-          {otEntries.length===0?(
+          ):(
+          otEntries.length===0?(
             <div style={{background:'var(--bg3)',borderRadius:10,padding:'1rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>
-              Aucun ordre de travail trouvé.
+              Aucun ordre de travail trouvé. Les photos/fichiers tagués « OT » lors d'une confirmation de job ou d'une facture apparaîtront ici.
             </div>
           ):(
             otEntries.map((p,i)=>(
-              <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.5rem',borderLeft:'3px solid var(--accent)'}}>
+              <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.5rem',borderLeft:'3px solid var(--warning)'}}>
                 <div style={{fontWeight:600,fontSize:13,marginBottom:3}}>{p.job||'Sans job'}</div>
                 <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>{p.date} · {p.heure}</div>
-                {p.fichiersURL.filter(u=>u).map((u,j)=>{
+                {p.otFiles.map((u,j)=>{
                   const urlClean=u.split('|')[0];
-                  const isOT=u.toLowerCase().includes('ot_')||urlClean.toLowerCase().includes('ot_');
-                  const isAP=u.toLowerCase().includes('ap_')||urlClean.toLowerCase().includes('ap_');
                   const nom=u.includes('|')?u.split('|')[1]:null;
-                  const label=isOT?'🔧 '+(nom||'Ordre de travail'):isAP?'📋 '+(nom||'Appel de service'):'📎 '+(nom||'Fichier');
+                  const label='🔧 '+(nom||'Ordre de travail');
                   return(
                     <a key={j} href={urlClean} target="_blank" rel="noreferrer"
-                      style={{display:'flex',alignItems:'center',gap:6,background:'rgba(47,129,247,0.1)',borderRadius:6,padding:'0.25rem 0.5rem',marginBottom:3,textDecoration:'none',color:'var(--accent)',fontSize:11}}>
+                      style={{display:'flex',alignItems:'center',gap:6,background:'rgba(210,153,34,0.1)',borderRadius:6,padding:'0.25rem 0.5rem',marginBottom:3,textDecoration:'none',color:'var(--warning)',fontSize:11}}>
                       {label}
                     </a>
                   );
                 })}
               </div>
             ))
-          )}
+          ))}
         </div>
       </div>
     );
