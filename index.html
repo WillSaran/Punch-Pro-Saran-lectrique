@@ -217,7 +217,12 @@ button{font-family:var(--font-body)}
     }
   }
 })();
-const APP_VERSION='v173';
+// ── HISTORIQUE DES VERSIONS ──
+// v174 (2026-07-19): correctif pointage qui se mêle (origIn), support des
+//   événements agenda multi-jours, date de job éditable à la confirmation,
+//   sidebar déplacée à gauche, page Configuration réorganisée (fermable,
+//   employés + rôle "gestionnaire de projet", section Drive plus claire).
+const APP_VERSION='v174';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -776,24 +781,24 @@ async function getHistoriqueAppels(){
 
 async function getEmployees(sid){
   try{
-    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:H'}));
+    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:I'}));
     return (res.result.values||[]).map((r,i)=>({
       nom:r[0]||'',pin:r[1]||'',statut:r[2]||'out',heuresBanque:safeFloat(r[3]),
       couleur:r[4]||EMP_COLORS[i%EMP_COLORS.length],code:r[5]||(r[0]||'??').substring(0,2).toUpperCase(),
-      email:r[6]||'',telephone:r[7]||'',row:i+2
+      email:r[6]||'',telephone:r[7]||'',role:r[8]||'',row:i+2
     }));
   }catch{return[];}
 }
 async function saveEmployee(sid,emp){
   await gapi.client.sheets.spreadsheets.values.append({
     spreadsheetId:sid,range:'Employés!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
-    resource:{values:[[emp.nom,emp.pin,'out',emp.heuresBanque||0,emp.couleur,emp.code,emp.email||'',emp.telephone||'']]}
+    resource:{values:[[emp.nom,emp.pin,'out',emp.heuresBanque||0,emp.couleur,emp.code,emp.email||'',emp.telephone||'',emp.role||'']]}
   });
 }
 async function updateEmployee(sid,row,emp){
   await gapi.client.sheets.spreadsheets.values.update({
-    spreadsheetId:sid,range:'Employés!A'+row+':H'+row,valueInputOption:'RAW',
-    resource:{values:[[emp.nom,emp.pin,emp.statut,emp.heuresBanque,emp.couleur,emp.code,emp.email||'',emp.telephone||'']]}
+    spreadsheetId:sid,range:'Employés!A'+row+':I'+row,valueInputOption:'RAW',
+    resource:{values:[[emp.nom,emp.pin,emp.statut,emp.heuresBanque,emp.couleur,emp.code,emp.email||'',emp.telephone||'',emp.role||'']]}
   });
 }
 async function deleteEmployee(sid,row){
@@ -4372,6 +4377,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       else setStep('punch-in');
     }
     else if(step==='history'||step==='projets'||step==='agenda-emp')setStep('mode');
+    else if(step==='pin-admin'||step==='admin-team')setStep('mode');
     else setStep('emps');
   }
 
@@ -4614,6 +4620,18 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
   if(step==='pin')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch IN" onSubmit={pin=>handlePunch(pin,'in')} onCancel={goBack}/></div>);
   if(step==='pin-out')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch OUT" onSubmit={pin=>handlePunch(pin,'out')} onCancel={goBack}/></div>);
   if(step==='pin-confirm')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Confirmer la job" onSubmit={pin=>handlePunch(pin,'confirm')} onCancel={goBack}/></div>);
+  if(step==='pin-admin')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Dashboard équipe" onSubmit={pin=>{
+    if(String(selEmp.pin).trim()===String(pin).trim()){setStep('admin-team');}
+    else{notify('PIN incorrect','err');}
+  }} onCancel={goBack}/></div>);
+  if(step==='admin-team')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'0.75rem',width:'100%'}}>
+      <TimeHeader/>
+      <div style={{width:'100%'}}>
+        <AdminView sid={sid} calendarIds={calendarIds} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh} restricted={true}/>
+      </div>
+    </div>
+  );
 
   // ── PUNCH IN ──
   if(step==='punch-in')return(
@@ -4793,6 +4811,12 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
           <div className="mode-icon">📅</div>
           <div><div className="mode-title">Agenda</div><div className="mode-desc">Voir les jobs, passer une commande</div></div>
         </div>
+        {selEmp.role==='gestionnaire'&&(
+          <div className="mode-btn" onClick={()=>setStep('pin-admin')}>
+            <div className="mode-icon">📊</div>
+            <div><div className="mode-title">Dashboard équipe</div><div className="mode-desc">Vue d'ensemble, projets, agenda de l'équipe</div></div>
+          </div>
+        )}
       </div>
 
       {/* Résumé jobs — onglets Aujourd'hui / Demain */}
@@ -4886,25 +4910,67 @@ function SettingsMenu({userEmail,isBoss,onSwitch,onEditCfg,onReset}){
 }
 
 // ── CONFIG MODAL ──────────────────────────────────────────────────────────────
-function ConfigModal({initial,onSave}){
-  const [cfg,setCfg]=useState(initial||{apiKey:'',clientId:'',spreadsheetId:'',calendarIds:'',driveFolders:''});
-  // driveFolders format: "Factures:ID1, Plans:ID2, Photos:ID3"
-  const ok=cfg.apiKey&&cfg.clientId&&cfg.spreadsheetId;
+function ConfigScreen({cfg,sid,notify,onRefresh,onClose}){
+  const [tab,setTab]=useState('employes');
+  const folders=parseDriveFolders(cfg&&cfg.driveFolders||'');
+  const calendars=(cfg&&cfg.calendarIds||'').split(',').map(s=>s.trim()).filter(Boolean);
   return(
-    <div className="overlay">
-      <div className="modal">
-        <div className="modal-title">⚡ PunchPro</div>
-        <div className="modal-sub">Configuration — Saran Électrique</div>
-        <div className="fg"><label>Google API Key</label><input placeholder="AIzaSy..." value={cfg.apiKey} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,apiKey:v}));}}/></div>
-        <div className="fg"><label>OAuth 2.0 Client ID</label><input placeholder="123...apps.googleusercontent.com" value={cfg.clientId} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,clientId:v}));}}/></div>
-        <div className="fg"><label>Google Spreadsheet ID</label><input placeholder="144Ub45GKP6bvMEd2Zda9JIhfwYpkKMNm" value={cfg.spreadsheetId} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,spreadsheetId:v}));}}/></div>
-        <div className="fg"><label>Calendriers (séparés par virgules)</label><input placeholder="saranelectrique@gmail.com, info@saranelectrique.com" value={cfg.calendarIds} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,calendarIds:v}));}}/><small>Emails des comptes Google Agenda</small></div>
-        <div className="fg">
-          <label>Dossiers Drive partagé</label>
-          <textarea placeholder={"Factures:1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms\nPlans:1DuQHFcVNlPWECa4yEpVqEQqIhSB1234\nPhotos:1AbCdEfGhIjKlMnOpQrStUv5678"} value={cfg.driveFolders||''} style={{minHeight:90}} onChange={e=>{const v=e.target.value;setCfg(p=>({...p,driveFolders:v}));}}/>
-          <small>Format: NomDossier:ID_Google_Drive — un par ligne. L'ID se trouve dans l'URL du dossier Drive.</small>
-        </div>
-        <button className="btn-p" disabled={!ok} onClick={()=>ok&&onSave(cfg)}>Enregistrer →</button>
+    <div style={{position:'fixed',inset:0,background:'var(--bg)',zIndex:300,display:'flex',flexDirection:'column'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0.85rem 1rem',borderBottom:'1px solid var(--border)',flexShrink:0}}>
+        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1.05rem'}}>⚙ Configuration</div>
+        <button className="btn-s" onClick={onClose}>✕ Fermer</button>
+      </div>
+      <div className="tabs" style={{padding:'0.6rem 1rem 0'}}>
+        {[['employes','👷 Employés'],['technique','🔧 Technique']].map(([k,l])=>(
+          <div key={k} className={'tab'+(tab===k?' active':'')} onClick={()=>setTab(k)}>{l}</div>
+        ))}
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:'1rem'}}>
+        {tab==='employes'&&(
+          <EmployeesManager sid={sid} notify={notify} onRefresh={onRefresh}/>
+        )}
+        {tab==='technique'&&(
+          <div style={{maxWidth:560,display:'flex',flexDirection:'column',gap:'0.75rem'}}>
+            <div style={{background:'rgba(47,129,247,0.08)',border:'1px solid rgba(47,129,247,0.25)',borderRadius:10,padding:'0.65rem 0.85rem',fontSize:11,color:'var(--muted)'}}>
+              ℹ️ Ces valeurs techniques sont fixées directement dans le code de l'application.
+              Elles sont affichées ici pour référence seulement — pour les changer, il faut modifier le code (contacte ton développeur).
+            </div>
+            <div className="card">
+              <div className="csec">Connexion Google</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:2}}>Clé API</div>
+              <div style={{fontFamily:'monospace',fontSize:12,marginBottom:8,wordBreak:'break-all'}}>{(cfg&&cfg.apiKey)?cfg.apiKey.slice(0,10)+'••••••••••':'—'}</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:2}}>OAuth Client ID</div>
+              <div style={{fontFamily:'monospace',fontSize:12,wordBreak:'break-all'}}>{(cfg&&cfg.clientId)||'—'}</div>
+            </div>
+            <div className="card">
+              <div className="csec">Données</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:2}}>Google Spreadsheet</div>
+              <div style={{marginBottom:8}}>
+                <a href={'https://docs.google.com/spreadsheets/d/'+(cfg&&cfg.spreadsheetId||'')} target="_blank" rel="noreferrer" style={{fontFamily:'monospace',fontSize:12,color:'var(--accent)',wordBreak:'break-all'}}>{(cfg&&cfg.spreadsheetId)||'—'} ↗</a>
+              </div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>Calendriers synchronisés</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
+                {calendars.length>0?calendars.map(c=><span key={c} style={{fontSize:11,background:'var(--bg3)',borderRadius:6,padding:'0.2rem 0.5rem'}}>📅 {c}</span>):<span style={{fontSize:12,color:'var(--muted)'}}>—</span>}
+              </div>
+            </div>
+            <div className="card">
+              <div className="csec">Dossiers Drive partagés</div>
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {folders.length>0?folders.map(f=>(
+                  <a key={f.id} href={'https://drive.google.com/drive/folders/'+f.id} target="_blank" rel="noreferrer"
+                    style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.65rem',textDecoration:'none'}}>
+                    <span style={{fontSize:15,flexShrink:0}}>📁</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{f.name}</div>
+                      <div style={{fontSize:9,color:'var(--muted)',fontFamily:'monospace',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.id}</div>
+                    </div>
+                    <span style={{fontSize:11,color:'var(--accent)',flexShrink:0}}>Ouvrir ↗</span>
+                  </a>
+                )):<div style={{fontSize:12,color:'var(--muted)'}}>Aucun dossier configuré.</div>}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4937,6 +5003,13 @@ function EmpForm({data,setData,onSave,onCancel,isEdit}){
         <span className="fl">Couleur</span>
         <div className="color-row">{EMP_COLORS.map(c=><div key={c} className="cswatch" style={{background:c,border:'2px solid '+(data.couleur===c?'#fff':'transparent')}} onClick={()=>setData(p=>({...p,couleur:c}))}/>)}</div>
       </div>
+      <div className="fg" style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.65rem',marginBottom:'0.55rem',display:'flex',alignItems:'center',gap:8,cursor:'pointer'}} onClick={()=>setData(p=>({...p,role:p.role==='gestionnaire'?'':'gestionnaire'}))}>
+        <input type="checkbox" checked={data.role==='gestionnaire'} onChange={()=>{}} style={{width:16,height:16,flexShrink:0,cursor:'pointer'}}/>
+        <div>
+          <div style={{fontSize:12,fontWeight:600}}>🗂️ Gestionnaire de projet</div>
+          <div style={{fontSize:10,color:'var(--muted)'}}>Accès à un dashboard admin restreint (équipe, projets, agenda) — pas aux données sensibles (PIN des autres, banque d'heures).</div>
+        </div>
+      </div>
       <div style={{display:'flex',gap:'0.4rem'}}>
         <button className="btn-p" style={{marginTop:0,flex:1}} onClick={onSave}>✓ Sauvegarder</button>
         {onCancel&&<button className="btn-s" onClick={onCancel}>Annuler</button>}
@@ -4945,7 +5018,87 @@ function EmpForm({data,setData,onSave,onCancel,isEdit}){
   );
 }
 
-function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
+function EmployeesManager({sid,notify,onRefresh}){
+  const [emps,setEmps]=useState([]);
+  const [loadingEmps,setLoadingEmps]=useState(true);
+  const [showAdd,setShowAdd]=useState(false);
+  const [editEmp,setEditEmp]=useState(null);
+  const [newEmp,setNewEmp]=useState({nom:'',pin:'',code:'',couleur:EMP_COLORS[0],email:'',telephone:'',heuresBanque:0,role:''});
+
+  useEffect(()=>{
+    setLoadingEmps(true);
+    getEmployees(sid).then(e=>{setEmps(e);setLoadingEmps(false);});
+  },[sid]);
+
+  async function reloadEmps(){
+    const u=await getEmployees(sid);setEmps(u);return u;
+  }
+
+  async function handleAdd(){
+    if(!newEmp.nom||!newEmp.pin){notify('Remplis le nom et le PIN!','err');return;}
+    try{
+      const emp={...newEmp,code:newEmp.code||newEmp.nom.substring(0,2).toUpperCase()};
+      notify('⏳ Sauvegarde...','warn');
+      await saveEmployee(sid,emp);
+      const updated=await reloadEmps();
+      setNewEmp({nom:'',pin:'',code:'',couleur:EMP_COLORS[updated.length%EMP_COLORS.length],email:'',telephone:'',heuresBanque:0,role:''});
+      setShowAdd(false);notify('✅ '+emp.nom+' ajouté!','success');onRefresh();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+  }
+
+  async function handleUpdateEmp(){
+    if(!editEmp||!editEmp.nom||!editEmp.pin){notify('Remplis tous les champs!','err');return;}
+    try{
+      await updateEmployee(sid,editEmp.row,editEmp);
+      await reloadEmps();
+      setEditEmp(null);notify('✅ Employé modifié!','success');onRefresh();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+  }
+
+  async function handleDel(emp){
+    if(!confirm('Supprimer '+emp.nom+'?'))return;
+    await deleteEmployee(sid,emp.row);notify('Supprimé','success');
+    await reloadEmps();onRefresh();
+  }
+
+  if(loadingEmps)return <div style={{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:13}}>⏳ Chargement...</div>;
+
+  return(
+    <div className="card" style={{maxWidth:580}}>
+      <div className="section-head">
+        <div className="card-title" style={{marginBottom:0}}>Employés ({emps.length})</div>
+        <button className="btn-s" onClick={()=>{setShowAdd(!showAdd);setEditEmp(null);}}>+ Ajouter</button>
+      </div>
+      {showAdd&&!editEmp&&<EmpForm data={newEmp} setData={setNewEmp} onSave={handleAdd} isEdit={false}/>}
+      {editEmp&&<EmpForm data={editEmp} setData={setEditEmp} onSave={handleUpdateEmp} onCancel={()=>setEditEmp(null)} isEdit={true}/>}
+      <div style={{marginTop:'0.7rem'}}>
+        {emps.map(emp=>(
+          <div key={emp.nom} className="emp-row">
+            <div className="emp-av" style={{background:emp.couleur}}>{emp.code}</div>
+            <div style={{flex:1,marginLeft:'0.55rem'}}>
+              <div style={{fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:5}}>
+                {emp.nom}
+                {emp.role==='gestionnaire'&&<span style={{fontSize:9,background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:4,padding:'1px 5px',fontWeight:700}}>🗂️ Gestionnaire</span>}
+              </div>
+              <div style={{fontSize:10,color:'var(--muted)',fontFamily:'monospace'}}>
+                PIN: {emp.pin} · {emp.code}
+                {emp.email&&' · '+emp.email}
+                {emp.telephone&&' · '+emp.telephone}
+              </div>
+              {emp.heuresBanque>0&&<div style={{fontSize:10,color:'var(--warning)'}}>🏦 {hToQuart(emp.heuresBanque)} en banque</div>}
+            </div>
+            <span className={'badge '+(emp.statut==='in'?'badge-in':'badge-out')}>{emp.statut==='in'?'Présent':'Absent'}</span>
+            <button className="btn-icon edit" onClick={()=>{setEditEmp({...emp});setShowAdd(false);}}>✏️</button>
+            <button className="btn-icon" onClick={()=>handleDel(emp)}>✕</button>
+          </div>
+        ))}
+        {emps.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>Aucun employé — cliquez "+ Ajouter"</div>}
+      </div>
+    </div>
+  );
+}
+
+function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,restricted}){
   const [tab,setTab]=useState('dashboard');
   const [emps,setEmps]=useState([]);
   const [pts,setPts]=useState([]);
@@ -4953,9 +5106,6 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
   const [jobs,setJobs]=useState([]);
   const [msgs,setMsgs]=useState([]);
   const [loading,setLoading]=useState(true);
-  const [showAdd,setShowAdd]=useState(false);
-  const [editEmp,setEditEmp]=useState(null);
-  const [newEmp,setNewEmp]=useState({nom:'',pin:'',code:'',couleur:EMP_COLORS[0],email:'',telephone:'',heuresBanque:0});
   const [selEmp,setSelEmp]=useState('');
   const [histTab,setHistTab]=useState('semaine');
   const [selectedJobForAppel,setSelectedJobForAppel]=useState(null); // job sélectionnée pour appel de service
@@ -4974,33 +5124,6 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
   const pending=banque.filter(b=>b.statut==='pending');
   const unread=msgs.filter(m=>!m.lu);
   const eMap=Object.fromEntries(emps.map(e=>[e.nom,e]));
-
-  async function handleAdd(){
-    if(!newEmp.nom||!newEmp.pin){notify('Remplis le nom et le PIN!','err');return;}
-    try{
-      const emp={...newEmp,code:newEmp.code||newEmp.nom.substring(0,2).toUpperCase()};
-      notify('⏳ Sauvegarde...','warn');
-      await saveEmployee(sid,emp);
-      const updated=await getEmployees(sid);setEmps(updated);
-      setNewEmp({nom:'',pin:'',code:'',couleur:EMP_COLORS[updated.length%EMP_COLORS.length],email:'',telephone:'',heuresBanque:0});
-      setShowAdd(false);notify('✅ '+emp.nom+' ajouté!','success');onRefresh();
-    }catch(e){notify('Erreur: '+e.message,'err');}
-  }
-
-  async function handleUpdateEmp(){
-    if(!editEmp||!editEmp.nom||!editEmp.pin){notify('Remplis tous les champs!','err');return;}
-    try{
-      await updateEmployee(sid,editEmp.row,editEmp);
-      const updated=await getEmployees(sid);setEmps(updated);
-      setEditEmp(null);notify('✅ Employé modifié!','success');onRefresh();
-    }catch(e){notify('Erreur: '+e.message,'err');}
-  }
-
-  async function handleDel(emp){
-    if(!confirm('Supprimer '+emp.nom+'?'))return;
-    await deleteEmployee(sid,emp.row);notify('Supprimé','success');
-    const u=await getEmployees(sid);setEmps(u);onRefresh();
-  }
 
   async function handleBanque(b,statut){
     await updateBanqueStatus(sid,b.row,statut);
@@ -5055,7 +5178,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
   return(
     <div>
       <div className="tabs">
-        {[['dashboard','📊 Dashboard'],['employes','👷 Employés'],['projets','📁 Projets'],['historique','📋 Historique'],['jobs-stats','📍 Par job'],['banque','🏦 Banque'],['messages','💬 Messages'],['agenda','📅 Agenda'],['ot-admin','🔧 OT'],['appels','📋 Appels']].map(([k,l])=>(
+        {[['dashboard','📊 Dashboard'],['employes','👷 Employés'],['projets','📁 Projets'],['historique','📋 Historique'],['jobs-stats','📍 Par job'],['banque','🏦 Banque'],['messages','💬 Messages'],['agenda','📅 Agenda'],['ot-admin','🔧 OT'],['appels','📋 Appels']].filter(([k])=>!restricted||(k!=='employes'&&k!=='banque')).map(([k,l])=>(
           <div key={k} className={'tab'+(tab===k?' active':'')} onClick={()=>setTab(k)} style={{position:'relative'}}>
             {l}
             {k==='banque'&&pending.length>0&&<span className="nav-badge">{pending.length}</span>}
@@ -5114,35 +5237,8 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh}){
         </div>
       )}
 
-      {tab==='employes'&&(
-        <div className="card" style={{maxWidth:580}}>
-          <div className="section-head">
-            <div className="card-title" style={{marginBottom:0}}>Employés ({emps.length})</div>
-            <button className="btn-s" onClick={()=>{setShowAdd(!showAdd);setEditEmp(null);}}>+ Ajouter</button>
-          </div>
-          {showAdd&&!editEmp&&<EmpForm data={newEmp} setData={setNewEmp} onSave={handleAdd} isEdit={false}/>}
-          {editEmp&&<EmpForm data={editEmp} setData={setEditEmp} onSave={handleUpdateEmp} onCancel={()=>setEditEmp(null)} isEdit={true}/>}
-          <div style={{marginTop:'0.7rem'}}>
-            {emps.map(emp=>(
-              <div key={emp.nom} className="emp-row">
-                <div className="emp-av" style={{background:emp.couleur}}>{emp.code}</div>
-                <div style={{flex:1,marginLeft:'0.55rem'}}>
-                  <div style={{fontSize:12,fontWeight:500}}>{emp.nom}</div>
-                  <div style={{fontSize:10,color:'var(--muted)',fontFamily:'monospace'}}>
-                    PIN: {emp.pin} · {emp.code}
-                    {emp.email&&' · '+emp.email}
-                    {emp.telephone&&' · '+emp.telephone}
-                  </div>
-                  {emp.heuresBanque>0&&<div style={{fontSize:10,color:'var(--warning)'}}>🏦 {hToQuart(emp.heuresBanque)} en banque</div>}
-                </div>
-                <span className={'badge '+(emp.statut==='in'?'badge-in':'badge-out')}>{emp.statut==='in'?'Présent':'Absent'}</span>
-                <button className="btn-icon edit" onClick={()=>{setEditEmp({...emp});setShowAdd(false);}}>✏️</button>
-                <button className="btn-icon" onClick={()=>handleDel(emp)}>✕</button>
-              </div>
-            ))}
-            {emps.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>Aucun employé — cliquez "+ Ajouter"</div>}
-          </div>
-        </div>
+      {tab==='employes'&&!restricted&&(
+        <EmployeesManager sid={sid} notify={notify} onRefresh={onRefresh}/>
       )}
 
       {tab==='projets'&&(
@@ -5571,13 +5667,13 @@ function App(){
 
   return(
     <div className="app-wrap">
-      {showCfg&&<ConfigModal initial={cfg||DEFAULT_CFG} onSave={handleSaveCfg}/>}
+      {showCfg&&<ConfigScreen cfg={cfg||DEFAULT_CFG} sid={(cfg||DEFAULT_CFG).spreadsheetId} notify={notify} onRefresh={onRefresh} onClose={()=>setShowCfg(false)}/>}
       {notif&&<Notif key={notif.id} msg={notif.msg} type={notif.type} onClose={()=>setNotif(null)}/>}
 
       {/* Sidebar overlay */}
       {showSidebar&&<div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.5)',zIndex:200,touchAction:'manipulation'}} onClick={()=>setShowSidebar(false)}></div>}
       {/* Sidebar panel */}
-      <div style={{position:'fixed',top:0,right:0,width:240,height:'100vh',background:'var(--bg2)',borderLeft:'1px solid var(--border)',zIndex:201,transform:showSidebar?'translateX(0)':'translateX(100%)',transition:'transform 0.25s ease',display:'flex',flexDirection:'column',padding:'1rem'}}>
+      <div style={{position:'fixed',top:0,left:0,width:240,height:'100vh',background:'var(--bg2)',borderRight:'1px solid var(--border)',zIndex:201,transform:showSidebar?'translateX(0)':'translateX(-100%)',transition:'transform 0.25s ease',display:'flex',flexDirection:'column',padding:'1rem'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'1.25rem'}}>
           <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.9rem'}}>Menu</div>
           <button style={{background:'none',border:'none',color:'var(--muted)',fontSize:18,cursor:'pointer',touchAction:'manipulation'}} onClick={()=>setShowSidebar(false)}>✕</button>
