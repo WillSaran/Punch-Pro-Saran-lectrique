@@ -222,7 +222,12 @@ button{font-family:var(--font-body)}
 //   événements agenda multi-jours, date de job éditable à la confirmation,
 //   sidebar déplacée à gauche, page Configuration réorganisée (fermable,
 //   employés + rôle "gestionnaire de projet", section Drive plus claire).
-const APP_VERSION='v174';
+// v175 (2026-07-20): PIN demandé une seule fois (à la sélection du nom, plus
+//   jamais avant punch in/out/confirmer), permissions granulaires par employé
+//   (remplace le rôle unique "gestionnaire" par des cases à cocher par section
+//   admin + accès Configuration indépendant, accordable par l'admin), bouton
+//   "Menu" toujours visible pour revenir au menu principal en un clic.
+const APP_VERSION='v175';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -779,26 +784,35 @@ async function getHistoriqueAppels(){
   }catch(e){return[];}
 }
 
+// Colonne I du sheet Employés — liste de permissions séparées par virgules
+// (clés des onglets AdminView + 'config' pour l'accès à Configuration).
+// Compatibilité: l'ancienne valeur unique "gestionnaire" (v174) est convertie
+// automatiquement vers un ensemble de permissions équivalent.
+function parsePermissions(raw){
+  if(!raw)return[];
+  if(raw==='gestionnaire')return['dashboard','projets','historique','jobs-stats','agenda','ot-admin','appels'];
+  return raw.split(',').map(s=>s.trim()).filter(Boolean);
+}
 async function getEmployees(sid){
   try{
     const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:I'}));
     return (res.result.values||[]).map((r,i)=>({
       nom:r[0]||'',pin:r[1]||'',statut:r[2]||'out',heuresBanque:safeFloat(r[3]),
       couleur:r[4]||EMP_COLORS[i%EMP_COLORS.length],code:r[5]||(r[0]||'??').substring(0,2).toUpperCase(),
-      email:r[6]||'',telephone:r[7]||'',role:r[8]||'',row:i+2
+      email:r[6]||'',telephone:r[7]||'',permissions:parsePermissions(r[8]),row:i+2
     }));
   }catch{return[];}
 }
 async function saveEmployee(sid,emp){
   await gapi.client.sheets.spreadsheets.values.append({
     spreadsheetId:sid,range:'Employés!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
-    resource:{values:[[emp.nom,emp.pin,'out',emp.heuresBanque||0,emp.couleur,emp.code,emp.email||'',emp.telephone||'',emp.role||'']]}
+    resource:{values:[[emp.nom,emp.pin,'out',emp.heuresBanque||0,emp.couleur,emp.code,emp.email||'',emp.telephone||'',(emp.permissions||[]).join(',')]]}
   });
 }
 async function updateEmployee(sid,row,emp){
   await gapi.client.sheets.spreadsheets.values.update({
     spreadsheetId:sid,range:'Employés!A'+row+':I'+row,valueInputOption:'RAW',
-    resource:{values:[[emp.nom,emp.pin,emp.statut,emp.heuresBanque,emp.couleur,emp.code,emp.email||'',emp.telephone||'',emp.role||'']]}
+    resource:{values:[[emp.nom,emp.pin,emp.statut,emp.heuresBanque,emp.couleur,emp.code,emp.email||'',emp.telephone||'',(emp.permissions||[]).join(',')]]}
   });
 }
 async function deleteEmployee(sid,row){
@@ -4323,7 +4337,7 @@ function JobSummary({jobs,emp,notify,calendarIds}){
 }
 
 
-function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders,refreshKey}){
+function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenuAction,folders,refreshKey,cfg}){
   const now=useClock();
   const [step,setStep]=useState('emps');
   const isSubmittingRef=useRef(false); // empêche double-soumission (double-clic / réseau lent)
@@ -4364,20 +4378,20 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
   useEffect(()=>{
     if(step==='emps')setNavBack(null);
     else setNavBack(()=>goBack);
+    if(setMenuAction){
+      if(selEmp&&step!=='pin-entry')setMenuAction(()=>()=>setStep('mode'));
+      else setMenuAction(null);
+    }
   },[step]);
 
   function goBack(){
-    if(step==='mode')setStep('emps');
+    if(step==='mode'){setSelEmp(null);setStep('emps');}
+    else if(step==='pin-entry'){setSelEmp(null);setStep('emps');}
     else if(step==='job')setStep('mode');
     else if(step==='punch-in'||step==='confirm')setStep('job');
     else if(step==='duration-out')setStep('mode');
-    else if(step==='pin'||step==='pin-out'||step==='pin-confirm'){
-      if(mode==='out')setStep('duration-out');
-      else if(mode==='confirm')setStep('confirm');
-      else setStep('punch-in');
-    }
     else if(step==='history'||step==='projets'||step==='agenda-emp')setStep('mode');
-    else if(step==='pin-admin'||step==='admin-team')setStep('mode');
+    else if(step==='admin-team'||step==='config-emp')setStep('mode');
     else setStep('emps');
   }
 
@@ -4397,7 +4411,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       isSubmittingRef.current=false;
       return;
     }
-    const data={...punchDataRef.current,job:selJob||'',jobColor:selJobColor||''};
+    const data={job:selJob||'',jobColor:selJobColor||'',...punchDataRef.current};
     try{
       if(type==='confirm'){
         const confirmedData={
@@ -4616,19 +4630,24 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
     </div>
   );
 
-  // ── PIN PADS ──
-  if(step==='pin')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch IN" onSubmit={pin=>handlePunch(pin,'in')} onCancel={goBack}/></div>);
-  if(step==='pin-out')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Punch OUT" onSubmit={pin=>handlePunch(pin,'out')} onCancel={goBack}/></div>);
-  if(step==='pin-confirm')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Confirmer la job" onSubmit={pin=>handlePunch(pin,'confirm')} onCancel={goBack}/></div>);
-  if(step==='pin-admin')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Dashboard équipe" onSubmit={pin=>{
-    if(String(selEmp.pin).trim()===String(pin).trim()){setStep('admin-team');}
-    else{notify('PIN incorrect','err');}
-  }} onCancel={goBack}/></div>);
+  // ── PIN — une seule fois, à la sélection du nom ──
+  if(step==='pin-entry')return(<div className="welcome"><TimeHeader/><PinPad empName={selEmp&&selEmp.nom} empCouleur={selEmp&&selEmp.couleur} empCode={selEmp&&selEmp.code} label="Entrer votre code" onSubmit={pin=>{
+    if(selEmp&&String(selEmp.pin).trim()===String(pin).trim()){setStep('mode');}
+    else{notify('Code incorrect','err');}
+  }} onCancel={()=>{setSelEmp(null);setStep('emps');}}/></div>);
+  if(step==='config-emp')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'0.75rem',width:'100%'}}>
+      <TimeHeader/>
+      <div style={{width:'100%'}}>
+        <ConfigScreen cfg={cfg} sid={sid} notify={notify} onRefresh={onRefresh} onClose={()=>setStep('mode')}/>
+      </div>
+    </div>
+  );
   if(step==='admin-team')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'0.75rem',width:'100%'}}>
       <TimeHeader/>
       <div style={{width:'100%'}}>
-        <AdminView sid={sid} calendarIds={calendarIds} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh} restricted={true}/>
+        <AdminView sid={sid} calendarIds={calendarIds} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh} allowedTabs={(selEmp.permissions||[]).filter(p=>p!=='config')}/>
       </div>
     </div>
   );
@@ -4639,7 +4658,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
       <TimeHeader/>
       <PunchInScreen emp={selEmp} allEmps={emps} selJob={selJob} selJobColor={selJobColor}
         selJobData={jobs.find(j=>j.title===selJob)||null}
-        onConfirm={d=>{punchDataRef.current=d;setStep('pin');}} onBack={goBack}/>
+        onConfirm={d=>{punchDataRef.current=d;handlePunch(selEmp.pin,'in');}} onBack={goBack}/>
     </div>
 
   // ── PUNCH OUT ──
@@ -4648,7 +4667,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <TimeHeader/>
       <PunchOutScreen emp={selEmp} allEmps={emps} pts={ptsForOut} sid={sid}
-        onConfirm={d=>{punchDataRef.current=d;setSelJob(d.job||'');setSelJobColor(d.jobColor||'');setStep('pin-out');}}
+        onConfirm={d=>{punchDataRef.current=d;setSelJob(d.job||'');setSelJobColor(d.jobColor||'');handlePunch(selEmp.pin,'out');}}
         onBack={goBack} notify={notify} folders={folders} calendarIds={calendarIds} calJobs={jobs}/>
     </div>
 
@@ -4661,7 +4680,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
         jobLocation={jobs.find(j=>j.title===selJob)?.location||''}
         jobDate={selJobDate}
         isOut={false}
-        onConfirm={d=>{punchDataRef.current=d;setStep('pin-confirm');}}
+        onConfirm={d=>{punchDataRef.current=d;handlePunch(selEmp.pin,'confirm');}}
         onBack={goBack} notify={notify} folders={folders} calendarIds={calendarIds}/>
     </div>
 
@@ -4811,10 +4830,16 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
           <div className="mode-icon">📅</div>
           <div><div className="mode-title">Agenda</div><div className="mode-desc">Voir les jobs, passer une commande</div></div>
         </div>
-        {selEmp.role==='gestionnaire'&&(
-          <div className="mode-btn" onClick={()=>setStep('pin-admin')}>
+        {selEmp.permissions&&selEmp.permissions.some(p=>p!=='config')&&(
+          <div className="mode-btn" onClick={()=>setStep('admin-team')}>
             <div className="mode-icon">📊</div>
             <div><div className="mode-title">Dashboard équipe</div><div className="mode-desc">Vue d'ensemble, projets, agenda de l'équipe</div></div>
+          </div>
+        )}
+        {selEmp.permissions&&selEmp.permissions.includes('config')&&(
+          <div className="mode-btn" onClick={()=>setStep('config-emp')}>
+            <div className="mode-icon">⚙</div>
+            <div><div className="mode-title">Configuration</div><div className="mode-desc">Employés, réglages techniques</div></div>
           </div>
         )}
       </div>
@@ -4848,7 +4873,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,folders
                   ptsRef.current=p;
                   setPtsForOut(p);
                   setSelEmp(emp);
-                  setStep('mode');
+                  setStep('pin-entry');
                 }}>
                 <div className="emp-av-lg" style={{background:emp.couleur}}>{emp.code}</div>
                 <div style={{fontSize:12,fontWeight:600}}>{emp.nom}</div>
@@ -4979,7 +5004,28 @@ function ConfigScreen({cfg,sid,notify,onRefresh,onClose}){
 
 // ── ADMIN VIEW ────────────────────────────────────────────────────────────────
 
+const ADMIN_PERM_OPTIONS=[
+  ['dashboard','📊 Dashboard','Aperçu du jour, présences, heures de l\'équipe'],
+  ['projets','📁 Projets','Jobs en cours de toute l\'équipe'],
+  ['historique','📋 Historique','Historique de pointage de tous les employés'],
+  ['jobs-stats','📍 Par job','Heures cumulées par job/chantier'],
+  ['agenda','📅 Agenda','Agenda complet, 14 prochains jours'],
+  ['ot-admin','🔧 OT','Ordres de travail & appels de service'],
+  ['appels','📋 Appels','Historique des appels de service'],
+  ['messages','💬 Messages','Notifications internes'],
+  ['banque','🏦 Banque','Approbation des heures en banque (sensible)'],
+  ['employes','👷 Employés','Ajouter/modifier/supprimer des employés, PIN (sensible)'],
+];
+
 function EmpForm({data,setData,onSave,onCancel,isEdit}){
+  function togglePerm(key){
+    setData(p=>{
+      const cur=p.permissions||[];
+      const next=cur.includes(key)?cur.filter(k=>k!==key):[...cur,key];
+      return{...p,permissions:next};
+    });
+  }
+  const perms=data.permissions||[];
   return(
     <div className="add-form" style={isEdit?{border:'1px solid var(--accent)'}:{}}>
       {isEdit&&<div style={{fontSize:11,color:'var(--accent)',marginBottom:'0.55rem',fontWeight:600}}>✏️ Modifier l'employé</div>}
@@ -5003,11 +5049,25 @@ function EmpForm({data,setData,onSave,onCancel,isEdit}){
         <span className="fl">Couleur</span>
         <div className="color-row">{EMP_COLORS.map(c=><div key={c} className="cswatch" style={{background:c,border:'2px solid '+(data.couleur===c?'#fff':'transparent')}} onClick={()=>setData(p=>({...p,couleur:c}))}/>)}</div>
       </div>
-      <div className="fg" style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.65rem',marginBottom:'0.55rem',display:'flex',alignItems:'center',gap:8,cursor:'pointer'}} onClick={()=>setData(p=>({...p,role:p.role==='gestionnaire'?'':'gestionnaire'}))}>
-        <input type="checkbox" checked={data.role==='gestionnaire'} onChange={()=>{}} style={{width:16,height:16,flexShrink:0,cursor:'pointer'}}/>
-        <div>
-          <div style={{fontSize:12,fontWeight:600}}>🗂️ Gestionnaire de projet</div>
-          <div style={{fontSize:10,color:'var(--muted)'}}>Accès à un dashboard admin restreint (équipe, projets, agenda) — pas aux données sensibles (PIN des autres, banque d'heures).</div>
+      <div style={{marginBottom:'0.55rem'}}>
+        <span className="fl">Permissions avancées (dashboard admin restreint)</span>
+        <div style={{display:'flex',flexDirection:'column',gap:4,marginTop:4}}>
+          {ADMIN_PERM_OPTIONS.map(([key,label,desc])=>(
+            <div key={key} style={{background:'var(--bg3)',borderRadius:8,padding:'0.4rem 0.6rem',display:'flex',alignItems:'center',gap:8,cursor:'pointer'}} onClick={()=>togglePerm(key)}>
+              <input type="checkbox" checked={perms.includes(key)} onChange={()=>{}} style={{width:15,height:15,flexShrink:0,cursor:'pointer'}}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:11,fontWeight:600}}>{label}</div>
+                <div style={{fontSize:9,color:'var(--muted)'}}>{desc}</div>
+              </div>
+            </div>
+          ))}
+          <div style={{background:'rgba(47,129,247,0.1)',border:'1px solid rgba(47,129,247,0.3)',borderRadius:8,padding:'0.4rem 0.6rem',display:'flex',alignItems:'center',gap:8,cursor:'pointer'}} onClick={()=>togglePerm('config')}>
+            <input type="checkbox" checked={perms.includes('config')} onChange={()=>{}} style={{width:15,height:15,flexShrink:0,cursor:'pointer'}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:11,fontWeight:600,color:'var(--accent)'}}>⚙ Configuration</div>
+              <div style={{fontSize:9,color:'var(--muted)'}}>Accès à l'écran Configuration (gestion des employés + réglages techniques en lecture seule)</div>
+            </div>
+          </div>
         </div>
       </div>
       <div style={{display:'flex',gap:'0.4rem'}}>
@@ -5023,7 +5083,7 @@ function EmployeesManager({sid,notify,onRefresh}){
   const [loadingEmps,setLoadingEmps]=useState(true);
   const [showAdd,setShowAdd]=useState(false);
   const [editEmp,setEditEmp]=useState(null);
-  const [newEmp,setNewEmp]=useState({nom:'',pin:'',code:'',couleur:EMP_COLORS[0],email:'',telephone:'',heuresBanque:0,role:''});
+  const [newEmp,setNewEmp]=useState({nom:'',pin:'',code:'',couleur:EMP_COLORS[0],email:'',telephone:'',heuresBanque:0,permissions:[]});
 
   useEffect(()=>{
     setLoadingEmps(true);
@@ -5041,7 +5101,7 @@ function EmployeesManager({sid,notify,onRefresh}){
       notify('⏳ Sauvegarde...','warn');
       await saveEmployee(sid,emp);
       const updated=await reloadEmps();
-      setNewEmp({nom:'',pin:'',code:'',couleur:EMP_COLORS[updated.length%EMP_COLORS.length],email:'',telephone:'',heuresBanque:0,role:''});
+      setNewEmp({nom:'',pin:'',code:'',couleur:EMP_COLORS[updated.length%EMP_COLORS.length],email:'',telephone:'',heuresBanque:0,permissions:[]});
       setShowAdd(false);notify('✅ '+emp.nom+' ajouté!','success');onRefresh();
     }catch(e){notify('Erreur: '+e.message,'err');}
   }
@@ -5076,9 +5136,10 @@ function EmployeesManager({sid,notify,onRefresh}){
           <div key={emp.nom} className="emp-row">
             <div className="emp-av" style={{background:emp.couleur}}>{emp.code}</div>
             <div style={{flex:1,marginLeft:'0.55rem'}}>
-              <div style={{fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:5}}>
+              <div style={{fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
                 {emp.nom}
-                {emp.role==='gestionnaire'&&<span style={{fontSize:9,background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:4,padding:'1px 5px',fontWeight:700}}>🗂️ Gestionnaire</span>}
+                {emp.permissions&&emp.permissions.some(p=>p!=='config')&&<span style={{fontSize:9,background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:4,padding:'1px 5px',fontWeight:700}}>🗂️ Gestionnaire ({emp.permissions.filter(p=>p!=='config').length})</span>}
+                {emp.permissions&&emp.permissions.includes('config')&&<span style={{fontSize:9,background:'rgba(210,153,34,0.15)',color:'var(--warning)',borderRadius:4,padding:'1px 5px',fontWeight:700}}>⚙ Configuration</span>}
               </div>
               <div style={{fontSize:10,color:'var(--muted)',fontFamily:'monospace'}}>
                 PIN: {emp.pin} · {emp.code}
@@ -5098,8 +5159,11 @@ function EmployeesManager({sid,notify,onRefresh}){
   );
 }
 
-function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,restricted}){
+function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   const [tab,setTab]=useState('dashboard');
+  useEffect(()=>{
+    if(allowedTabs&&!allowedTabs.includes(tab))setTab(allowedTabs[0]||'dashboard');
+  },[allowedTabs?allowedTabs.join(','):'']);
   const [emps,setEmps]=useState([]);
   const [pts,setPts]=useState([]);
   const [banque,setBanque]=useState([]);
@@ -5178,7 +5242,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,restricted}){
   return(
     <div>
       <div className="tabs">
-        {[['dashboard','📊 Dashboard'],['employes','👷 Employés'],['projets','📁 Projets'],['historique','📋 Historique'],['jobs-stats','📍 Par job'],['banque','🏦 Banque'],['messages','💬 Messages'],['agenda','📅 Agenda'],['ot-admin','🔧 OT'],['appels','📋 Appels']].filter(([k])=>!restricted||(k!=='employes'&&k!=='banque')).map(([k,l])=>(
+        {[['dashboard','📊 Dashboard'],['employes','👷 Employés'],['projets','📁 Projets'],['historique','📋 Historique'],['jobs-stats','📍 Par job'],['banque','🏦 Banque'],['messages','💬 Messages'],['agenda','📅 Agenda'],['ot-admin','🔧 OT'],['appels','📋 Appels']].filter(([k])=>!allowedTabs||allowedTabs.includes(k)).map(([k,l])=>(
           <div key={k} className={'tab'+(tab===k?' active':'')} onClick={()=>setTab(k)} style={{position:'relative'}}>
             {l}
             {k==='banque'&&pending.length>0&&<span className="nav-badge">{pending.length}</span>}
@@ -5237,7 +5301,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,restricted}){
         </div>
       )}
 
-      {tab==='employes'&&!restricted&&(
+      {tab==='employes'&&(!allowedTabs||allowedTabs.includes('employes'))&&(
         <EmployeesManager sid={sid} notify={notify} onRefresh={onRefresh}/>
       )}
 
@@ -5520,6 +5584,7 @@ function App(){
   const [refreshKey,setRefreshKey]=useState(0);
   const [showSidebar,setShowSidebar]=useState(false);
   const [navBack,setNavBack]=useState(null);
+  const [menuAction,setMenuAction]=useState(null);
   const [unreadCount,setUnreadCount]=useState(0);
   const notify=useMemo(()=>(msg,type='info')=>{setNotif({id:Date.now(),msg,type});},[]);
   function onRefresh(){setRefreshKey(k=>k+1);}
@@ -5657,12 +5722,12 @@ function App(){
     setCfg(config);setShowCfg(false);setAuthed(false);setLibsReady(false);tokenClient=null;loadLibs(config);
   }
   function handleSwitch(){
-    setAuthed(false);setUserEmail('');setIsBoss(false);setAuthLoading(true);
+    setAuthed(false);setUserEmail('');setIsBoss(false);setAuthLoading(true);setMenuAction(null);
     tokenClient.requestAccessToken({prompt:'select_account'});
   }
   function handleReset(){
     if(!confirm('Réinitialiser?'))return;
-    localStorage.removeItem('pp_cfg');setCfg(null);setAuthed(false);setShowCfg(true);setLibsReady(false);tokenClient=null;
+    localStorage.removeItem('pp_cfg');setCfg(null);setAuthed(false);setShowCfg(true);setLibsReady(false);tokenClient=null;setMenuAction(null);
   }
 
   return(
@@ -5736,6 +5801,11 @@ function App(){
               }
             </button>
           )}
+          {menuAction&&view==='punch'&&(
+            <button style={{background:'none',border:'1px solid var(--border)',borderRadius:8,padding:'0.3rem 0.7rem',color:'var(--text)',cursor:'pointer',fontSize:12,fontWeight:600,touchAction:'manipulation',display:'flex',alignItems:'center',gap:5,height:34,flexShrink:0}} onClick={menuAction}>
+              🏠 Menu
+            </button>
+          )}
           <button style={{background:'none',border:'1px solid var(--border)',borderRadius:8,padding:'0.3rem 0.6rem',color:'var(--text)',cursor:'pointer',fontSize:16,touchAction:'manipulation',display:'flex',alignItems:'center',justifyContent:'center',width:34,height:34,flexShrink:0}} onClick={()=>setShowSidebar(true)}>
             ☰
           </button>
@@ -5760,7 +5830,7 @@ function App(){
         </div>
       ):(
         <>
-          {view==='punch'&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} folders={foldersMemo} refreshKey={refreshKey}/>}
+          {view==='punch'&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} setMenuAction={setMenuAction} folders={foldersMemo} refreshKey={refreshKey} cfg={cfg}/>}
           {view==='admin'&&isBoss&&<div className="content"><AdminView sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh}/></div>}
         </>
       )}
