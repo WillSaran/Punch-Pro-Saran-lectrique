@@ -277,7 +277,16 @@ button{font-family:var(--font-body)}
 //   job Punch IN/Confirmer). Quand rien ne s'affiche pour un jour donné, un
 //   message explique maintenant si c'est parce que la/les job(s) de ce jour
 //   sont assignée(s) à toi seulement, ou à d'autres seulement.
-const APP_VERSION='v182';
+// v183 (2026-07-20): Correctif racine du bug "je ne vois pas les jobs de
+//   toute l'équipe" — les jobs Google Calendar n'étaient chargés qu'une seule
+//   fois au démarrage de l'app, jamais rafraîchis ensuite. Un job ajouté après
+//   coup (ex: le job du jour même) restait invisible tant qu'on ne rechargeait
+//   pas la page au complet. Ajout d'un rafraîchissement automatique (toutes les
+//   90s) + un rafraîchissement immédiat en entrant dans Punch IN, Confirmer une
+//   job, ou Mon dashboard. Aussi : retrait de "Les deux" dans le sélecteur de
+//   job Punch IN/Confirmer (même filtre binaire Mes jobs/Toute l'équipe que
+//   l'Agenda).
+const APP_VERSION='v183';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2441,7 +2450,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
   const [newJobDate,setNewJobDate]=useState(new Date().toISOString().split('T')[0]);
   const [newJobAddress,setNewJobAddress]=useState('');
   const [showAll,setShowAll]=useState(false); // false = aujourd'hui seulement
-  const [scope,setScope]=useState('both'); // 'mine' | 'team' | 'both'
+  const [scope,setScope]=useState('mine'); // 'mine' | 'team'
   const today=localDateStr();
 
   function matches(job){
@@ -2485,7 +2494,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
 
       {/* Filtre portée : mes jobs / toute l'équipe / les deux */}
       <div style={{display:'flex',gap:6,marginBottom:'0.6rem'}}>
-        {[['mine','👤 Mes jobs'],['both','👥 Les deux'],['team','🏗️ Toute l\'équipe']].map(([k,lbl])=>(
+        {[['mine','👤 Mes jobs'],['team','🏗️ Toute l\'équipe']].map(([k,lbl])=>(
           <button key={k} onClick={()=>setScope(k)} className="btn-s" style={{
             fontSize:10,padding:'0.3rem 0.55rem',flex:1,
             background:scope===k?'var(--accent)':'var(--bg3)',
@@ -4611,11 +4620,19 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   const liveEmp=selEmp?emps.find(e=>e.nom===selEmp.nom)||selEmp:null;
   const empStatut=liveEmp?liveEmp.statut:'out';
 
-  useEffect(()=>{
+  function refreshCalJobs(){
     if(calendarIds&&calendarIds.length){
       getCalendarJobs(calendarIds).then(setJobs);
       getAllCalendarJobs(calendarIds).then(setAllJobs);
     }
+  }
+  useEffect(()=>{
+    refreshCalJobs();
+    // Les jobs Google Calendar peuvent être ajoutés/modifiés à tout moment par
+    // n'importe qui — on rafraîchit donc automatiquement en plus du montage,
+    // pour ne jamais rester sur une liste de jobs périmée.
+    const t=setInterval(refreshCalJobs,90000);
+    return()=>clearInterval(t);
   },[calendarIds?calendarIds.join(','):'',refreshKey]);
 
   useEffect(()=>{
@@ -5026,7 +5043,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         <span className={'badge '+(empStatut==='in'?'badge-in':'badge-out')} style={{marginLeft:'auto'}}>{empStatut==='in'?'En cours':'Absent'}</span>
       </div>
       <div className="mode-wrap">
-        <div className="mode-btn" onClick={()=>setStep('mon-dashboard')}>
+        <div className="mode-btn" onClick={()=>{refreshCalJobs();setStep('mon-dashboard');}}>
           <div className="mode-icon">📈</div>
           <div><div className="mode-title">Mon dashboard</div><div className="mode-desc">Mes heures et mes projets</div></div>
         </div>
@@ -5046,13 +5063,13 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           </div>
         ):(
           <>
-            <div className="mode-btn" onClick={()=>{setMode('in');setStep('job');}}>
+            <div className="mode-btn" onClick={()=>{refreshCalJobs();setMode('in');setStep('job');}}>
               <div className="mode-icon">🟢</div>
               <div><div className="mode-title">Punch IN</div><div className="mode-desc">Choisir dans l'agenda</div></div>
             </div>
           </>
         )}
-        <div className="mode-btn" onClick={()=>{setMode('confirm');setStep('job');}}>
+        <div className="mode-btn" onClick={()=>{refreshCalJobs();setMode('confirm');setStep('job');}}>
           <div className="mode-icon">✅</div>
           <div><div className="mode-title">Confirmer une job</div><div className="mode-desc">Heures, dépl., coéquipiers, fichiers</div></div>
         </div>
