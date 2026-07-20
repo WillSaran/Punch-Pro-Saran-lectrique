@@ -246,7 +246,14 @@ button{font-family:var(--font-body)}
 //   punch-out (job + employé + le plus proche + garde-fou 24h). L'onglet OT
 //   affiche maintenant TOUS les documents joints (pas seulement AP_/OT_),
 //   avec le nom de l'employé et le titre du fichier.
-const APP_VERSION='v178';
+// v179 (2026-07-20): Sélecteur de job (Punch IN / Confirmer une job) — le mode
+//   "Tout l'agenda" affiche maintenant un vrai tableau (Date/Job/Heure/Lieu)
+//   au lieu d'une liste de cartes, et utilise la fenêtre large de l'agenda
+//   (-180/+90j) au lieu de la fenêtre étroite (-3/+14j), donc il montre
+//   vraiment tout. Ajout d'un filtre "Mes jobs / Toute l'équipe / Les deux"
+//   dans le sélecteur de job ET dans l'onglet Agenda (calendrier), pour
+//   voir seulement ses propres jobs, seulement celles de l'équipe, ou les deux.
+const APP_VERSION='v179';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2399,6 +2406,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
   const [newJobDate,setNewJobDate]=useState(new Date().toISOString().split('T')[0]);
   const [newJobAddress,setNewJobAddress]=useState('');
   const [showAll,setShowAll]=useState(false); // false = aujourd'hui seulement
+  const [scope,setScope]=useState('both'); // 'mine' | 'team' | 'both'
   const today=localDateStr();
 
   function matches(job){
@@ -2410,8 +2418,13 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
   // Filtrer: aujourd'hui par défaut, ou tout si showAll
   const todayJobs=jobs.filter(j=>j.start&&jobCouvreDate(j,today));
   const baseJobs=showAll?jobs:todayJobs;
+  const scopedJobs=baseJobs.filter(j=>{
+    if(scope==='mine')return matches(j);
+    if(scope==='team')return !matches(j);
+    return true;
+  });
 
-  const sorted=[...baseJobs].sort((a,b)=>{
+  const sorted=[...scopedJobs].sort((a,b)=>{
     const acm=colorMatch(a),bcm=colorMatch(b);
     const am=matches(a),bm=matches(b);
     if(acm&&!bcm)return -1; if(!acm&&bcm)return 1;
@@ -2435,6 +2448,18 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
           <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem'}} onClick={onSkip}>Sans job</button>
         </div>
       </div>
+
+      {/* Filtre portée : mes jobs / toute l'équipe / les deux */}
+      <div style={{display:'flex',gap:6,marginBottom:'0.6rem'}}>
+        {[['mine','👤 Mes jobs'],['both','👥 Les deux'],['team','🏗️ Toute l\'équipe']].map(([k,lbl])=>(
+          <button key={k} onClick={()=>setScope(k)} className="btn-s" style={{
+            fontSize:10,padding:'0.3rem 0.55rem',flex:1,
+            background:scope===k?'var(--accent)':'var(--bg3)',
+            color:scope===k?'#fff':'var(--text)',fontWeight:scope===k?700:500
+          }}>{lbl}</button>
+        ))}
+      </div>
+
       {showCreate&&(
         <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.65rem',border:'1px solid var(--border2)'}}>
           <div className="fg" style={{marginBottom:'0.4rem'}}><label>Nom du job</label><input placeholder="Ex: Chantier St-Laurent" value={newJobTitle} onChange={e=>setNewJobTitle(e.target.value)}/></div>
@@ -2452,30 +2477,72 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
           Aucune job aujourd'hui — <span style={{cursor:'pointer',textDecoration:'underline'}} onClick={()=>setShowAll(true)}>voir tout l'agenda</span>
         </div>
       )}
-      <div style={{overflowY:'auto',maxHeight:'calc(100vh - 280px)'}}>
-        {sorted.map(job=>{
-          const isToday=job.start&&localDateStr(new Date(job.start))===today;
-          const isMatch=matches(job);
-          const isCMatch=!isMatch&&colorMatch(job);
-          return(
-            <div key={job.id} className="job-btn"
-              style={{borderColor:isMatch?emp.couleur:'var(--border)',borderWidth:isMatch?2:1,borderLeftWidth:4,borderLeftColor:job.gcalColor,background:isMatch?rgba(emp.couleur,0.06):'var(--bg2)'}}
-              onClick={()=>onSelect(job.title,job.gcalColor)}>
-              <div className="job-color-bar" style={{background:job.gcalColor}}></div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
-                  {job.title}
-                  {isMatch&&<span style={{background:rgba(emp.couleur,0.25),color:emp.couleur,fontSize:9,padding:'1px 4px',borderRadius:4,fontWeight:700}}>{'👤'+emp.code}</span>}
-                  {isCMatch&&<span style={{background:rgba(job.gcalColor,0.2),color:job.gcalColor,fontSize:9,padding:'1px 4px',borderRadius:4}}>●</span>}
+
+      {showAll?(
+        <div style={{overflow:'auto',maxHeight:'calc(100vh - 320px)',border:'1px solid var(--border)',borderRadius:10}}>
+          <table className="htable" style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+            <thead>
+              <tr style={{position:'sticky',top:0,background:'var(--bg3)',zIndex:1}}>
+                <th style={{textAlign:'left',padding:'0.5rem 0.6rem',fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Date</th>
+                <th style={{textAlign:'left',padding:'0.5rem 0.6rem',fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Job</th>
+                <th style={{textAlign:'left',padding:'0.5rem 0.6rem',fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Heure</th>
+                <th style={{textAlign:'left',padding:'0.5rem 0.6rem',fontSize:10,color:'var(--muted)',textTransform:'uppercase'}}>Lieu</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map(job=>{
+                const isToday=job.start&&localDateStr(new Date(job.start))===today;
+                const isMatch=matches(job);
+                return(
+                  <tr key={job.id} onClick={()=>onSelect(job.title,job.gcalColor)}
+                    style={{cursor:'pointer',borderTop:'1px solid var(--border)',
+                      background:isMatch?rgba(emp.couleur,0.06):'transparent'}}>
+                    <td style={{padding:'0.5rem 0.6rem',whiteSpace:'nowrap'}}>
+                      {new Date(job.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}
+                      {isToday&&<span style={{marginLeft:5,background:'rgba(63,185,80,0.15)',color:'var(--success)',fontSize:9,padding:'1px 5px',borderRadius:5,fontWeight:700}}>Auj.</span>}
+                    </td>
+                    <td style={{padding:'0.5rem 0.6rem'}}>
+                      <span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:job.gcalColor,marginRight:6}}></span>
+                      {job.title}
+                      {isMatch&&<span style={{marginLeft:5,background:rgba(emp.couleur,0.25),color:emp.couleur,fontSize:9,padding:'1px 4px',borderRadius:4,fontWeight:700}}>{'👤'+emp.code}</span>}
+                    </td>
+                    <td style={{padding:'0.5rem 0.6rem',whiteSpace:'nowrap',color:'var(--muted)'}}>
+                      {new Date(job.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+                    </td>
+                    <td style={{padding:'0.5rem 0.6rem',color:'var(--muted)'}}>{job.location||'—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {sorted.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>Aucun job dans l'agenda</div>}
+        </div>
+      ):(
+        <div style={{overflowY:'auto',maxHeight:'calc(100vh - 320px)'}}>
+          {sorted.map(job=>{
+            const isToday=job.start&&localDateStr(new Date(job.start))===today;
+            const isMatch=matches(job);
+            const isCMatch=!isMatch&&colorMatch(job);
+            return(
+              <div key={job.id} className="job-btn"
+                style={{borderColor:isMatch?emp.couleur:'var(--border)',borderWidth:isMatch?2:1,borderLeftWidth:4,borderLeftColor:job.gcalColor,background:isMatch?rgba(emp.couleur,0.06):'var(--bg2)'}}
+                onClick={()=>onSelect(job.title,job.gcalColor)}>
+                <div className="job-color-bar" style={{background:job.gcalColor}}></div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                    {job.title}
+                    {isMatch&&<span style={{background:rgba(emp.couleur,0.25),color:emp.couleur,fontSize:9,padding:'1px 4px',borderRadius:4,fontWeight:700}}>{'👤'+emp.code}</span>}
+                    {isCMatch&&<span style={{background:rgba(job.gcalColor,0.2),color:job.gcalColor,fontSize:9,padding:'1px 4px',borderRadius:4}}>●</span>}
+                  </div>
+                  <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>{new Date(job.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}{job.location?' · '+job.location:''}</div>
                 </div>
-                <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>{new Date(job.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}{job.location?' · '+job.location:''}</div>
+                {isToday&&<span style={{background:'rgba(63,185,80,0.15)',color:'var(--success)',fontSize:9,padding:'1px 5px',borderRadius:5,fontWeight:700,flexShrink:0}}>Auj.</span>}
               </div>
-              {isToday&&<span style={{background:'rgba(63,185,80,0.15)',color:'var(--success)',fontSize:9,padding:'1px 5px',borderRadius:5,fontWeight:700,flexShrink:0}}>Auj.</span>}
-            </div>
-          );
-        })}
-        {sorted.length===0&&showAll&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>Aucun job dans l'agenda</div>}
-      </div>
+            );
+          })}
+          {sorted.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>Aucune job aujourd'hui</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -3484,6 +3551,7 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
   const [commandeJob,setCommandeJob]=useState(null);
   const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
   const [selDate,setSelDate]=useState(localDateStr());
+  const [scope,setScope]=useState('both'); // 'mine' | 'team' | 'both'
   const today=localDateStr();
 
   // Vérifier si une job est assignée à l'employé connecté (même logique que AdminView.getAssignees)
@@ -3547,6 +3615,8 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
   );
 
   const selInfo=parDate[selDate]||{mine:[],other:[]};
+  const visMine=scope!=='team'?selInfo.mine:[];
+  const visOther=scope!=='mine'?selInfo.other:[];
   const selDateObj=new Date(selDate+'T12:00:00');
 
   return(
@@ -3566,6 +3636,17 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
         <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={nextMonth}>▶</button>
       </div>
 
+      {/* Filtre portée : mes jobs / toute l'équipe / les deux */}
+      <div style={{display:'flex',gap:6,marginBottom:'0.65rem'}}>
+        {[['mine','👤 Mes jobs'],['both','👥 Les deux'],['team','🏗️ Toute l\'équipe']].map(([k,lbl])=>(
+          <button key={k} onClick={()=>setScope(k)} className="btn-s" style={{
+            fontSize:10,padding:'0.3rem 0.55rem',flex:1,
+            background:scope===k?'var(--accent)':'var(--bg3)',
+            color:scope===k?'#fff':'var(--text)',fontWeight:scope===k?700:500
+          }}>{lbl}</button>
+        ))}
+      </div>
+
       {/* Grille calendrier */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:'0.85rem'}}>
         {joursFr.map(j=>(
@@ -3575,8 +3656,8 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
           if(!d)return <div key={i}/>;
           const dStr=localDateStr(d);
           const info=parDate[dStr];
-          const hasMine=info&&info.mine.length>0;
-          const hasOther=info&&info.other.length>0;
+          const hasMine=scope!=='team'&&info&&info.mine.length>0;
+          const hasOther=scope!=='mine'&&info&&info.other.length>0;
           const isToday=dStr===today;
           const isSelected=dStr===selDate;
           return(
@@ -3605,11 +3686,11 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
           {selDate===today?"Aujourd'hui — ":''}{selDateObj.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}
         </div>
 
-        {selInfo.mine.length===0&&selInfo.other.length===0?(
+        {visMine.length===0&&visOther.length===0?(
           <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>Aucun événement ce jour-là.</div>
         ):(
           <>
-            {selInfo.mine.map((j,i)=>(
+            {visMine.map((j,i)=>(
               <div key={'mine'+i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.55rem 0.7rem',
                 marginBottom:'0.35rem',borderLeft:'3px solid '+(emp?.couleur||j.gcalColor||'var(--accent)'),
                 display:'flex',alignItems:'flex-start',gap:8}}>
@@ -3635,13 +3716,13 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
               </div>
             ))}
 
-            {selInfo.other.length>0&&(
+            {visOther.length>0&&(
               <>
                 <div style={{display:'flex',alignItems:'center',gap:8,margin:'0.5rem 0 0.3rem',paddingLeft:2}}>
                   <div style={{fontSize:9,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Autres équipes</div>
                   <div style={{flex:1,height:1,background:'var(--border)'}}></div>
                 </div>
-                {selInfo.other.map((j,i)=>(
+                {visOther.map((j,i)=>(
                   <div key={'other'+i} style={{background:'var(--bg2)',borderRadius:9,padding:'0.5rem 0.65rem',
                     marginBottom:'0.35rem',borderLeft:'3px solid '+(j.gcalColor||'var(--muted)'),opacity:0.85,
                     display:'flex',alignItems:'flex-start',gap:8}}>
@@ -4828,7 +4909,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   if(step==='job')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <TimeHeader/>
-      <JobSelector jobs={jobs} emp={selEmp}
+      <JobSelector jobs={allJobs.length>0?allJobs:jobs} emp={selEmp}
         onSelect={(t,c)=>{setSelJob(t);setSelJobColor(c);
           const jobObj=jobs.find(j=>j.title===t)||null;
           const todayStr=localDateStr();
