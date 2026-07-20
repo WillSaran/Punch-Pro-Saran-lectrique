@@ -299,7 +299,19 @@ button{font-family:var(--font-body)}
 //   une liste vide et ÉCRASER les jobs déjà chargés (d'où "les jobs
 //   d'aujourd'hui/de la semaine ont disparu"). On ne remplace plus jamais une
 //   liste de jobs non vide par une liste vide.
-const APP_VERSION='v185';
+// v186 (2026-07-20): Deux correctifs importants.
+//   1) "Tout l'agenda" dans Punch IN/Confirmer une job est maintenant un vrai
+//   calendrier mensuel cliquable (comme l'onglet Agenda), au lieu d'une liste
+//   de cartes ou d'un tableau.
+//   2) Bug racine trouvé pour "OT et AP semblent liés, impossible de les
+//   différencier" : au moment de confirmer une job ou de puncher out, le nom
+//   du fichier (donc le préfixe OT_/AP_) était retiré (fichiersURL.map(r=>
+//   r.split('|')[0])) AVANT la sauvegarde dans le Sheet. Une fois rechargé,
+//   il ne restait qu'une URL brute, impossible à distinguer par type — donc
+//   l'onglet OT strictement filtré (v184) ne trouvait plus rien, et l'ancien
+//   onglet non filtré montrait "les deux" sans distinction possible. Corrigé
+//   en gardant le format "url|nomFichier" intact jusqu'à la sauvegarde.
+const APP_VERSION='v186';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1435,7 +1447,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
   const coeqs=origPuncher&&!baseCoeqs.includes(origPuncher)?[...baseCoeqs,origPuncher]:baseCoeqs;
   const coeqEmps=(allEmps||[]).filter(e=>coeqs.includes(e.nom));
 
-  function confirm(){onConfirm({customTime:timeOut,job:selJobData?selJobData.job:'',jobColor:selJobData?selJobData.jobColor:'',heures:totalH,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers:coeqs,coeqHeures:Object.fromEntries(coeqEmps.map(e=>[e.nom,coeqHeures[e.nom]!==undefined?coeqHeures[e.nom]:totalH]))});}
+  function confirm(){onConfirm({customTime:timeOut,job:selJobData?selJobData.job:'',jobColor:selJobData?selJobData.jobColor:'',heures:totalH,deplacement,note,fichiersURL,coequipiers:coeqs,coeqHeures:Object.fromEntries(coeqEmps.map(e=>[e.nom,coeqHeures[e.nom]!==undefined?coeqHeures[e.nom]:totalH]))});}
 
   if(!selJobData)return(
     <div style={{maxWidth:420,width:'100%',textAlign:'left'}}>
@@ -1603,7 +1615,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
 
   function confirm(){
     const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));
-    onConfirm({heures:totalH,heureDebut,heureFin,jobDate:dateTravail,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch});
+    onConfirm({heures:totalH,heureDebut,heureFin,jobDate:dateTravail,deplacement,note,fichiersURL,coequipiers,coeqHeures:ch});
   }
   const coeqEmps=teammates.filter(t=>coequipiers.includes(t.nom));
 
@@ -1666,7 +1678,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
           </div>
         )}
       </div>
-      <button className="btn-p" style={{marginTop:'0.4rem'}} onClick={()=>{const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,heureDebut,heureFin,jobDate:dateTravail,deplacement,note,fichiersURL:fichiersURL.map(r=>r.split('|')[0]),coequipiers,coeqHeures:ch,heuresBanquePrises});}}>✓ Confirmer la job</button>
+      <button className="btn-p" style={{marginTop:'0.4rem'}} onClick={()=>{const ch=Object.fromEntries(coequipiers.map(n=>[n,coeqHeures[n]!==undefined?coeqHeures[n]:totalH]));onConfirm({heures:totalH,heureDebut,heureFin,jobDate:dateTravail,deplacement,note,fichiersURL,coequipiers,coeqHeures:ch,heuresBanquePrises});}}>✓ Confirmer la job</button>
     </div>
   );
 }
@@ -2472,6 +2484,8 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
   const [newJobAddress,setNewJobAddress]=useState('');
   const [showAll,setShowAll]=useState(false); // false = aujourd'hui seulement
   const [scope,setScope]=useState('mine'); // 'mine' | 'team'
+  const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
+  const [selDate,setSelDate]=useState(localDateStr());
   const today=localDateStr();
 
   function matches(job){
@@ -2495,6 +2509,48 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
     if(am&&!bm)return -1; if(!am&&bm)return 1;
     return new Date(a.start)-new Date(b.start);
   });
+
+  // Indexer scopedJobs sur chaque jour couvert — pour la vue calendrier de "Tout l'agenda"
+  const parDate=useMemo(()=>{
+    const map={};
+    scopedJobs.forEach(j=>{
+      if(!j.start)return;
+      const startStr=localDateStr(new Date(j.start));
+      let endStr=startStr;
+      if(j.end){
+        const isAllDay=!String(j.start).includes('T');
+        let endD=new Date(j.end);
+        if(isAllDay)endD=new Date(endD.getTime()-1);
+        endStr=localDateStr(endD);
+      }
+      let cur=new Date(startStr+'T12:00:00');
+      const endD2=new Date(endStr+'T12:00:00');
+      let guard=0;
+      while(cur<=endD2&&guard<120){
+        const dStr=localDateStr(cur);
+        if(!map[dStr])map[dStr]=[];
+        map[dStr].push(j);
+        cur=new Date(cur.getTime()+86400000);
+        guard++;
+      }
+    });
+    return map;
+  },[scopedJobs]);
+
+  const joursFr=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const moisFrLong=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const cYear=viewMonth.getFullYear(),cMonth=viewMonth.getMonth();
+  const firstOfMonth=new Date(cYear,cMonth,1);
+  const firstWeekday=firstOfMonth.getDay();
+  const daysInMonth=new Date(cYear,cMonth+1,0).getDate();
+  const monthCells=[];
+  for(let i=0;i<firstWeekday;i++)monthCells.push(null);
+  for(let d=1;d<=daysInMonth;d++)monthCells.push(new Date(cYear,cMonth,d));
+  while(monthCells.length%7!==0)monthCells.push(null);
+  function prevMonth(){const d=new Date(viewMonth);d.setMonth(d.getMonth()-1);setViewMonth(d);}
+  function nextMonth(){const d=new Date(viewMonth);d.setMonth(d.getMonth()+1);setViewMonth(d);}
+  function goTodayCal(){const d=new Date();d.setDate(1);d.setHours(0,0,0,0);setViewMonth(d);setSelDate(today);}
+  const selDayJobs=(parDate[selDate]||[]).slice().sort((a,b)=>new Date(a.start)-new Date(b.start));
 
   return(
     <div className="job-wrap">
@@ -2542,30 +2598,101 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
         </div>
       )}
 
-      <div style={{overflowY:'auto',maxHeight:'calc(100vh - 280px)'}}>
-        {sorted.map(job=>{
-          const isToday=job.start&&localDateStr(new Date(job.start))===today;
-          const isMatch=matches(job);
-          const isCMatch=!isMatch&&colorMatch(job);
-          return(
-            <div key={job.id} className="job-btn"
-              style={{borderColor:isMatch?emp.couleur:'var(--border)',borderWidth:isMatch?2:1,borderLeftWidth:4,borderLeftColor:job.gcalColor,background:isMatch?rgba(emp.couleur,0.06):'var(--bg2)'}}
-              onClick={()=>onSelect(job.title,job.gcalColor)}>
-              <div className="job-color-bar" style={{background:job.gcalColor}}></div>
-              <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
-                  {job.title}
-                  {isMatch&&<span style={{background:rgba(emp.couleur,0.25),color:emp.couleur,fontSize:9,padding:'1px 4px',borderRadius:4,fontWeight:700}}>{'👤'+emp.code}</span>}
-                  {isCMatch&&<span style={{background:rgba(job.gcalColor,0.2),color:job.gcalColor,fontSize:9,padding:'1px 4px',borderRadius:4}}>●</span>}
-                </div>
-                <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>{new Date(job.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}{job.location?' · '+job.location:''}</div>
-              </div>
-              {isToday&&<span style={{background:'rgba(63,185,80,0.15)',color:'var(--success)',fontSize:9,padding:'1px 5px',borderRadius:5,fontWeight:700,flexShrink:0}}>Auj.</span>}
+      {showAll?(
+        <div>
+          {/* Navigation mois */}
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.6rem'}}>
+            <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={prevMonth}>◀</button>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,textTransform:'capitalize'}}>{moisFrLong[cMonth]} {cYear}</div>
+              <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem'}} onClick={goTodayCal}>Aujourd'hui</button>
             </div>
-          );
-        })}
-        {sorted.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>{showAll?"Aucun job dans l'agenda":"Aucune job aujourd'hui"}</div>}
-      </div>
+            <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={nextMonth}>▶</button>
+          </div>
+
+          {/* Grille calendrier */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:'0.85rem'}}>
+            {joursFr.map(j=>(
+              <div key={j} style={{textAlign:'center',fontSize:9,color:'var(--muted)',fontWeight:700,textTransform:'uppercase',paddingBottom:2}}>{j}</div>
+            ))}
+            {monthCells.map((d,i)=>{
+              if(!d)return <div key={i}/>;
+              const dStr=localDateStr(d);
+              const dayJobs=parDate[dStr]||[];
+              const isToday=dStr===today;
+              const isSelected=dStr===selDate;
+              return(
+                <div key={i} onClick={()=>setSelDate(dStr)} style={{
+                  aspectRatio:'1',borderRadius:8,cursor:'pointer',touchAction:'manipulation',
+                  display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,
+                  background:isSelected?'var(--accent)':isToday?'rgba(47,129,247,0.15)':'var(--bg3)',
+                  border:isToday&&!isSelected?'1px solid var(--accent)':'1px solid transparent',
+                  transition:'background 0.15s'
+                }}>
+                  <div style={{fontSize:12,fontWeight:isToday||isSelected?800:500,color:isSelected?'#fff':'var(--text)'}}>{d.getDate()}</div>
+                  {dayJobs.length>0&&<span style={{width:5,height:5,borderRadius:'50%',background:isSelected?'#fff':(emp?.couleur||'var(--accent)')}}/>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Détail du jour sélectionné */}
+          <div style={{borderTop:'1px solid var(--border)',paddingTop:'0.65rem'}}>
+            <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:12,marginBottom:'0.5rem',textTransform:'capitalize',color:selDate===today?'var(--accent)':'var(--text)'}}>
+              {selDate===today?"Aujourd'hui — ":''}{new Date(selDate+'T12:00:00').toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}
+            </div>
+            {selDayJobs.length===0?(
+              <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>Aucun job ce jour-là.</div>
+            ):(
+              selDayJobs.map(job=>{
+                const isMatch=matches(job);
+                return(
+                  <div key={job.id} className="job-btn"
+                    style={{borderColor:isMatch?emp.couleur:'var(--border)',borderWidth:isMatch?2:1,borderLeftWidth:4,borderLeftColor:job.gcalColor,background:isMatch?rgba(emp.couleur,0.06):'var(--bg2)'}}
+                    onClick={()=>onSelect(job.title,job.gcalColor)}>
+                    <div className="job-color-bar" style={{background:job.gcalColor}}></div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                        {job.title}
+                        {isMatch&&<span style={{background:rgba(emp.couleur,0.25),color:emp.couleur,fontSize:9,padding:'1px 4px',borderRadius:4,fontWeight:700}}>{'👤'+emp.code}</span>}
+                      </div>
+                      <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>
+                        {new Date(job.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+                        {job.location?' · '+job.location:''}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ):(
+        <div style={{overflowY:'auto',maxHeight:'calc(100vh - 280px)'}}>
+          {sorted.map(job=>{
+            const isToday=job.start&&localDateStr(new Date(job.start))===today;
+            const isMatch=matches(job);
+            const isCMatch=!isMatch&&colorMatch(job);
+            return(
+              <div key={job.id} className="job-btn"
+                style={{borderColor:isMatch?emp.couleur:'var(--border)',borderWidth:isMatch?2:1,borderLeftWidth:4,borderLeftColor:job.gcalColor,background:isMatch?rgba(emp.couleur,0.06):'var(--bg2)'}}
+                onClick={()=>onSelect(job.title,job.gcalColor)}>
+                <div className="job-color-bar" style={{background:job.gcalColor}}></div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
+                    {job.title}
+                    {isMatch&&<span style={{background:rgba(emp.couleur,0.25),color:emp.couleur,fontSize:9,padding:'1px 4px',borderRadius:4,fontWeight:700}}>{'👤'+emp.code}</span>}
+                    {isCMatch&&<span style={{background:rgba(job.gcalColor,0.2),color:job.gcalColor,fontSize:9,padding:'1px 4px',borderRadius:4}}>●</span>}
+                  </div>
+                  <div style={{fontSize:11,color:'var(--muted)',marginTop:1}}>{new Date(job.start).toLocaleDateString('fr-CA',{weekday:'short',month:'short',day:'numeric'})}{job.location?' · '+job.location:''}</div>
+                </div>
+                {isToday&&<span style={{background:'rgba(63,185,80,0.15)',color:'var(--success)',fontSize:9,padding:'1px 5px',borderRadius:5,fontWeight:700,flexShrink:0}}>Auj.</span>}
+              </div>
+            );
+          })}
+          {sorted.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>Aucune job aujourd'hui</div>}
+        </div>
+      )}
     </div>
   );
 }
@@ -5627,7 +5754,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
                       <td><div style={{display:'flex',alignItems:'center',gap:4}}>{l.jobColor&&<div style={{width:7,height:7,borderRadius:'50%',background:l.jobColor,flexShrink:0}}></div>}<span style={{fontSize:11,maxWidth:80,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.job||'—'}</span></div></td>
                       <td style={{fontSize:11}}>{l.deplacement>0?'🚗'+l.deplacement+'m':'—'}</td>
                       <td style={{fontSize:11,maxWidth:70,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.coequipiers&&l.coequipiers.length>0?l.coequipiers.join(', '):'—'}</td>
-                      <td>{l.fichiersURL&&l.fichiersURL.length>0?l.fichiersURL.map((u,fi)=><a key={fi} href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:3}}>📎</a>):'—'}</td>
+                      <td>{l.fichiersURL&&l.fichiersURL.length>0?l.fichiersURL.map((u,fi)=><a key={fi} href={u.split('|')[0]} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:3}}>📎</a>):'—'}</td>
                     </tr>
                                           );
                 })}
@@ -5666,7 +5793,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
                         <td><strong>{hToQuart(j.heures)}</strong></td>
                         <td>{j.deplacement>0?'🚗 '+j.deplacement+'m':'—'}</td>
                         <td>{j.count}</td>
-                        <td>{j.fichiers.length>0?j.fichiers.map((u,fi)=><a key={fi} href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:4}}>📎</a>):'—'}</td>
+                        <td>{j.fichiers.length>0?j.fichiers.map((u,fi)=><a key={fi} href={u.split('|')[0]} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:4}}>📎</a>):'—'}</td>
                         <td style={{color:'var(--muted)',fontSize:11}}>{j.lastDate?new Date(j.lastDate).toLocaleDateString('fr-CA'):'—'}</td>
                       </tr>
                     ))}
