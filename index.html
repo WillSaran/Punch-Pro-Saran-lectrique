@@ -227,7 +227,13 @@ button{font-family:var(--font-body)}
 //   (remplace le rôle unique "gestionnaire" par des cases à cocher par section
 //   admin + accès Configuration indépendant, accordable par l'admin), bouton
 //   "Menu" toujours visible pour revenir au menu principal en un clic.
-const APP_VERSION='v175';
+// v176 (2026-07-20): Admin/Configuration retirés du sidebar (accès uniquement
+//   via le nom d'employé + permissions, William inclus — garder un accès de
+//   secours caché via ?admin=1 pour le compte Google maître seulement),
+//   correctif du décalage entre "Projets" admin et employé (même fenêtre de
+//   180j passés/90j futurs des deux côtés), Agenda employé en vrai tableau par
+//   date/job/heure/lieu, bouton Sauvegarder explicite dans Stock Camions.
+const APP_VERSION='v176';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -3485,6 +3491,14 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
   const joursFr=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   const moisFr=['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
 
+  // Aplatir en une seule liste triée chronologiquement — style tableau, une ligne par job
+  const toutesLignes=[];
+  Object.entries(parDate).forEach(([dateStr,{mine,other}])=>{
+    mine.forEach(j=>toutesLignes.push({dateStr,job:j,mine:true}));
+    other.forEach(j=>toutesLignes.push({dateStr,job:j,mine:false}));
+  });
+  toutesLignes.sort((a,b)=>new Date(a.job.start)-new Date(b.job.start));
+
   if(commandeJob)return(
     <div style={{width:'100%'}}>
       <CommandeRapide
@@ -3495,87 +3509,69 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
   );
 
   return(
-    <div style={{width:'100%',maxWidth:560}}>
+    <div style={{width:'100%',maxWidth:680}}>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.75rem'}}>
         <button className="btn-s" style={{fontSize:11,padding:'0.25rem 0.6rem'}} onClick={onBack}>← Retour</button>
         <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>📅 Agenda — {emp?.nom}</div>
       </div>
 
-      {Object.entries(parDate).length===0&&(
+      {toutesLignes.length===0?(
         <div style={{color:'var(--muted)',textAlign:'center',padding:'2rem',fontSize:13}}>Aucun événement à venir.</div>
-      )}
-
-      {Object.entries(parDate).map(([dateStr,{mine,other}])=>{
-        const d=new Date(dateStr+'T12:00:00');
-        const isToday=dateStr===today;
-        const isTomorrow=dateStr===localDateStr(new Date(Date.now()+86400000));
-
-        return(
-          <div key={dateStr} style={{marginBottom:'0.75rem'}}>
-            {/* En-tête de date */}
-            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.3rem',paddingLeft:2}}>
-              <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:12,color:'var(--accent)'}}>
-                {isToday?"Aujourd'hui":isTomorrow?'Demain':joursFr[d.getDay()]+' '+d.getDate()+' '+moisFr[d.getMonth()]}
-              </div>
-              <div style={{flex:1,height:1,background:'var(--border)'}}></div>
-            </div>
-
-            {/* Mes jobs */}
-            {mine.map((j,i)=>(
-              <div key={'mine'+i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.55rem 0.7rem',
-                marginBottom:'0.35rem',borderLeft:'3px solid '+(emp?.couleur||j.gcalColor||'var(--accent)'),
-                display:'flex',alignItems:'flex-start',gap:8}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    {emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
-                    <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
-                  </div>
-                  {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>📍 {j.location}</div>}
-                  <div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>
-                    🕐 {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                    {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                  </div>
-                  {j.description&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontStyle:'italic',
-                    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.description}</div>}
-                </div>
-                <button onClick={()=>setCommandeJob(j)}
-                  style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
-                    color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
-                    cursor:'pointer',touchAction:'manipulation',marginTop:2,whiteSpace:'nowrap'}}>
-                  📦 Commander
-                </button>
-              </div>
-            ))}
-
-            {/* Jobs des autres équipes */}
-            {other.length>0&&(
-              <>
-                <div style={{display:'flex',alignItems:'center',gap:8,margin:'0.5rem 0 0.3rem',paddingLeft:2}}>
-                  <div style={{fontSize:9,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Autres équipes</div>
-                  <div style={{flex:1,height:1,background:'var(--border)'}}></div>
-                </div>
-                {other.map((j,i)=>(
-                  <div key={'other'+i} style={{background:'var(--bg2)',borderRadius:9,padding:'0.5rem 0.65rem',
-                    marginBottom:'0.35rem',borderLeft:'3px solid '+(j.gcalColor||'var(--muted)'),opacity:0.85,
-                    display:'flex',alignItems:'flex-start',gap:8}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
-                      {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>📍 {j.location}</div>}
-                      <div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>
-                        🕐 {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                        {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+      ):(
+        <div style={{overflowX:'auto',border:'1px solid var(--border)',borderRadius:10}}>
+          <table className="htable" style={{minWidth:520}}>
+            <thead>
+              <tr><th>Date</th><th>Job</th><th>Heure</th><th>Lieu</th><th></th></tr>
+            </thead>
+            <tbody>
+              {toutesLignes.map((l,i)=>{
+                const d=new Date(l.dateStr+'T12:00:00');
+                const isToday=l.dateStr===today;
+                const isTomorrow=l.dateStr===localDateStr(new Date(Date.now()+86400000));
+                const dateLabel=isToday?"Aujourd'hui":isTomorrow?'Demain':joursFr[d.getDay()]+' '+d.getDate()+' '+moisFr[d.getMonth()];
+                const prevDateStr=i>0?toutesLignes[i-1].dateStr:null;
+                const isNewDateGroup=l.dateStr!==prevDateStr;
+                return(
+                  <tr key={i} style={{
+                    background:l.mine?'rgba(47,129,247,0.06)':'transparent',
+                    borderTop:isNewDateGroup?'2px solid var(--border)':'1px solid var(--border)',
+                    opacity:l.mine?1:0.75
+                  }}>
+                    <td style={{whiteSpace:'nowrap',fontWeight:isNewDateGroup?700:400,color:isToday?'var(--accent)':'var(--text)'}}>
+                      {isNewDateGroup?dateLabel:''}
+                    </td>
+                    <td>
+                      <div style={{display:'flex',alignItems:'center',gap:6}}>
+                        {l.mine&&emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
+                        <span style={{fontWeight:l.mine?600:400}}>{l.job.title}</span>
+                        {!l.mine&&<span style={{fontSize:9,color:'var(--muted)'}}>(autre équipe)</span>}
                       </div>
-                    </div>
-                  </div>
-                ))}
-              </>
-            )}
-          </div>
-        );
-      })}
+                      {l.job.description&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontStyle:'italic',maxWidth:220,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.job.description}</div>}
+                    </td>
+                    <td style={{whiteSpace:'nowrap',fontSize:11}}>
+                      {new Date(l.job.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+                      {l.job.end&&' → '+new Date(l.job.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+                    </td>
+                    <td style={{fontSize:11,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.job.location||'—'}</td>
+                    <td>
+                      {l.mine&&(
+                        <button onClick={()=>setCommandeJob(l.job)}
+                          style={{background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',color:'#f57c00',borderRadius:8,padding:'0.25rem 0.5rem',fontSize:10,fontWeight:600,cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+                          📦 Commander
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
+
 
 // ── COMMANDE RAPIDE ──────────────────────────────────────────────────────────
 // ── CONVERTISSEUR PIEDS ↔ MÈTRES ───────────────────────────────────────────────
@@ -3668,6 +3664,18 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
     },800);
   }
 
+  // Sauvegarde manuelle immédiate (n'attend pas le délai de 800ms de l'autosave)
+  async function saveNow(){
+    if(saveTimer.current)clearTimeout(saveTimer.current);
+    setSaveStatus('saving');
+    try{
+      await setStockCamion(camionId,texte);
+      setSaveStatus('saved');
+      notify('✅ Liste '+camionNom+' sauvegardée','success');
+      setTimeout(()=>setSaveStatus(''),1500);
+    }catch(e){setSaveStatus('');notify('Erreur sauvegarde: '+e.message,'err');}
+  }
+
   // Catalogue groupé par catégorie (même source que Appel de service)
   const catalogueParCategorie=Object.entries(CATALOGUE).map(([cat,items])=>({
     cat,
@@ -3758,8 +3766,9 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
       )}
 
       {!showAddItem?(
-        <div style={{display:'flex',gap:6,marginTop:'0.5rem'}}>
+        <div style={{display:'flex',gap:6,marginTop:'0.5rem',flexWrap:'wrap'}}>
           <button className="btn-s" style={{flex:1,fontSize:11}} onClick={()=>setShowAddItem(true)}>➕ Ajouter un item</button>
+          <button className="btn-s" style={{flex:1,fontSize:11}} disabled={saveStatus==='saving'} onClick={saveNow}>💾 Sauvegarder</button>
           <button className="btn-p" style={{marginTop:0,flex:1,fontSize:11}} disabled={sending||!texte.trim()} onClick={envoyerCommande}>
             {sending?'⏳':'📧'} Envoyer ma commande
           </button>
@@ -5168,6 +5177,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   const [pts,setPts]=useState([]);
   const [banque,setBanque]=useState([]);
   const [jobs,setJobs]=useState([]);
+  const [allJobs,setAllJobs]=useState([]); // fenêtre large (-180/+90j), pour le regroupement par Projets
   const [msgs,setMsgs]=useState([]);
   const [loading,setLoading]=useState(true);
   const [selEmp,setSelEmp]=useState('');
@@ -5181,8 +5191,8 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
 
   useEffect(()=>{
     setLoading(true);
-    Promise.all([getEmployees(sid),getPointages(sid,{}),getHeuresBanque(sid),getCalendarJobs(calendarIds),getMessages(sid)])
-      .then(([e,p,b,j,m])=>{setEmps(e);setPts(p);setBanque(b);setJobs(j);setMsgs(m);setLoading(false);});
+    Promise.all([getEmployees(sid),getPointages(sid,{}),getHeuresBanque(sid),getCalendarJobs(calendarIds),getAllCalendarJobs(calendarIds),getMessages(sid)])
+      .then(([e,p,b,j,aj,m])=>{setEmps(e);setPts(p);setBanque(b);setJobs(j);setAllJobs(aj);setMsgs(m);setLoading(false);});
   },[refreshKey]);
 
   const pending=banque.filter(b=>b.statut==='pending');
@@ -5307,7 +5317,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
 
       {tab==='projets'&&(
         <div className="card">
-          <ProjectsView sid={sid} pts={pts} emps={emps} calJobs={jobs} isAdmin={true} notify={notify} calendarIds={calendarIds} onRefresh={onRefresh}/>
+          <ProjectsView sid={sid} pts={pts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={true} notify={notify} calendarIds={calendarIds} onRefresh={onRefresh}/>
         </div>
       )}
 
@@ -5577,6 +5587,7 @@ function App(){
   const [userEmail,setUserEmail]=useState('');
   const [isBoss,setIsBoss]=useState(false);
   const [view,setView]=useState('punch');
+  const forceAdmin=isBoss&&new URLSearchParams(window.location.search).get('admin')==='1';
   const [emps,setEmps]=useState([]);
   const [notif,setNotif]=useState(null);
   const [libsReady,setLibsReady]=useState(false);
@@ -5749,14 +5760,7 @@ function App(){
               <div style={{fontSize:11,color:'var(--muted)',marginBottom:2}}>Connecté</div>
               <div style={{fontSize:12,fontWeight:600,wordBreak:'break-all'}}>{userEmail}</div>
             </div>
-            <div style={{display:'flex',gap:'0.4rem',marginBottom:'1rem'}}>
-              <button className="btn-s" style={{flex:1,touchAction:'manipulation'}} onClick={()=>{setView('punch');setShowSidebar(false);}}>🕐 Punch</button>
-              {isBoss&&<button className="btn-s" style={{flex:1,position:'relative',touchAction:'manipulation'}} onClick={()=>{setView('admin');setShowSidebar(false);}}>
-                ⚙ Admin{unreadCount>0&&<span className="nav-badge">{unreadCount}</span>}
-              </button>}
-            </div>
             <button className="btn-s" style={{width:'100%',marginBottom:'0.5rem',touchAction:'manipulation'}} onClick={()=>{onRefresh();setShowSidebar(false);}}>↻ Rafraîchir</button>
-            {isBoss&&<button className="btn-s" style={{width:'100%',marginBottom:'0.5rem',touchAction:'manipulation'}} onClick={()=>{setShowCfg(true);setShowSidebar(false);}}>⚙ Configuration</button>}
             <button className="btn-s" style={{width:'100%',marginTop:'auto',color:'var(--danger)',borderColor:'var(--danger)',touchAction:'manipulation'}} onClick={()=>{handleReset();setShowSidebar(false);}}>↩ Déconnexion</button>
           </>
         )}
@@ -5830,8 +5834,8 @@ function App(){
         </div>
       ):(
         <>
-          {view==='punch'&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} setMenuAction={setMenuAction} folders={foldersMemo} refreshKey={refreshKey} cfg={cfg}/>}
-          {view==='admin'&&isBoss&&<div className="content"><AdminView sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh}/></div>}
+          {!forceAdmin&&<WelcomeScreen emps={emps} sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} notify={notify} onRefresh={onRefresh} setNavBack={setNavBack} setMenuAction={setMenuAction} folders={foldersMemo} refreshKey={refreshKey} cfg={cfg}/>}
+          {forceAdmin&&<div className="content"><AdminView sid={cfg.spreadsheetId} calendarIds={calendarIdsMemo} refreshKey={refreshKey} notify={notify} onRefresh={onRefresh}/></div>}
         </>
       )}
     </div>
