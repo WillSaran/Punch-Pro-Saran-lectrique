@@ -263,7 +263,13 @@ button{font-family:var(--font-body)}
 //   Agenda). Section "Aujourd'hui/Demain" du menu employé renommée en 4
 //   onglets: Aujourd'hui, Demain, Cette semaine, Agenda (calendrier complet
 //   affiché directement ici) — la tuile "Agenda" séparée du menu a été retirée.
-const APP_VERSION='v180';
+// v181 (2026-07-20): Nouveau "Mon dashboard" — vue personnelle distincte du
+//   Dashboard équipe, avec seulement Mes heures et Mes projets (onglets internes).
+//   Les tuiles séparées "Mes heures" et "Projets" du menu principal ont été
+//   fusionnées dans cette nouvelle tuile unique. Menu réordonné: Mon dashboard,
+//   Punch IN/OUT, Confirmer une job, puis Dashboard équipe / Configuration
+//   selon les permissions accordées par l'admin.
+const APP_VERSION='v181';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -4574,6 +4580,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   const [selJobDate,setSelJobDate]=useState('');
   const [jobs,setJobs]=useState([]);
   const [allJobs,setAllJobs]=useState([]);
+  const [monDashTab,setMonDashTab]=useState('heures'); // 'heures' | 'projets' — pour "Mon dashboard"
   const [result,setResult]=useState(null);
   const punchDataRef=useRef({});
   const ptsRef=useRef([]);
@@ -4612,7 +4619,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
     else if(step==='job')setStep('mode');
     else if(step==='punch-in'||step==='confirm')setStep('job');
     else if(step==='duration-out')setStep('mode');
-    else if(step==='history'||step==='projets'||step==='agenda-emp')setStep('mode');
+    else if(step==='history'||step==='projets'||step==='agenda-emp'||step==='mon-dashboard')setStep('mode');
     else if(step==='admin-team'||step==='config-emp')setStep('mode');
     else setStep('emps');
   }
@@ -4939,14 +4946,9 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         }}/>
     </div>
 
-  // ── HISTORY ──
+  // ── MON DASHBOARD (perso : mes heures + mes projets — distinct du Dashboard équipe) ──
   );
-  if(step==='history')return(
-    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
-      <EmployeeHistory emp={selEmp} sid={sid} notify={notify} folders={folders} calendarIds={calendarIds}/>
-    </div>
-  );
-  if(step==='projets'){
+  if(step==='mon-dashboard'){
     const allPts=ptsForOut.length?ptsForOut:ptsRef.current;
     const refreshProjets=()=>{
       if(calendarIds&&calendarIds.length){
@@ -4956,7 +4958,17 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
     };
     return(
       <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
-        <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify} calendarIds={calendarIds} onRefresh={refreshProjets}/>
+        <div style={{width:'100%',maxWidth:640}}>
+          <div className="tabs" style={{marginBottom:'0.75rem'}}>
+            <div className={'tab'+(monDashTab==='heures'?' active':'')} onClick={()=>setMonDashTab('heures')}>📋 Mes heures</div>
+            <div className={'tab'+(monDashTab==='projets'?' active':'')} onClick={()=>setMonDashTab('projets')}>📁 Mes projets</div>
+          </div>
+          {monDashTab==='heures'?(
+            <EmployeeHistory emp={selEmp} sid={sid} notify={notify} folders={folders} calendarIds={calendarIds}/>
+          ):(
+            <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify} calendarIds={calendarIds} onRefresh={refreshProjets}/>
+          )}
+        </div>
       </div>
     );
   }
@@ -5014,6 +5026,10 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         <span className={'badge '+(empStatut==='in'?'badge-in':'badge-out')} style={{marginLeft:'auto'}}>{empStatut==='in'?'En cours':'Absent'}</span>
       </div>
       <div className="mode-wrap">
+        <div className="mode-btn" onClick={()=>setStep('mon-dashboard')}>
+          <div className="mode-icon">📈</div>
+          <div><div className="mode-title">Mon dashboard</div><div className="mode-desc">Mes heures et mes projets</div></div>
+        </div>
         {empStatut==='in'?(
           <div className="mode-btn" onClick={async()=>{
             setMode('out');
@@ -5039,14 +5055,6 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         <div className="mode-btn" onClick={()=>{setMode('confirm');setStep('job');}}>
           <div className="mode-icon">✅</div>
           <div><div className="mode-title">Confirmer une job</div><div className="mode-desc">Heures, dépl., coéquipiers, fichiers</div></div>
-        </div>
-        <div className="mode-btn" onClick={()=>setStep('history')}>
-          <div className="mode-icon">📋</div>
-          <div><div className="mode-title">Mes heures</div><div className="mode-desc">Consulter, modifier, ajouter fichiers</div></div>
-        </div>
-        <div className="mode-btn" onClick={()=>setStep('projets')}>
-          <div className="mode-icon">📁</div>
-          <div><div className="mode-title">Projets</div><div className="mode-desc">Jobs en cours, heures, fichiers</div></div>
         </div>
         {selEmp.permissions&&selEmp.permissions.some(p=>p!=='config')&&(
           <div className="mode-btn" onClick={()=>setStep('admin-team')}>
