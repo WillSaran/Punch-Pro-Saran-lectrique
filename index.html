@@ -286,7 +286,14 @@ button{font-family:var(--font-body)}
 //   job, ou Mon dashboard. Aussi : retrait de "Les deux" dans le sélecteur de
 //   job Punch IN/Confirmer (même filtre binaire Mes jobs/Toute l'équipe que
 //   l'Agenda).
-const APP_VERSION='v183';
+// v184 (2026-07-20): Onglet OT du dashboard équipe — ne montre plus que les
+//   fichiers tagués OT_ (les appels de service AP_ ne s'y mêlent plus).
+//   Onglet "Par job" entièrement revu : trié par activité la plus récente
+//   (au lieu du nombre d'heures), et regroupé par contracteur (même logique
+//   de préfixes que l'onglet Projets : PAY/CRS/ASC/GGP/SAR/BOM/5PIL/RROY/GOU,
+//   sinon "PARTICULIER"), chaque groupe affichant sa propre date de dernière
+//   activité.
+const APP_VERSION='v184';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -503,6 +510,14 @@ function mentionsEmployee(txt,emp){
   const nomWords=(emp.nom||'').toLowerCase().trim().split(/\s+/).filter(Boolean);
   if(nomWords.length&&nomWords.every(w=>tokens.includes(w)))return true;
   return false;
+}
+// Préfixes de contracteurs connus dans les titres de job (même convention que
+// l'onglet Projets) — utilisé pour regrouper "Par job" par contracteur.
+const JOB_PREFIXES=['PAY','CRS','ASC','GGP','SAR','BOM','5PIL','RROY','GOU'];
+function getJobPrefix(title){
+  const u=(title||'').toUpperCase();
+  for(const p of JOB_PREFIXES)if(u.startsWith(p))return p;
+  return 'PARTICULIER';
 }
 function useClock(){
   const [now,setNow]=useState(new Date());
@@ -1994,7 +2009,7 @@ function ProjCard({p,statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,edi
 }
 
 function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh}){
-  const PREFIXES=['PAY','CRS','ASC','GGP','SAR','BOM','5PIL','RROY','GOU'];
+  const PREFIXES=JOB_PREFIXES; // source unique, partagée avec l'onglet "Par job"
   const STORAGE_KEY='punchpro_projets_v3'; // gardé pour migration
   const [projData,setProjData]=useState({});
   const [addrOverrides,setAddrOverrides]=useState({});
@@ -2038,7 +2053,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
     saveProjetsToSheets(sid,projData,d);
     localStorage.setItem('punchpro_addr_overrides',JSON.stringify(d));
   }
-  function getPrefix(t){const u=(t||'').toUpperCase();for(const p of PREFIXES)if(u.startsWith(p))return p;return 'PARTICULIER';}
+  function getPrefix(t){return getJobPrefix(t);}
 
   const memoResult=useMemo(()=>{
     // Étape 1 — regrouper tous les jobs par adresse brute
@@ -5462,7 +5477,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
     const map={};
     for(const p of pts){
       if(!p.job||(p.type!=='in'&&p.type!=='confirm'))continue;
-      if(!map[p.job])map[p.job]={job:p.job,color:p.jobColor||'#2f81f7',heures:0,deplacement:0,count:0,fichiers:[]};
+      if(!map[p.job])map[p.job]={job:p.job,color:p.jobColor||'#2f81f7',heures:0,deplacement:0,count:0,fichiers:[],lastDate:p.datetime||p.date||null};
       if(p.type==='confirm')map[p.job].heures+=p.heures||0;
       else{
         // NOUVEAU — même correctif que pour le punch-out: on ne considère que les
@@ -5478,8 +5493,11 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
       }
       map[p.job].deplacement+=p.deplacement||0;map[p.job].count++;
       if(p.fichiersURL)p.fichiersURL.forEach(u=>map[p.job].fichiers.push(u));
+      // Garder la date la plus récente d'activité sur cette job (pour trier "Par job" par récence)
+      const pDate=p.datetime||p.date;
+      if(pDate&&(!map[p.job].lastDate||new Date(pDate)>new Date(map[p.job].lastDate)))map[p.job].lastDate=pDate;
     }
-    return Object.values(map).map(x=>({...x,heures:Math.round(x.heures*10)/10})).sort((a,b)=>b.heures-a.heures);
+    return Object.values(map).map(x=>({...x,heures:Math.round(x.heures*10)/10,prefix:getJobPrefix(x.job)})).sort((a,b)=>new Date(b.lastDate||0)-new Date(a.lastDate||0));
   }
 
   function getAssignees(job){
@@ -5607,26 +5625,45 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
         </div>
       )}
 
-      {tab==='jobs-stats'&&(
-        <div className="card">
-          <div className="card-title">Heures par job / chantier</div>
-          <table className="htable">
-            <thead><tr><th>Job</th><th>Heures</th><th>Déplacements</th><th>Punchages</th><th>Fichiers</th></tr></thead>
-            <tbody>
-              {getJobStats().map((j,i)=>(
-                <tr key={i}>
-                  <td><div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:9,height:9,borderRadius:'50%',background:j.color,flexShrink:0}}></div><span style={{fontWeight:500}}>{j.job}</span></div></td>
-                  <td><strong>{hToQuart(j.heures)}</strong></td>
-                  <td>{j.deplacement>0?'🚗 '+j.deplacement+'m':'—'}</td>
-                  <td>{j.count}</td>
-                  <td>{j.fichiers.length>0?j.fichiers.map((u,fi)=><a key={fi} href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:4}}>📎</a>):'—'}</td>
-                </tr>
-              ))}
-              {getJobStats().length===0&&<tr><td colSpan={5} style={{textAlign:'center',color:'var(--muted)',padding:'1rem'}}>Aucune donnée</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {tab==='jobs-stats'&&(()=>{
+        const stats=getJobStats();
+        if(stats.length===0)return(
+          <div className="card"><div className="card-title">Heures par job / chantier</div><div style={{textAlign:'center',color:'var(--muted)',padding:'1rem'}}>Aucune donnée</div></div>
+        );
+        // Regrouper par contracteur (même préfixes que l'onglet Projets), groupes
+        // triés par activité la plus récente ; jobs déjà triées par récence (getJobStats).
+        const groups={};
+        stats.forEach(j=>{(groups[j.prefix]=groups[j.prefix]||[]).push(j);});
+        const groupOrder=Object.keys(groups).sort((a,b)=>{
+          const da=Math.max(...groups[a].map(j=>new Date(j.lastDate||0).getTime()));
+          const db=Math.max(...groups[b].map(j=>new Date(j.lastDate||0).getTime()));
+          return db-da;
+        });
+        return(
+          <div>
+            {groupOrder.map(prefix=>(
+              <div className="card" key={prefix} style={{marginBottom:'0.75rem'}}>
+                <div className="card-title">📦 {prefix} <span style={{fontWeight:400,fontSize:11,color:'var(--muted)'}}>({groups[prefix].length} job{groups[prefix].length!==1?'s':''})</span></div>
+                <table className="htable">
+                  <thead><tr><th>Job</th><th>Heures</th><th>Déplacements</th><th>Punchages</th><th>Fichiers</th><th>Dernière activité</th></tr></thead>
+                  <tbody>
+                    {groups[prefix].map((j,i)=>(
+                      <tr key={i}>
+                        <td><div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:9,height:9,borderRadius:'50%',background:j.color,flexShrink:0}}></div><span style={{fontWeight:500}}>{j.job}</span></div></td>
+                        <td><strong>{hToQuart(j.heures)}</strong></td>
+                        <td>{j.deplacement>0?'🚗 '+j.deplacement+'m':'—'}</td>
+                        <td>{j.count}</td>
+                        <td>{j.fichiers.length>0?j.fichiers.map((u,fi)=><a key={fi} href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:4}}>📎</a>):'—'}</td>
+                        <td style={{color:'var(--muted)',fontSize:11}}>{j.lastDate?new Date(j.lastDate).toLocaleDateString('fr-CA'):'—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {tab==='banque'&&(
         <div>
@@ -5716,15 +5753,21 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
       )}
       {tab==='ot-admin'&&(
         <div className="card">
-          <div className="card-title">🔧 Documents de job (OT, factures, photos...)</div>
-          <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.65rem'}}>Tous les fichiers joints par les employés en confirmant une job ou en punchant out, avec leur nom et le titre du fichier.</div>
+          <div className="card-title">🔧 Ordres de travail</div>
+          <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.65rem'}}>Uniquement les fichiers tagués « OT » par les employés en confirmant une job ou en punchant out (pas les appels de service).</div>
           {loading?<div style={{color:'var(--muted)',fontSize:13}}>Chargement...</div>:(()=>{
-            // Toutes les entrées avec au moins un fichier joint (peu importe le type/dossier choisi)
-            const otEntries=pts.filter(p=>p.fichiersURL&&p.fichiersURL.length>0)
+            // Seulement les entrées avec au moins un fichier tagué OT_ — les AP_ et fichiers ordinaires sont exclus
+            const otEntries=pts.map(p=>({
+              ...p,
+              otFiles:(p.fichiersURL||[]).filter(raw=>{
+                const nom=raw.includes('|')?raw.split('|')[1]:raw;
+                return nom&&nom.startsWith('OT_');
+              })
+            })).filter(p=>p.otFiles.length>0)
               .sort((a,b)=>new Date(b.datetime)-new Date(a.datetime));
-            if(otEntries.length===0)return <div style={{color:'var(--muted)',fontSize:12,textAlign:'center',padding:'1rem'}}>Aucun document trouvé.</div>;
+            if(otEntries.length===0)return <div style={{color:'var(--muted)',fontSize:12,textAlign:'center',padding:'1rem'}}>Aucun ordre de travail trouvé.</div>;
             return otEntries.map((p,i)=>(
-              <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.5rem',borderLeft:'3px solid var(--accent)'}}>
+              <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.5rem',borderLeft:'3px solid var(--warning)'}}>
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
                   <div>
                     <div style={{fontWeight:600,fontSize:13}}>{p.job||'Sans job'}</div>
@@ -5732,22 +5775,18 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
                   </div>
                 </div>
                 <div style={{marginTop:'0.4rem',display:'flex',flexDirection:'column',gap:3}}>
-                  {p.fichiersURL.map((raw,j)=>{
+                  {p.otFiles.map((raw,j)=>{
                     const urlClean=raw.split('|')[0];
                     const nom=raw.includes('|')?raw.split('|')[1]:raw;
-                    const isOT=nom.startsWith('OT_');
-                    const isAP=nom.startsWith('AP_');
-                    const bg=isOT?'rgba(210,153,34,0.1)':isAP?'rgba(63,185,80,0.1)':'var(--bg2)';
-                    const color=isOT?'var(--warning)':isAP?'var(--success)':'var(--accent)';
                     return(
-                      <div key={j} style={{display:'flex',alignItems:'center',gap:6,background:bg,borderRadius:6,padding:'0.25rem 0.5rem'}}>
-                        <a href={urlClean} target="_blank" rel="noreferrer" style={{flex:1,fontSize:11,color,textDecoration:'none',fontWeight:600}}>
-                          {isOT?'🔧':isAP?'📋':'📎'} {nom}
+                      <div key={j} style={{display:'flex',alignItems:'center',gap:6,background:'rgba(210,153,34,0.1)',borderRadius:6,padding:'0.25rem 0.5rem'}}>
+                        <a href={urlClean} target="_blank" rel="noreferrer" style={{flex:1,fontSize:11,color:'var(--warning)',textDecoration:'none',fontWeight:600}}>
+                          🔧 {nom}
                         </a>
                         <button style={{background:'none',border:'none',color:'var(--danger)',cursor:'pointer',fontSize:11,padding:'0 2px',touchAction:'manipulation'}}
                           onClick={async()=>{
                             if(!confirm('Supprimer "'+nom+'" ?'))return;
-                            const newURLs=p.fichiersURL.filter((_,k)=>k!==j);
+                            const newURLs=(p.fichiersURL||[]).filter(r=>r!==raw);
                             if(p.row){
                               await updatePointageFichiers(sid,p.row,newURLs.map(r=>r.split('|')[0]));
                               notify('Document supprimé','success');
