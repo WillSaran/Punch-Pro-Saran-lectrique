@@ -458,7 +458,23 @@ button{font-family:var(--font-body)}
 //   avec un interrupteur pour activer/désactiver la géolocalisation
 //   (capture au Punch IN + alerte "punch out oublié") — off par défaut pour
 //   celui qui préfère ne pas l'utiliser.
-const APP_VERSION='v198';
+// v199 (2026-07-22): Refonte du formulaire "Créer un job" (extrait en
+//   composant réutilisable CreateJobForm) + intégration dans l'Agenda.
+//   1) "Info de la job" est maintenant aussi forcé en MAJUSCULES (comme Nom
+//   de la rue). 2) "Employé(s) assigné(s)" devient une sélection UNIQUE (une
+//   couleur/initiale à la fois) et l'initiale choisie s'ajoute maintenant
+//   directement dans le TITRE composé du job (en plus de la couleur et la
+//   description de l'événement). 3) Le sélecteur "Projet" affiche maintenant
+//   le VRAI titre curé de l'onglet Projets (feuille Projets) au lieu du
+//   simple titre du dernier événement calendrier à cette adresse — ils
+//   peuvent différer si le titre a été édité manuellement dans Projets.
+//   4) Sélectionner un Projet existant remplit maintenant automatiquement
+//   "Nom de la rue" avec le numéro civique + le nom de rue collés sans
+//   espace, en majuscules (ex: "92 Avenue Edison" → "92EDISON"), peu importe
+//   ce qui y était déjà écrit. 5) L'onglet Agenda (Mon dashboard) est
+//   maintenant un vrai calendrier avec un bouton "+ Créer un job" qui ouvre
+//   le même formulaire, pré-rempli avec la date du jour cliqué.
+const APP_VERSION='v199';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -683,6 +699,31 @@ function getJobPrefix(title){
   const u=(title||'').toUpperCase();
   for(const p of JOB_PREFIXES)if(u.startsWith(p))return p;
   return 'PARTICULIER';
+}
+// Construit la couleur/description d'un événement calendrier à partir des
+// employé(s) assigné(s) choisis dans le panneau Créer un job — utilisé à la
+// fois par Punch IN/Confirmer et par l'agenda (AgendaEmp), pour que la
+// création d'un job donne toujours le même résultat peu importe d'où elle
+// est lancée.
+function buildJobEventFields(nj,emps){
+  const assignedList=(nj.assignedEmps||[]).map(nom=>(emps||[]).find(e=>e.nom===nom)).filter(Boolean);
+  return{
+    gcalColor:assignedList[0]?assignedList[0].couleur:null,
+    description:assignedList.length>0?('👥 '+assignedList.map(e=>e.code).join(', ')):''
+  };
+}
+// Extrait "numéro civique + nom de rue" d'une adresse (ex: "92 Avenue Edison,
+// Montréal" → "92EDISON") — retire les mots de type de voie courants et
+// colle le tout sans espace, en majuscules. Sert à pré-remplir "Nom de la
+// rue" automatiquement quand on choisit un Projet existant.
+function parseCivicStreet(addr){
+  if(!addr)return '';
+  const first=addr.split(',')[0].trim();
+  const m=first.match(/^(\d+[a-zA-Z]?)\s+(.*)$/);
+  if(!m)return first.toUpperCase().replace(/\s+/g,'');
+  const num=m[1];
+  const street=m[2].replace(/\b(rue|avenue|ave|boulevard|blvd|chemin|ch\.?|route|rte|impasse|place|all[ée]e|mont[ée]e)\b\.?/gi,'').trim();
+  return (num+street).toUpperCase().replace(/\s+/g,'');
 }
 // Préfixes de "phase" de chantier (rough-in, finition, bornes de recharge...)
 // — deuxième préfixe optionnel accolé au nom du job, en plus du contracteur.
@@ -2799,11 +2840,11 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
 
 
 // ── JOB SELECTOR ─────────────────────────────────────────────────────────────
-function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode,allEmps}){
-  const [showCreate,setShowCreate]=useState(false);
-  const [newJobAssignedEmps,setNewJobAssignedEmps]=useState([]);
-  function toggleAssignedEmp(nom){setNewJobAssignedEmps(prev=>prev.includes(nom)?prev.filter(n=>n!==nom):[...prev,nom]);}
-  // Nom du job = préfixe contracteur + préfixe phase + nom de la rue + info libre (composé plus bas)
+// ── FORMULAIRE "CRÉER UN JOB" (partagé Punch IN/Confirmer + Agenda) ────────
+// Extrait de JobSelector pour être réutilisable ailleurs (ex: cliquer un
+// jour dans l'Agenda et créer un job directement pour cette date).
+function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
+  const [newJobAssignedEmp,setNewJobAssignedEmp]=useState(null); // sélection UNIQUE — une couleur/initiale à la fois
   const [newJobContractor,setNewJobContractor]=useState('PARTICULIER');
   const [newJobContractorNom,setNewJobContractorNom]=useState('');
   const [newJobPhase,setNewJobPhase]=useState('ROUGH');
@@ -2811,15 +2852,33 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode,allEmps}){
   const [newJobStreet,setNewJobStreet]=useState('');
   const [newJobRest,setNewJobRest]=useState('');
   const [newJobKnownAddr,setNewJobKnownAddr]=useState('');
-  const [newJobDate,setNewJobDate]=useState(new Date().toISOString().split('T')[0]);
+  const [newJobDate,setNewJobDate]=useState(initialDate||new Date().toISOString().split('T')[0]);
   const [newJobAddress,setNewJobAddress]=useState('');
+  const [projData,setProjData]=useState({});
+
+  useEffect(()=>{
+    if(initialDate)setNewJobDate(initialDate);
+  },[initialDate]);
+
+  // Vrais titres de projets (édités dans l'onglet Projets), pour ne pas se
+  // fier au simple titre du dernier événement calendrier à cette adresse.
+  useEffect(()=>{
+    if(!sid)return;
+    getProjetsFromSheets(sid).then(({projData:pd})=>setProjData(pd||{})).catch(()=>{});
+  },[sid]);
+
+  function toggleAssignedEmp(nom){setNewJobAssignedEmp(prev=>prev===nom?null:nom);}
+  const assignedEmpObj=(allEmps||[]).find(e=>e.nom===newJobAssignedEmp)||null;
+
   const prefix1Txt=newJobContractor==='PARTICULIER'?newJobContractorNom.trim():newJobContractor;
   const prefix2Txt=newJobPhase==='AUTRE'?newJobPhaseAutre.trim():JOB_PHASE_LABELS[newJobPhase];
-  const newJobTitle=[prefix1Txt,prefix2Txt,newJobStreet.trim(),newJobRest.trim()].filter(Boolean).join(' - ');
-  // Projets déjà connus — mais seulement les vrais "projets" (une adresse qui
-  // revient sur PLUSIEURS jobs), pas les jobs ponctuels qui n'apparaissent
-  // qu'une fois. Filtré en plus pour ne montrer que ceux du contracteur
-  // choisi ci-dessus (Nom du job) — pas tous les contracteurs mélangés.
+  const newJobTitle=[prefix1Txt,prefix2Txt,newJobStreet.trim(),newJobRest.trim(),assignedEmpObj?assignedEmpObj.code:'']
+    .filter(Boolean).join(' - ');
+
+  // Projets déjà connus — seulement les vrais "projets" (adresse qui revient
+  // sur PLUSIEURS jobs), filtrés sur le contracteur choisi ci-dessus, avec
+  // le VRAI titre curé (Projets sheet) plutôt que le titre brut du dernier
+  // événement calendrier.
   const knownProjects=useMemo(()=>{
     const map={};
     (jobs||[]).forEach(j=>{
@@ -2831,9 +2890,95 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode,allEmps}){
       if(new Date(j.start)>new Date(map[key].last)){map[key].last=j.start;map[key].titre=j.title;}
     });
     return Object.values(map)
+      .map(k=>({...k,titre:(projData[k.adresse.toLowerCase()]&&projData[k.adresse.toLowerCase()].titre)||k.titre}))
       .filter(k=>k.count>1&&getJobPrefix(k.titre)===newJobContractor)
       .sort((a,b)=>b.count-a.count);
-  },[jobs,newJobContractor]);
+  },[jobs,newJobContractor,projData]);
+
+  return(
+    <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.65rem',border:'1px solid var(--border2)'}}>
+      <div className="fg" style={{marginBottom:'0.55rem'}}>
+        <label style={{color:'var(--accent)'}}>Contracteur</label>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:'0.4rem'}}>
+          {[...JOB_PREFIXES,'PARTICULIER'].map(c=>(
+            <div key={c} onClick={()=>setNewJobContractor(c)} style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer',background:newJobContractor===c?'var(--accent)':'var(--bg2)',color:newJobContractor===c?'#fff':'var(--muted)',border:'1px solid '+(newJobContractor===c?'var(--accent)':'var(--border)')}}>{c==='PARTICULIER'?'PARTICULIER':c}</div>
+          ))}
+        </div>
+        {newJobContractor==='PARTICULIER'&&(
+          <input placeholder="Nom du particulier" value={newJobContractorNom} onChange={e=>setNewJobContractorNom(e.target.value)} style={{marginBottom:'0.2rem'}}/>
+        )}
+      </div>
+      <div className="fg" style={{marginBottom:'0.55rem'}}>
+        <label style={{color:'var(--accent2)'}}>Type de travail</label>
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:'0.4rem'}}>
+          {JOB_PHASES.map(ph=>(
+            <div key={ph} onClick={()=>setNewJobPhase(ph)} style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer',background:newJobPhase===ph?'var(--accent2)':'var(--bg2)',color:newJobPhase===ph?'#fff':'var(--muted)',border:'1px solid '+(newJobPhase===ph?'var(--accent2)':'var(--border)')}}>{JOB_PHASE_LABELS[ph]}</div>
+          ))}
+        </div>
+        {newJobPhase==='AUTRE'&&(
+          <input placeholder="Préciser (ex: Câblage, Inspection...)" value={newJobPhaseAutre} onChange={e=>setNewJobPhaseAutre(e.target.value)} style={{marginBottom:'0.2rem'}}/>
+        )}
+      </div>
+      <div className="fg" style={{marginBottom:'0.5rem'}}>
+        <label>Nom de la rue</label>
+        <input placeholder="Ex: RUE PRINCIPALE" value={newJobStreet} onChange={e=>setNewJobStreet(e.target.value.toUpperCase())}/>
+      </div>
+      <div className="fg" style={{marginBottom:'0.5rem'}}>
+        <label>Info de la job</label>
+        <input placeholder="Ex: 2E ÉTAGE, CUISINE..." value={newJobRest} onChange={e=>setNewJobRest(e.target.value.toUpperCase())}/>
+      </div>
+      {newJobTitle&&(
+        <div style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'0.5rem 0.7rem',marginBottom:'0.5rem',fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,textAlign:'center',color:'var(--text)'}}>
+          {newJobTitle}
+        </div>
+      )}
+      {(allEmps||[]).length>0&&(
+        <div className="fg" style={{marginBottom:'0.6rem'}}>
+          <label>Employé assigné</label>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:2}}>
+            {allEmps.map(t=>{const sel=newJobAssignedEmp===t.nom;return(
+              <div key={t.nom} onClick={()=>toggleAssignedEmp(t.nom)}
+                style={{display:'flex',alignItems:'center',gap:5,padding:'0.22rem 0.5rem 0.22rem 0.22rem',borderRadius:20,cursor:'pointer',
+                  background:sel?rgba(t.couleur,0.18):'var(--bg2)',border:'1px solid '+(sel?t.couleur:'var(--border)')}}>
+                <div className="emp-av" style={{background:t.couleur,width:20,height:20,fontSize:8,flexShrink:0}}>{t.code}</div>
+                <span style={{fontSize:11,fontWeight:sel?700:500,color:sel?t.couleur:'var(--muted)'}}>{t.code}</span>
+              </div>
+            );})}
+          </div>
+          <div style={{fontSize:10,color:'var(--muted)'}}>La couleur/l'initiale choisie s'ajoute au titre et à la couleur de l'événement.</div>
+        </div>
+      )}
+      {knownProjects.length>0&&(
+        <div className="fg" style={{marginBottom:'0.5rem'}}>
+          <label>Projet</label>
+          <select value={newJobKnownAddr} onChange={e=>{
+            const val=e.target.value;setNewJobKnownAddr(val);
+            if(val){
+              const kp=knownProjects.find(k=>k.adresse===val);
+              if(kp){setNewJobAddress(kp.adresse);setNewJobStreet(parseCivicStreet(kp.adresse));}
+            }
+          }}>
+            <option value="">— Nouveau projet —</option>
+            {knownProjects.map(k=>(<option key={k.adresse} value={k.adresse}>{k.titre} — {k.adresse}</option>))}
+          </select>
+        </div>
+      )}
+      <div className="fg" style={{marginBottom:'0.4rem'}}><label>Adresse (optionnel)</label><AddressInput value={newJobAddress} onChange={setNewJobAddress} placeholder="Ex: 123 rue Principale, Montréal"/></div>
+      <div className="fg" style={{marginBottom:'0.55rem'}}>
+        <label>Date</label>
+        <div style={{width:'100%',overflow:'hidden',borderRadius:8,boxSizing:'border-box'}}>
+          <input type="date" value={newJobDate} onChange={e=>setNewJobDate(e.target.value)}
+            style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box',display:'block'}}/>
+        </div>
+      </div>
+      <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress,assignedEmps:newJobAssignedEmp?[newJobAssignedEmp]:[]})}>Créer dans l'agenda</button>
+    </div>
+  );
+}
+
+
+function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode,allEmps,sid}){
+  const [showCreate,setShowCreate]=useState(false);
   const [showAll,setShowAll]=useState(false); // false = aujourd'hui seulement
   const [scope,setScope]=useState('mine'); // 'mine' | 'team'
   const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
@@ -2943,80 +3088,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode,allEmps}){
       </div>
 
       {showCreate&&(
-        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.65rem',border:'1px solid var(--border2)'}}>
-          <div className="fg" style={{marginBottom:'0.55rem'}}>
-            <label style={{color:'var(--accent)'}}>Contracteur</label>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:'0.4rem'}}>
-              {[...JOB_PREFIXES,'PARTICULIER'].map(c=>(
-                <div key={c} onClick={()=>setNewJobContractor(c)} style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer',background:newJobContractor===c?'var(--accent)':'var(--bg2)',color:newJobContractor===c?'#fff':'var(--muted)',border:'1px solid '+(newJobContractor===c?'var(--accent)':'var(--border)')}}>{c==='PARTICULIER'?'PARTICULIER':c}</div>
-              ))}
-            </div>
-            {newJobContractor==='PARTICULIER'&&(
-              <input placeholder="Nom du particulier" value={newJobContractorNom} onChange={e=>setNewJobContractorNom(e.target.value)} style={{marginBottom:'0.2rem'}}/>
-            )}
-          </div>
-          <div className="fg" style={{marginBottom:'0.55rem'}}>
-            <label style={{color:'var(--accent2)'}}>Type de travail</label>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:'0.4rem'}}>
-              {JOB_PHASES.map(ph=>(
-                <div key={ph} onClick={()=>setNewJobPhase(ph)} style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer',background:newJobPhase===ph?'var(--accent2)':'var(--bg2)',color:newJobPhase===ph?'#fff':'var(--muted)',border:'1px solid '+(newJobPhase===ph?'var(--accent2)':'var(--border)')}}>{JOB_PHASE_LABELS[ph]}</div>
-              ))}
-            </div>
-            {newJobPhase==='AUTRE'&&(
-              <input placeholder="Préciser (ex: Câblage, Inspection...)" value={newJobPhaseAutre} onChange={e=>setNewJobPhaseAutre(e.target.value)} style={{marginBottom:'0.2rem'}}/>
-            )}
-          </div>
-          <div className="fg" style={{marginBottom:'0.5rem'}}>
-            <label>Nom de la rue</label>
-            <input placeholder="Ex: RUE PRINCIPALE" value={newJobStreet} onChange={e=>setNewJobStreet(e.target.value.toUpperCase())}/>
-          </div>
-          <div className="fg" style={{marginBottom:'0.5rem'}}>
-            <label>Info de la job</label>
-            <input placeholder="Ex: 2e étage, cuisine..." value={newJobRest} onChange={e=>setNewJobRest(e.target.value)}/>
-          </div>
-          {newJobTitle&&(
-            <div style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'0.5rem 0.7rem',marginBottom:'0.5rem',fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,textAlign:'center',color:'var(--text)'}}>
-              {newJobTitle}
-            </div>
-          )}
-          {(allEmps||[]).length>0&&(
-            <div className="fg" style={{marginBottom:'0.6rem'}}>
-              <label>Employé(s) assigné(s)</label>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:2}}>
-                {allEmps.map(t=>{const sel=newJobAssignedEmps.includes(t.nom);return(
-                  <div key={t.nom} onClick={()=>toggleAssignedEmp(t.nom)}
-                    style={{display:'flex',alignItems:'center',gap:5,padding:'0.22rem 0.5rem 0.22rem 0.22rem',borderRadius:20,cursor:'pointer',
-                      background:sel?rgba(t.couleur,0.18):'var(--bg2)',border:'1px solid '+(sel?t.couleur:'var(--border)')}}>
-                    <div className="emp-av" style={{background:t.couleur,width:20,height:20,fontSize:8,flexShrink:0}}>{t.code}</div>
-                    <span style={{fontSize:11,fontWeight:sel?700:500,color:sel?t.couleur:'var(--muted)'}}>{t.code}</span>
-                  </div>
-                );})}
-              </div>
-              <div style={{fontSize:10,color:'var(--muted)'}}>La couleur/l'initiale sert à coder rapidement à qui va le job dans l'agenda.</div>
-            </div>
-          )}
-          {knownProjects.length>0&&(
-            <div className="fg" style={{marginBottom:'0.5rem'}}>
-              <label>Projet</label>
-              <select value={newJobKnownAddr} onChange={e=>{
-                const val=e.target.value;setNewJobKnownAddr(val);
-                if(val){const kp=knownProjects.find(k=>k.adresse===val);if(kp)setNewJobAddress(kp.adresse);}
-              }}>
-                <option value="">— Nouveau projet —</option>
-                {knownProjects.map(k=>(<option key={k.adresse} value={k.adresse}>{k.titre} — {k.adresse}</option>))}
-              </select>
-            </div>
-          )}
-          <div className="fg" style={{marginBottom:'0.4rem'}}><label>Adresse (optionnel)</label><AddressInput value={newJobAddress} onChange={setNewJobAddress} placeholder="Ex: 123 rue Principale, Montréal"/></div>
-          <div className="fg" style={{marginBottom:'0.55rem'}}>
-            <label>Date</label>
-            <div style={{width:'100%',overflow:'hidden',borderRadius:8,boxSizing:'border-box'}}>
-              <input type="date" value={newJobDate} onChange={e=>setNewJobDate(e.target.value)}
-                style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box',display:'block'}}/>
-            </div>
-          </div>
-          <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress,assignedEmps:newJobAssignedEmps})}>Créer dans l'agenda</button>
-        </div>
+        <CreateJobForm jobs={jobs} allEmps={allEmps} sid={sid} onCreateJob={onCreateJob}/>
       )}
       {!showAll&&todayJobs.length===0&&(
         <div style={{background:'rgba(210,153,34,0.1)',borderRadius:8,padding:'0.5rem 0.75rem',marginBottom:'0.5rem',fontSize:11,color:'var(--warning)'}}>
@@ -4162,12 +4234,23 @@ function AddressInput({value,onChange,placeholder,style}){
 
 // ── JOB SUMMARY ──────────────────────────────────────────────────────────────
 // ── AGENDA EMPLOYÉ ───────────────────────────────────────────────────────────
-function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
+function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh}){
   const [commandeJob,setCommandeJob]=useState(null);
   const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
   const [selDate,setSelDate]=useState(localDateStr());
   const [scope,setScope]=useState('mine'); // 'mine' | 'team'
+  const [showCreateHere,setShowCreateHere]=useState(false);
   const today=localDateStr();
+
+  async function handleCreateJobHere(nj){
+    const calId=calendarIds&&calendarIds[0]||'primary';
+    const{gcalColor:autoColor,description}=buildJobEventFields(nj,allEmps);
+    const gcalColor=autoColor||(emp?emp.couleur:'#ff7a1a');
+    await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'',description);
+    notify('✅ Job "'+nj.title+'" créé!','success');
+    setShowCreateHere(false);
+    if(onJobsRefresh)onJobsRefresh();
+  }
 
   // Vérifier si une job est assignée à l'employé connecté (même logique que AdminView.getAssignees)
   function isAssignedToMe(job){
@@ -4296,9 +4379,18 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
 
       {/* Détail du jour sélectionné */}
       <div style={{borderTop:'1px solid var(--border)',paddingTop:'0.65rem'}}>
-        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:12,marginBottom:'0.5rem',textTransform:'capitalize',color:selDate===today?'var(--accent)':'var(--text)'}}>
-          {selDate===today?"Aujourd'hui — ":''}{selDateObj.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem'}}>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:12,textTransform:'capitalize',color:selDate===today?'var(--accent)':'var(--text)',flex:1}}>
+            {selDate===today?"Aujourd'hui — ":''}{selDateObj.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}
+          </div>
+          <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem',flexShrink:0}} onClick={()=>setShowCreateHere(s=>!s)}>
+            {showCreateHere?'✕ Fermer':'+ Créer un job'}
+          </button>
         </div>
+
+        {showCreateHere&&(
+          <CreateJobForm jobs={jobs} allEmps={allEmps} sid={sid} onCreateJob={handleCreateJobHere} initialDate={selDate}/>
+        )}
 
         {visMine.length===0&&visOther.length===0?(
           <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>
@@ -5063,7 +5155,7 @@ function CommandeRapide({job,adresse,emp,notify,onClose,jobId,calendarIds}){
 }
 
 // ── JOB SUMMARY (accueil) ─────────────────────────────────────────────────────
-function JobSummary({jobs,allJobs,emp,notify,calendarIds}){
+function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefresh}){
   const [dayTab,setDayTab]=useState('today');
   const [commandeJob,setCommandeJob]=useState(null);
   const today=localDateStr();
@@ -5137,7 +5229,7 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds}){
         </div>
       </div>
       {dayTab==='agenda'?(
-        <AgendaEmp jobs={allJobs&&allJobs.length>0?allJobs:jobs} emp={emp} notify={notify} calendarIds={calendarIds} onBack={()=>setDayTab('today')}/>
+        <AgendaEmp jobs={allJobs&&allJobs.length>0?allJobs:jobs} emp={emp} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={allEmps} onJobsRefresh={onJobsRefresh} onBack={()=>setDayTab('today')}/>
       ):shownMine.length===0&&shownOther.length===0?(
         <div style={{color:'var(--muted)',fontSize:12,textAlign:'center',padding:'0.75rem'}}>
           Aucune job {dayLabel}.
@@ -5599,7 +5691,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   if(step==='agenda-emp')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'0.75rem'}}>
       <TimeHeader/>
-      <AgendaEmp jobs={allJobs.length>0?allJobs:jobs} emp={selEmp} notify={notify} calendarIds={calendarIds} onBack={()=>setStep('mode')}/>
+      <AgendaEmp jobs={allJobs.length>0?allJobs:jobs} emp={selEmp} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={emps} onJobsRefresh={refreshCalJobs} onBack={()=>setStep('mode')}/>
     </div>
   );
 
@@ -5662,7 +5754,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   if(step==='job')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <TimeHeader/>
-      <JobSelector jobs={allJobs.length>0?allJobs:jobs} emp={selEmp} mode={mode} allEmps={emps}
+      <JobSelector jobs={allJobs.length>0?allJobs:jobs} emp={selEmp} mode={mode} allEmps={emps} sid={sid}
         onSelect={(t,c)=>{setSelJob(t);setSelJobColor(c);
           const jobObj=jobs.find(j=>j.title===t)||null;
           const todayStr=localDateStr();
@@ -5674,15 +5766,11 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         }}
         onCreateJob={async(nj)=>{
           const calId=calendarIds&&calendarIds[0]||'primary';
-          // Couleur de l'événement = celle du 1er employé assigné (pas
-          // automatiquement celle de la personne qui crée le job — un
+          // Couleur/description de l'événement = celles de l'employé assigné
+          // (pas automatiquement celles de la personne qui crée le job — un
           // dispatcheur peut créer une job pour quelqu'un d'autre).
-          const assignedList=(nj.assignedEmps||[]).map(nom=>emps.find(e=>e.nom===nom)).filter(Boolean);
-          const gcalColor=assignedList[0]?assignedList[0].couleur:(selEmp?selEmp.couleur:'#ff7a1a');
-          // Codes des employés assignés dans la description — permet à
-          // mentionsEmployee() de les retrouver dans leur agenda/Punch IN
-          // même si l'événement n'a qu'une seule couleur.
-          const description=assignedList.length>0?('👥 '+assignedList.map(e=>e.code).join(', ')):'';
+          const{gcalColor:autoColor,description}=buildJobEventFields(nj,emps);
+          const gcalColor=autoColor||(selEmp?selEmp.couleur:'#ff7a1a');
           await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'',description);
           notify('✅ Job "'+nj.title+'" créé!','success');
           getCalendarJobs(calendarIds).then(setJobs);
@@ -5826,7 +5914,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
       </div>
 
       {/* Résumé jobs — onglets Aujourd'hui / Demain */}
-      <JobSummary jobs={jobs} allJobs={allJobs} emp={selEmp} notify={notify} calendarIds={calendarIds}/>
+      <JobSummary jobs={jobs} allJobs={allJobs} emp={selEmp} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={emps} onJobsRefresh={refreshCalJobs}/>
     </div>
 
   // ── EMP GRID ──
