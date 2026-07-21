@@ -338,7 +338,18 @@ button{font-family:var(--font-body)}
 //   zone visible de la liste à presque rien — alors que Mon dashboard n'a
 //   jamais eu cette contrainte. Retiré, la liste suit maintenant le défilement
 //   normal de la page comme partout ailleurs dans l'app.
-const APP_VERSION='v189';
+// v190 (2026-07-20): Vraie cause trouvée pour "le job du jour n'apparaît pas
+//   dans Tout l'agenda (Punch IN/Confirmer)" : le calendrier mensuel indexait
+//   seulement les jobs DÉJÀ filtrés par le scope courant (Mes jobs/Toute
+//   l'équipe) — donc si le job du jour ne correspondait pas au filtre actif,
+//   cette date apparaissait complètement vide sur le calendrier, sans aucun
+//   point ni message, comme si le job n'existait pas du tout. Corrigé : le
+//   calendrier affiche maintenant TOUJOURS un point pour chaque jour ayant de
+//   l'activité (point coloré = tes jobs, point gris = jobs d'autres), peu
+//   importe le filtre actif. Le filtre ne s'applique plus qu'à la liste
+//   cliquable en dessous, avec un message clair si le filtre cache tout ce
+//   jour-là ("essaie l'autre filtre").
+const APP_VERSION='v190';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2537,10 +2548,14 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
     return new Date(a.start)-new Date(b.start);
   });
 
-  // Indexer scopedJobs sur chaque jour couvert — pour la vue calendrier de "Tout l'agenda"
-  const parDate=useMemo(()=>{
+  // Indexer TOUS les jobs (pas juste ceux du filtre courant) sur chaque jour
+  // couvert — pour la vue calendrier de "Tout l'agenda". IMPORTANT: on
+  // n'indexe pas scopedJobs ici, sinon un jour dont l'unique job est filtré
+  // par le scope courant (mine/team) apparaît comme complètement vide sur le
+  // calendrier, sans aucun indice qu'il faut changer de filtre pour la voir.
+  const parDateAll=useMemo(()=>{
     const map={};
-    scopedJobs.forEach(j=>{
+    baseJobs.forEach(j=>{
       if(!j.start)return;
       const startStr=localDateStr(new Date(j.start));
       let endStr=startStr;
@@ -2562,7 +2577,8 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
       }
     });
     return map;
-  },[scopedJobs]);
+  },[baseJobs]);
+  const parDate=parDateAll; // dots du calendrier = TOUTE l'activité, indépendamment du filtre mine/team
 
   const joursFr=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
   const moisFrLong=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -2577,7 +2593,12 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
   function prevMonth(){const d=new Date(viewMonth);d.setMonth(d.getMonth()-1);setViewMonth(d);}
   function nextMonth(){const d=new Date(viewMonth);d.setMonth(d.getMonth()+1);setViewMonth(d);}
   function goTodayCal(){const d=new Date();d.setDate(1);d.setHours(0,0,0,0);setViewMonth(d);setSelDate(today);}
-  const selDayJobs=(parDate[selDate]||[]).slice().sort((a,b)=>new Date(a.start)-new Date(b.start));
+  const selDayJobsAll=(parDate[selDate]||[]).slice().sort((a,b)=>new Date(a.start)-new Date(b.start));
+  const selDayJobs=selDayJobsAll.filter(j=>{
+    if(scope==='mine')return matches(j);
+    if(scope==='team')return !matches(j);
+    return true;
+  });
 
   return(
     <div className="job-wrap">
@@ -2646,6 +2667,8 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
               if(!d)return <div key={i}/>;
               const dStr=localDateStr(d);
               const dayJobs=parDate[dStr]||[];
+              const dayMine=dayJobs.filter(j=>matches(j));
+              const dayOther=dayJobs.filter(j=>!matches(j));
               const isToday=dStr===today;
               const isSelected=dStr===selDate;
               return(
@@ -2657,7 +2680,12 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
                   transition:'background 0.15s'
                 }}>
                   <div style={{fontSize:12,fontWeight:isToday||isSelected?800:500,color:isSelected?'#fff':'var(--text)'}}>{d.getDate()}</div>
-                  {dayJobs.length>0&&<span style={{width:5,height:5,borderRadius:'50%',background:isSelected?'#fff':(emp?.couleur||'var(--accent)')}}/>}
+                  {(dayMine.length>0||dayOther.length>0)&&(
+                    <div style={{display:'flex',gap:3}}>
+                      {dayMine.length>0&&<span style={{width:5,height:5,borderRadius:'50%',background:isSelected?'#fff':(emp?.couleur||'var(--accent)')}}/>}
+                      {dayOther.length>0&&<span style={{width:5,height:5,borderRadius:'50%',background:isSelected?'#fff':'var(--muted)'}}/>}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -2669,7 +2697,13 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
               {selDate===today?"Aujourd'hui — ":''}{new Date(selDate+'T12:00:00').toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}
             </div>
             {selDayJobs.length===0?(
-              <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>Aucun job ce jour-là.</div>
+              <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>
+                {selDayJobsAll.length===0?'Aucun job ce jour-là.':(
+                  scope==='mine'
+                    ?"Il y a "+selDayJobsAll.length+" job(s) ce jour-là, mais assignée(s) à d'autres — essaie \"Toute l'équipe\" ci-dessus."
+                    :"Il y a "+selDayJobsAll.length+" job(s) ce jour-là, mais assignée(s) à toi — essaie \"Mes jobs\" ci-dessus."
+                )}
+              </div>
             ):(
               selDayJobs.map(job=>{
                 const isMatch=matches(job);
