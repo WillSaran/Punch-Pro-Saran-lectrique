@@ -474,7 +474,20 @@ button{font-family:var(--font-body)}
 //   ce qui y était déjà écrit. 5) L'onglet Agenda (Mon dashboard) est
 //   maintenant un vrai calendrier avec un bouton "+ Créer un job" qui ouvre
 //   le même formulaire, pré-rempli avec la date du jour cliqué.
-const APP_VERSION='v199';
+// v200 (2026-07-22): Trois ajouts. 1) CreateJobForm revient à deux niveaux
+//   d'employé : un "Employé (couleur de l'événement)" — celui qui a la job
+//   (ex: le compagnon avec le camion), sa couleur devient celle de
+//   l'événement — et un "Avec qui?" optionnel (compagnon/apprenti) dont
+//   seule l'initiale s'ajoute à la fin du titre, sans toucher la couleur.
+//   2) L'onglet Agenda du Dashboard équipe (AdminView) était une simple
+//   liste des 14 prochains jours — remplacé par le même vrai calendrier
+//   (AgendaEmp, réutilisé en vue "Équipe") avec le bouton "+ Créer un job"
+//   au clic sur un jour, comme dans Mon dashboard. 3) CreateJobForm permet
+//   maintenant d'attacher des fichiers Google Drive déjà existants (bouton
+//   "📎 Ajouter depuis Drive", via le sélecteur Google Picker) au lieu de
+//   seulement pouvoir uploader une nouvelle photo — les fichiers choisis
+//   sont attachés à l'événement une fois créé.
+const APP_VERSION='v200';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -873,6 +886,38 @@ async function attachFileToCalendarEvent(calendarId,eventId,fileId,fileName,mime
     await fetch(calUrl+'?supportsAttachments=true',{method:'PATCH',headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},body:JSON.stringify({attachments:[...existing,newAtt]})});
     return true;
   }catch(e){console.error(e);return false;}
+}
+// Ouvre le sélecteur Google Drive (Picker) pour choisir un ou plusieurs
+// fichiers DÉJÀ existants dans le Drive — utilisé pour attacher des
+// documents à un job en le créant, sans avoir à les re-uploader.
+let pickerLoadPromise=null;
+function ensurePickerLoaded(){
+  if(window.google&&window.google.picker)return Promise.resolve();
+  if(!pickerLoadPromise){
+    pickerLoadPromise=new Promise(resolve=>{gapi.load('picker',{callback:resolve});});
+  }
+  return pickerLoadPromise;
+}
+async function openDrivePicker(onPicked){
+  try{
+    await ensurePickerLoaded();
+    const token=gapi.client.getToken();
+    if(!token||!token.access_token){console.error('Pas de jeton Google actif pour le Picker');return;}
+    const view=new google.picker.DocsView().setIncludeFolders(true).setSelectFolderEnabled(false);
+    const picker=new google.picker.PickerBuilder()
+      .addView(view)
+      .setOAuthToken(token.access_token)
+      .setDeveloperKey(DEFAULT_CFG.apiKey)
+      .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+      .setCallback(data=>{
+        if(data.action===google.picker.Action.PICKED){
+          const files=(data.docs||[]).map(d=>({id:d.id,name:d.name,mimeType:d.mimeType}));
+          onPicked(files);
+        }
+      })
+      .build();
+    picker.setVisible(true);
+  }catch(e){console.error('Erreur Picker Drive:',e);}
 }
 async function findCalendarEventByTitle(calendarIds,title){
   const now=new Date();
@@ -2844,7 +2889,8 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
 // Extrait de JobSelector pour être réutilisable ailleurs (ex: cliquer un
 // jour dans l'Agenda et créer un job directement pour cette date).
 function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
-  const [newJobAssignedEmp,setNewJobAssignedEmp]=useState(null); // sélection UNIQUE — une couleur/initiale à la fois
+  const [newJobAssignedEmp,setNewJobAssignedEmp]=useState(null); // employé principal — détermine la couleur de l'événement
+  const [newJobSecondEmp,setNewJobSecondEmp]=useState(null); // compagnon/apprenti optionnel — initiales seulement, pas de couleur
   const [newJobContractor,setNewJobContractor]=useState('PARTICULIER');
   const [newJobContractorNom,setNewJobContractorNom]=useState('');
   const [newJobPhase,setNewJobPhase]=useState('ROUGH');
@@ -2854,6 +2900,7 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
   const [newJobKnownAddr,setNewJobKnownAddr]=useState('');
   const [newJobDate,setNewJobDate]=useState(initialDate||new Date().toISOString().split('T')[0]);
   const [newJobAddress,setNewJobAddress]=useState('');
+  const [newJobDriveFiles,setNewJobDriveFiles]=useState([]); // fichiers Drive déjà existants à attacher
   const [projData,setProjData]=useState({});
 
   useEffect(()=>{
@@ -2867,12 +2914,17 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
     getProjetsFromSheets(sid).then(({projData:pd})=>setProjData(pd||{})).catch(()=>{});
   },[sid]);
 
-  function toggleAssignedEmp(nom){setNewJobAssignedEmp(prev=>prev===nom?null:nom);}
+  function toggleAssignedEmp(nom){
+    setNewJobAssignedEmp(prev=>prev===nom?null:nom);
+    if(newJobSecondEmp===nom)setNewJobSecondEmp(null); // ne peut pas être principal ET second en même temps
+  }
+  function toggleSecondEmp(nom){setNewJobSecondEmp(prev=>prev===nom?null:nom);}
   const assignedEmpObj=(allEmps||[]).find(e=>e.nom===newJobAssignedEmp)||null;
+  const secondEmpObj=(allEmps||[]).find(e=>e.nom===newJobSecondEmp)||null;
 
   const prefix1Txt=newJobContractor==='PARTICULIER'?newJobContractorNom.trim():newJobContractor;
   const prefix2Txt=newJobPhase==='AUTRE'?newJobPhaseAutre.trim():JOB_PHASE_LABELS[newJobPhase];
-  const newJobTitle=[prefix1Txt,prefix2Txt,newJobStreet.trim(),newJobRest.trim(),assignedEmpObj?assignedEmpObj.code:'']
+  const newJobTitle=[prefix1Txt,prefix2Txt,newJobStreet.trim(),newJobRest.trim(),assignedEmpObj?assignedEmpObj.code:'',secondEmpObj?secondEmpObj.code:'']
     .filter(Boolean).join(' - ');
 
   // Projets déjà connus — seulement les vrais "projets" (adresse qui revient
@@ -2934,7 +2986,7 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
       )}
       {(allEmps||[]).length>0&&(
         <div className="fg" style={{marginBottom:'0.6rem'}}>
-          <label>Employé assigné</label>
+          <label>Employé (couleur de l'événement)</label>
           <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:2}}>
             {allEmps.map(t=>{const sel=newJobAssignedEmp===t.nom;return(
               <div key={t.nom} onClick={()=>toggleAssignedEmp(t.nom)}
@@ -2945,7 +2997,23 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
               </div>
             );})}
           </div>
-          <div style={{fontSize:10,color:'var(--muted)'}}>La couleur/l'initiale choisie s'ajoute au titre et à la couleur de l'événement.</div>
+          <div style={{fontSize:10,color:'var(--muted)'}}>Celui qui a la job (ex: le compagnon avec le camion) — sa couleur devient celle de l'événement.</div>
+        </div>
+      )}
+      {assignedEmpObj&&(allEmps||[]).length>1&&(
+        <div className="fg" style={{marginBottom:'0.6rem'}}>
+          <label>Avec qui? (optionnel — initiales ajoutées au titre)</label>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:2}}>
+            {allEmps.filter(t=>t.nom!==newJobAssignedEmp).map(t=>{const sel=newJobSecondEmp===t.nom;return(
+              <div key={t.nom} onClick={()=>toggleSecondEmp(t.nom)}
+                style={{display:'flex',alignItems:'center',gap:5,padding:'0.22rem 0.5rem 0.22rem 0.22rem',borderRadius:20,cursor:'pointer',
+                  background:sel?rgba(t.couleur,0.18):'var(--bg2)',border:'1px solid '+(sel?t.couleur:'var(--border)')}}>
+                <div className="emp-av" style={{background:t.couleur,width:20,height:20,fontSize:8,flexShrink:0}}>{t.code}</div>
+                <span style={{fontSize:11,fontWeight:sel?700:500,color:sel?t.couleur:'var(--muted)'}}>{t.code}</span>
+              </div>
+            );})}
+          </div>
+          <div style={{fontSize:10,color:'var(--muted)'}}>Ex: un compagnon avec un apprenti — l'initiale s'ajoute à la fin du titre, sans changer la couleur.</div>
         </div>
       )}
       {knownProjects.length>0&&(
@@ -2964,6 +3032,23 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
         </div>
       )}
       <div className="fg" style={{marginBottom:'0.4rem'}}><label>Adresse (optionnel)</label><AddressInput value={newJobAddress} onChange={setNewJobAddress} placeholder="Ex: 123 rue Principale, Montréal"/></div>
+      <div className="fg" style={{marginBottom:'0.5rem'}}>
+        <label>Fichiers Drive (optionnel)</label>
+        <button className="btn-s" style={{width:'100%',fontSize:12}} type="button"
+          onClick={()=>openDrivePicker(files=>setNewJobDriveFiles(prev=>[...prev,...files]))}>
+          📎 Ajouter depuis Drive
+        </button>
+        {newJobDriveFiles.length>0&&(
+          <div style={{marginTop:6,display:'flex',flexDirection:'column',gap:4}}>
+            {newJobDriveFiles.map((f,i)=>(
+              <div key={f.id+i} style={{display:'flex',alignItems:'center',gap:6,background:'var(--bg2)',borderRadius:6,padding:'0.3rem 0.55rem'}}>
+                <span style={{flex:1,fontSize:11,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📄 {f.name}</span>
+                <span onClick={()=>setNewJobDriveFiles(prev=>prev.filter((_,j)=>j!==i))} style={{cursor:'pointer',color:'var(--danger)',fontSize:12,flexShrink:0}}>✕</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="fg" style={{marginBottom:'0.55rem'}}>
         <label>Date</label>
         <div style={{width:'100%',overflow:'hidden',borderRadius:8,boxSizing:'border-box'}}>
@@ -2971,7 +3056,7 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
             style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box',display:'block'}}/>
         </div>
       </div>
-      <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress,assignedEmps:newJobAssignedEmp?[newJobAssignedEmp]:[]})}>Créer dans l'agenda</button>
+      <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress,assignedEmps:[newJobAssignedEmp,newJobSecondEmp].filter(Boolean),driveFiles:newJobDriveFiles})}>Créer dans l'agenda</button>
     </div>
   );
 }
@@ -4246,7 +4331,10 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
     const calId=calendarIds&&calendarIds[0]||'primary';
     const{gcalColor:autoColor,description}=buildJobEventFields(nj,allEmps);
     const gcalColor=autoColor||(emp?emp.couleur:'#ff7a1a');
-    await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'',description);
+    const created=await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'',description);
+    if(created&&created.id&&(nj.driveFiles||[]).length>0){
+      for(const f of nj.driveFiles)await attachFileToCalendarEvent(calId,created.id,f.id,f.name,f.mimeType);
+    }
     notify('✅ Job "'+nj.title+'" créé!','success');
     setShowCreateHere(false);
     if(onJobsRefresh)onJobsRefresh();
@@ -4319,8 +4407,8 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
   return(
     <div style={{width:'100%',maxWidth:640}}>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.75rem'}}>
-        <button className="btn-s" style={{fontSize:11,padding:'0.25rem 0.6rem'}} onClick={onBack}>← Retour</button>
-        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>📅 Agenda — {emp?.nom}</div>
+        {onBack&&<button className="btn-s" style={{fontSize:11,padding:'0.25rem 0.6rem'}} onClick={onBack}>← Retour</button>}
+        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>📅 Agenda — {emp?.nom||'Équipe'}</div>
       </div>
 
       {/* Navigation mois */}
@@ -4419,12 +4507,14 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
                   {j.description&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontStyle:'italic',
                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.description}</div>}
                 </div>
-                <button onClick={()=>setCommandeJob(j)}
-                  style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
-                    color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
-                    cursor:'pointer',touchAction:'manipulation',marginTop:2,whiteSpace:'nowrap'}}>
-                  📦 Commander
-                </button>
+                {emp&&(
+                  <button onClick={()=>setCommandeJob(j)}
+                    style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
+                      color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
+                      cursor:'pointer',touchAction:'manipulation',marginTop:2,whiteSpace:'nowrap'}}>
+                    📦 Commander
+                  </button>
+                )}
               </div>
             ))}
 
@@ -5771,7 +5861,10 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           // dispatcheur peut créer une job pour quelqu'un d'autre).
           const{gcalColor:autoColor,description}=buildJobEventFields(nj,emps);
           const gcalColor=autoColor||(selEmp?selEmp.couleur:'#ff7a1a');
-          await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'',description);
+          const created=await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'',description);
+          if(created&&created.id&&(nj.driveFiles||[]).length>0){
+            for(const f of nj.driveFiles)await attachFileToCalendarEvent(calId,created.id,f.id,f.name,f.mimeType);
+          }
           notify('✅ Job "'+nj.title+'" créé!','success');
           getCalendarJobs(calendarIds).then(setJobs);
           setSelJob(nj.title);setSelJobColor(gcalColor);
@@ -6256,6 +6349,10 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
     Promise.all([getEmployees(sid),getPointages(sid,{}),getHeuresBanque(sid),getCalendarJobs(calendarIds),getAllCalendarJobs(calendarIds),getMessages(sid)])
       .then(([e,p,b,j,aj,m])=>{setEmps(e);setPts(p);setBanque(b);setJobs(j);setAllJobs(aj);setMsgs(m);setLoading(false);});
   },[refreshKey]);
+  function refreshAgendaJobs(){
+    getCalendarJobs(calendarIds).then(setJobs);
+    getAllCalendarJobs(calendarIds).then(setAllJobs);
+  }
 
   const pending=banque.filter(b=>b.statut==='pending');
   const unread=msgs.filter(m=>!m.lu);
@@ -6624,26 +6721,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
 
       {tab==='agenda'&&(
         <div className="card">
-          <div className="card-title">Agenda — 14 prochains jours</div>
-          {jobs.length===0?<div style={{color:'var(--muted)',fontSize:13}}>Aucun événement.</div>:
-          jobs.map(j=>{
-            const ass=getAssignees(j);
-            return(
-              <div key={j.id} className="job-item" style={{borderLeftColor:j.gcalColor}}>
-                <div style={{display:'flex',alignItems:'flex-start',gap:7,justifyContent:'space-between'}}>
-                  <div style={{flex:1}}>
-                    <div style={{display:'flex',alignItems:'center',gap:7}}><div style={{width:9,height:9,borderRadius:'50%',background:j.gcalColor,flexShrink:0}}></div><div style={{fontWeight:600,fontSize:13}}>{j.title}</div></div>
-                    <div style={{fontSize:11,color:'var(--muted)',marginTop:2,marginLeft:16}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'long',month:'long',day:'numeric'})} {j.location?' · '+j.location:''}</div>
-                    {ass.length>0&&<div style={{marginTop:4,marginLeft:16}}>{ass.map(a=><span key={a.nom} className="achip" style={{background:rgba(a.couleur,0.2),color:a.couleur}}><span style={{width:6,height:6,borderRadius:'50%',background:a.couleur,display:'inline-block'}}></span>{a.nom}</span>)}</div>}
-                  </div>
-                  <button className="btn-sm" style={{flexShrink:0,fontSize:10,padding:'0.2rem 0.5rem',background:'rgba(255,122,26,0.1)',border:'1px solid rgba(255,122,26,0.3)',color:'var(--accent)'}}
-                    onClick={()=>setSelectedJobForAppel(j)}>
-                    📋
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+          <AgendaEmp jobs={allJobs.length>0?allJobs:jobs} emp={null} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={emps} onJobsRefresh={refreshAgendaJobs}/>
         </div>
       )}
       {tab==='ot-admin'&&(
