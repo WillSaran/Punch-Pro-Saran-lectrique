@@ -318,7 +318,17 @@ button{font-family:var(--font-body)}
 //   si le problème vient du chargement (0 job chargé) ou du filtre Mes
 //   jobs/Toute l'équipe, pour cibler précisément le bug signalé où une job
 //   visible dans Mon dashboard n'apparaît dans aucun des deux filtres ici.
-const APP_VERSION='v187';
+// v188 (2026-07-20): Correctifs d'affichage et nouvelles fonctionnalités du
+//   dashboard admin. Onglet Projets : largeur fixe à 620px qui laissait un
+//   grand vide sur desktop (le contenu peut aller jusqu'à 1080px) — élargi
+//   à 960px en contexte admin. Onglet "Par job" : ajout d'un wrapper de
+//   défilement horizontal (débordait sur mobile) + filtre par contracteur
+//   ("Tous" ou un contracteur précis), comme dans Projets. Dashboard >
+//   Heures semaine : le nom d'un employé est maintenant cliquable pour voir
+//   le détail jour par jour de ses heures cette semaine. Onglet Historique :
+//   nouveau résumé en haut montrant le nombre de punchages "Confirmer une
+//   job" et le nombre de punchages In/Out par employé (couleur/code).
+const APP_VERSION='v188';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1801,7 +1811,7 @@ function EventCard({j,isPast,projPts,editEvtAddr,setEditEvtAddr,editEvtAddrVal,s
   );
 }
 
-function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveProjData,addrOverrides,saveAddrOverrides,onBack,allProjets}){
+function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveProjData,addrOverrides,saveAddrOverrides,onBack,allProjets,isAdmin}){
   const [editKey,setEditKey]=useState(null);
   const [editPO,setEditPO]=useState('');
   const [editTitre,setEditTitre]=useState('');
@@ -1882,7 +1892,7 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
 
 
   return(
-    <div style={{maxWidth:620,width:'100%'}}>
+    <div style={{maxWidth:isAdmin?960:620,width:'100%'}}>
       <div style={{display:'flex',gap:'0.4rem',alignItems:'center',marginBottom:'0.75rem'}}>
         <button className="btn-s" style={{fontSize:11}} onClick={onBack}>← Retour</button>
         <button className="btn-s" style={{fontSize:11,marginLeft:'auto'}} onClick={()=>setShowMerge(x=>!x)}>🔀 Fusionner</button>
@@ -2185,7 +2195,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
   if(selProj){
     const projFound=projets.find(x=>x.key===selProj)||null;
     if(!projFound)return null;
-    return <ProjDetail p={projFound} projPts={(pts||[]).filter(p2=>{const cj=(calJobs||[]).find(j=>j.title===p2.job);return cj&&(addrOverrides[cj.id]||cj.location||'').trim().toLowerCase()===selProj;})} calJobs={calJobs} statuts={statuts} calendarIds={calendarIds} notify={notify} projData={projData} saveProjData={saveProjData} addrOverrides={addrOverrides} saveAddrOverrides={saveAddrOverrides} onBack={()=>setSelProj(null)} allProjets={projets}/>;
+    return <ProjDetail p={projFound} projPts={(pts||[]).filter(p2=>{const cj=(calJobs||[]).find(j=>j.title===p2.job);return cj&&(addrOverrides[cj.id]||cj.location||'').trim().toLowerCase()===selProj;})} calJobs={calJobs} statuts={statuts} calendarIds={calendarIds} notify={notify} projData={projData} saveProjData={saveProjData} addrOverrides={addrOverrides} saveAddrOverrides={saveAddrOverrides} onBack={()=>setSelProj(null)} allProjets={projets} isAdmin={isAdmin}/>;
   }
 
 
@@ -2193,7 +2203,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
   const fermesFiltered=filterPrefix?fermes.filter(p=>p.prefix===filterPrefix):fermes;
   const displayList=showClosed?fermesFiltered:actifs;
   return(
-    <div style={{maxWidth:620,width:'100%'}}>
+    <div style={{maxWidth:isAdmin?960:620,width:'100%'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.6rem',flexWrap:'wrap'}}>
         <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',flex:1}}>
           Projets <span style={{fontSize:11,color:'var(--muted)',fontWeight:400}}>({showClosed?fermes.length:actifs.length})</span>
@@ -5603,6 +5613,8 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   const [allJobs,setAllJobs]=useState([]); // fenêtre large (-180/+90j), pour le regroupement par Projets
   const [msgs,setMsgs]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [jobsFilterPrefix,setJobsFilterPrefix]=useState(null); // null = Tous, pour l'onglet "Par job"
+  const [expandedEmpWeek,setExpandedEmpWeek]=useState(null); // nom de l'employé dont le détail hebdo est ouvert
   const [selEmp,setSelEmp]=useState('');
   const [histTab,setHistTab]=useState('semaine');
   const [selectedJobForAppel,setSelectedJobForAppel]=useState(null); // job sélectionnée pour appel de service
@@ -5645,6 +5657,24 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
       combined.forEach(l=>lines.push({...l,nom}));
     }
     return lines.sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,80);
+  }
+
+  // Compte les punchages (même filtre que getHist, mais sur TOUS les pointages,
+  // pas seulement les 80 affichés) — Confirmer une job vs In/Out par employé.
+  function getPunchStats(){
+    let p=selEmp?pts.filter(x=>x.nom===selEmp):pts;
+    if(histTab==='today')p=p.filter(x=>x.date===today);
+    else if(histTab==='semaine')p=p.filter(x=>x.semaine===curWeek);
+    else if(histTab==='mois')p=p.filter(x=>x.mois===curMois);
+    const confirmCount=p.filter(x=>x.type==='confirm').length;
+    const byEmp={};
+    p.forEach(x=>{
+      if(x.type==='in'||x.type==='out'){
+        if(!byEmp[x.nom])byEmp[x.nom]={emp:eMap[x.nom]||null,nom:x.nom,count:0};
+        byEmp[x.nom].count++;
+      }
+    });
+    return{confirmCount,byEmp:Object.values(byEmp).sort((a,b)=>b.count-a.count)};
   }
 
   function getJobStats(){
@@ -5724,16 +5754,24 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
             </div>
           </div>
           <div className="card">
-            <div className="csec">Heures semaine</div>
+            <div className="csec">Heures semaine <span style={{fontWeight:400,fontSize:10,color:'var(--muted)'}}>(clique un nom pour le détail)</span></div>
             {emps.map(emp=>{
-              const h=calcH(pts.filter(p=>p.nom===emp.nom&&p.semaine===curWeek));
-              const dep=Math.round(pts.filter(p=>p.nom===emp.nom&&p.semaine===curWeek&&(p.type==='in'||p.type==='confirm')).reduce((s,p)=>s+(p.deplacement||0),0));
+              const empWeekPts=pts.filter(p=>p.nom===emp.nom&&p.semaine===curWeek);
+              const h=calcH(empWeekPts);
+              const dep=Math.round(empWeekPts.filter(p=>p.type==='in'||p.type==='confirm').reduce((s,p)=>s+(p.deplacement||0),0));
+              const isExpanded=expandedEmpWeek===emp.nom;
+              // Détail jour par jour de la semaine courante
+              const jourLabels=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+              const parJour={};
+              empWeekPts.forEach(p=>{(parJour[p.date]=parJour[p.date]||[]).push(p);});
+              const joursTries=Object.keys(parJour).sort();
               return(
                 <div key={emp.nom} className="wbar-wrap">
-                  <div className="wbar-label">
+                  <div className="wbar-label" style={{cursor:'pointer',touchAction:'manipulation'}} onClick={()=>setExpandedEmpWeek(isExpanded?null:emp.nom)}>
                     <span style={{display:'flex',alignItems:'center',gap:5}}>
                       <span style={{width:7,height:7,borderRadius:'50%',background:emp.couleur,display:'inline-block'}}></span>
                       {emp.nom} <span style={{fontSize:9,background:rgba(emp.couleur,0.2),color:emp.couleur,padding:'0 3px',borderRadius:3}}>{emp.code}</span>
+                      <span style={{fontSize:9,color:'var(--muted)'}}>{isExpanded?'▲':'▼'}</span>
                     </span>
                     <span style={{display:'flex',gap:6,color:h>40?'var(--warning)':'var(--muted)',fontSize:11}}>
                       <span>{hToQuart(h)}{h>40?' (+'+Math.round((h-40)*10)/10+'h)':''}</span>
@@ -5741,6 +5779,27 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
                     </span>
                   </div>
                   <div className="wbar"><div className={'wbar-fill'+(h>40?' ot':'')} style={{width:Math.min(100,(h/40)*100)+'%',background:h>40?undefined:emp.couleur}}></div></div>
+                  {isExpanded&&(
+                    <div style={{background:'var(--bg3)',borderRadius:8,padding:'0.5rem 0.65rem',marginTop:4,marginBottom:6}}>
+                      {joursTries.length===0?(
+                        <div style={{fontSize:11,color:'var(--muted)'}}>Aucun pointage cette semaine.</div>
+                      ):joursTries.map(dateStr=>{
+                        const dayPts=parJour[dateStr];
+                        const hDay=calcH(dayPts);
+                        const jobsDay=[...new Set(dayPts.map(p=>p.job).filter(Boolean))];
+                        const dow=jourLabels[new Date(dateStr+'T12:00:00').getDay()];
+                        return(
+                          <div key={dateStr} style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8,padding:'0.3rem 0',borderBottom:'1px solid var(--border)'}}>
+                            <div style={{fontSize:11}}>
+                              <span style={{fontWeight:600}}>{dow} {dateStr}</span>
+                              {jobsDay.length>0&&<div style={{color:'var(--muted)',fontSize:10,marginTop:1}}>{jobsDay.join(', ')}</div>}
+                            </div>
+                            <div style={{fontSize:11,fontWeight:700,flexShrink:0}}>{hToQuart(hDay)}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
                                   );
             })}
@@ -5771,6 +5830,22 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
               ))}
             </div>
           </div>
+          {(()=>{
+            const pstats=getPunchStats();
+            return(
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:'0.75rem'}}>
+                <div style={{background:'rgba(63,185,80,0.1)',color:'var(--success)',border:'1px solid rgba(63,185,80,0.3)',borderRadius:8,padding:'0.3rem 0.6rem',fontSize:11,fontWeight:600}}>
+                  ✅ {pstats.confirmCount} confirmée{pstats.confirmCount!==1?'s':''}
+                </div>
+                {pstats.byEmp.map(x=>(
+                  <div key={x.nom} style={{display:'flex',alignItems:'center',gap:5,background:x.emp?rgba(x.emp.couleur,0.12):'var(--bg3)',border:'1px solid '+(x.emp?rgba(x.emp.couleur,0.35):'var(--border)'),borderRadius:8,padding:'0.3rem 0.6rem',fontSize:11,color:x.emp?x.emp.couleur:'var(--muted)',fontWeight:600}}>
+                    <span style={{width:7,height:7,borderRadius:'50%',background:x.emp?x.emp.couleur:'var(--muted)',flexShrink:0}}></span>
+                    {x.emp?x.emp.code:x.nom} {x.count} in/out
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
           <div style={{overflowX:'auto'}}>
             <table className="htable" style={{minWidth:600}}>
               <thead><tr><th>Employé</th><th>Date</th><th>Entrée</th><th>Sortie</th><th>Heures</th><th>OT</th><th>Job</th><th>Dépl.</th><th>Coéq.</th><th>Fichiers</th></tr></thead>
@@ -5813,26 +5888,40 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
           const db=Math.max(...groups[b].map(j=>new Date(j.lastDate||0).getTime()));
           return db-da;
         });
+        const visibleOrder=jobsFilterPrefix?groupOrder.filter(p=>p===jobsFilterPrefix):groupOrder;
         return(
           <div>
-            {groupOrder.map(prefix=>(
+            {/* Filtre par contracteur — un seul à la fois, ou "Tous" */}
+            <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.75rem'}}>
+              <div onClick={()=>setJobsFilterPrefix(null)} style={{padding:'0.2rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:!jobsFilterPrefix?700:400,background:!jobsFilterPrefix?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(!jobsFilterPrefix?'var(--accent)':'var(--border)'),color:!jobsFilterPrefix?'var(--accent)':'var(--muted)'}}>
+                Tous <span style={{fontSize:9,opacity:0.7}}>{stats.length}</span>
+              </div>
+              {groupOrder.map(prefix=>(
+                <div key={prefix} onClick={()=>setJobsFilterPrefix(jobsFilterPrefix===prefix?null:prefix)} style={{padding:'0.2rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:jobsFilterPrefix===prefix?700:400,background:jobsFilterPrefix===prefix?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(jobsFilterPrefix===prefix?'var(--accent)':'var(--border)'),color:jobsFilterPrefix===prefix?'var(--accent)':'var(--muted)'}}>
+                  {prefix} <span style={{fontSize:9,opacity:0.7}}>{groups[prefix].length}</span>
+                </div>
+              ))}
+            </div>
+            {visibleOrder.map(prefix=>(
               <div className="card" key={prefix} style={{marginBottom:'0.75rem'}}>
                 <div className="card-title">📦 {prefix} <span style={{fontWeight:400,fontSize:11,color:'var(--muted)'}}>({groups[prefix].length} job{groups[prefix].length!==1?'s':''})</span></div>
-                <table className="htable">
-                  <thead><tr><th>Job</th><th>Heures</th><th>Déplacements</th><th>Punchages</th><th>Fichiers</th><th>Dernière activité</th></tr></thead>
-                  <tbody>
-                    {groups[prefix].map((j,i)=>(
-                      <tr key={i}>
-                        <td><div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:9,height:9,borderRadius:'50%',background:j.color,flexShrink:0}}></div><span style={{fontWeight:500}}>{j.job}</span></div></td>
-                        <td><strong>{hToQuart(j.heures)}</strong></td>
-                        <td>{j.deplacement>0?'🚗 '+j.deplacement+'m':'—'}</td>
-                        <td>{j.count}</td>
-                        <td>{j.fichiers.length>0?j.fichiers.map((u,fi)=><a key={fi} href={u.split('|')[0]} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:4}}>📎</a>):'—'}</td>
-                        <td style={{color:'var(--muted)',fontSize:11}}>{j.lastDate?new Date(j.lastDate).toLocaleDateString('fr-CA'):'—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <div style={{overflowX:'auto'}}>
+                  <table className="htable" style={{minWidth:600}}>
+                    <thead><tr><th>Job</th><th>Heures</th><th>Déplacements</th><th>Punchages</th><th>Fichiers</th><th>Dernière activité</th></tr></thead>
+                    <tbody>
+                      {groups[prefix].map((j,i)=>(
+                        <tr key={i}>
+                          <td><div style={{display:'flex',alignItems:'center',gap:6}}><div style={{width:9,height:9,borderRadius:'50%',background:j.color,flexShrink:0}}></div><span style={{fontWeight:500}}>{j.job}</span></div></td>
+                          <td><strong>{hToQuart(j.heures)}</strong></td>
+                          <td>{j.deplacement>0?'🚗 '+j.deplacement+'m':'—'}</td>
+                          <td>{j.count}</td>
+                          <td>{j.fichiers.length>0?j.fichiers.map((u,fi)=><a key={fi} href={u.split('|')[0]} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,marginRight:4}}>📎</a>):'—'}</td>
+                          <td style={{color:'var(--muted)',fontSize:11}}>{j.lastDate?new Date(j.lastDate).toLocaleDateString('fr-CA'):'—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             ))}
           </div>
