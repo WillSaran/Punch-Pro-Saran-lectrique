@@ -503,7 +503,16 @@ button{font-family:var(--font-body)}
 //   jobs existent dans l'agenda) — l'employé peut choisir une job connue en
 //   un clic, ou continuer à l'écrire à la main comme avant (les deux
 //   options restent disponibles).
-const APP_VERSION='v202';
+// v203 (2026-07-22): Deux ajouts. 1) Dans "Mes heures" > Nouvelle entrée, le
+//   menu déroulant plat pour choisir une job de l'agenda est remplacé par
+//   le VRAI calendrier (AgendaEmp, comme partout ailleurs dans l'app) — un
+//   bouton "📅 Choisir dans l'agenda" ouvre le mois, on clique un jour, puis
+//   "✓ Choisir" sur la job voulue (job + date se remplissent). 2) Quand
+//   plusieurs types de travail sont sélectionnés en créant un job (ex:
+//   Rough + Finition), chaque phase peut maintenant avoir en plus son PROPRE
+//   fichier Drive spécifique ("📎 Fichier spécifique à ROUGH"), en plus des
+//   fichiers Drive partagés qui s'appliquent à toutes les phases.
+const APP_VERSION='v203';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2914,6 +2923,7 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
   const [newJobPhases,setNewJobPhases]=useState(['ROUGH']); // multi-select — permet de créer plusieurs jobs (ex: Rough + Finition) d'un coup
   const [newJobPhaseAutre,setNewJobPhaseAutre]=useState('');
   const [phaseDates,setPhaseDates]=useState({}); // date par phase quand plus d'une est sélectionnée — sinon newJobDate partagé
+  const [phaseDriveFiles,setPhaseDriveFiles]=useState({}); // fichiers Drive SPÉCIFIQUES à une phase (en plus des fichiers partagés)
   const [newJobStreet,setNewJobStreet]=useState('');
   const [newJobRest,setNewJobRest]=useState('');
   const [newJobKnownAddr,setNewJobKnownAddr]=useState('');
@@ -3015,17 +3025,38 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
         <input placeholder="Ex: 2E ÉTAGE, CUISINE..." value={newJobRest} onChange={e=>setNewJobRest(e.target.value.toUpperCase())}/>
       </div>
       {previewTitles.length>0&&(
-        <div style={{marginBottom:'0.5rem',display:'flex',flexDirection:'column',gap:5}}>
+        <div style={{marginBottom:'0.5rem',display:'flex',flexDirection:'column',gap:6}}>
           {newJobPhases.map(ph=>{
             const t=titleForPhase(ph);
             if(!t)return null;
+            const specFiles=phaseDriveFiles[ph]||[];
             return(
-              <div key={ph} style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'0.5rem 0.7rem',display:'flex',alignItems:'center',gap:8}}>
-                <div style={{flex:1,fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,color:'var(--text)'}}>{t}</div>
+              <div key={ph} style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'0.5rem 0.7rem'}}>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <div style={{flex:1,fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,color:'var(--text)'}}>{t}</div>
+                  {newJobPhases.length>1&&(
+                    <div style={{width:'auto',overflow:'hidden',borderRadius:6,boxSizing:'border-box',flexShrink:0}}>
+                      <input type="date" value={phaseDates[ph]||newJobDate} onChange={e=>setPhaseDates(prev=>({...prev,[ph]:e.target.value}))}
+                        style={{color:'var(--text)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem 0.5rem',fontSize:11,colorScheme:'dark',cursor:'pointer',boxSizing:'border-box'}}/>
+                    </div>
+                  )}
+                </div>
                 {newJobPhases.length>1&&(
-                  <div style={{width:'auto',overflow:'hidden',borderRadius:6,boxSizing:'border-box',flexShrink:0}}>
-                    <input type="date" value={phaseDates[ph]||newJobDate} onChange={e=>setPhaseDates(prev=>({...prev,[ph]:e.target.value}))}
-                      style={{color:'var(--text)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem 0.5rem',fontSize:11,colorScheme:'dark',cursor:'pointer',boxSizing:'border-box'}}/>
+                  <div style={{marginTop:6}}>
+                    <span onClick={()=>openDrivePicker(files=>setPhaseDriveFiles(prev=>({...prev,[ph]:[...(prev[ph]||[]),...files]})))}
+                      style={{fontSize:10,color:'var(--accent)',cursor:'pointer',textDecoration:'underline'}}>
+                      📎 Fichier spécifique à {phaseLabel(ph)}
+                    </span>
+                    {specFiles.length>0&&(
+                      <div style={{marginTop:4,display:'flex',flexDirection:'column',gap:3}}>
+                        {specFiles.map((f,i)=>(
+                          <div key={f.id+i} style={{display:'flex',alignItems:'center',gap:6,background:'var(--bg3)',borderRadius:6,padding:'0.2rem 0.5rem'}}>
+                            <span style={{flex:1,fontSize:10,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📄 {f.name}</span>
+                            <span onClick={()=>setPhaseDriveFiles(prev=>({...prev,[ph]:prev[ph].filter((_,j)=>j!==i)}))} style={{cursor:'pointer',color:'var(--danger)',fontSize:11,flexShrink:0}}>✕</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -3082,7 +3113,7 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
       )}
       <div className="fg" style={{marginBottom:'0.4rem'}}><label>Adresse (optionnel)</label><AddressInput value={newJobAddress} onChange={setNewJobAddress} placeholder="Ex: 123 rue Principale, Montréal"/></div>
       <div className="fg" style={{marginBottom:'0.5rem'}}>
-        <label>Fichiers Drive (optionnel)</label>
+        <label>Fichiers Drive{newJobPhases.length>1?' (partagés — toutes les phases)':' (optionnel)'}</label>
         <button className="btn-s" style={{width:'100%',fontSize:12}} type="button"
           onClick={()=>openDrivePicker(files=>setNewJobDriveFiles(prev=>[...prev,...files]))}>
           📎 Ajouter depuis Drive
@@ -3112,7 +3143,8 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
           for(const ph of newJobPhases){
             const title=titleForPhase(ph);
             if(!title)continue;
-            await onCreateJob({title,date:phaseDates[ph]||newJobDate,location:newJobAddress,assignedEmps,driveFiles:newJobDriveFiles});
+            const driveFiles=[...newJobDriveFiles,...(phaseDriveFiles[ph]||[])];
+            await onCreateJob({title,date:phaseDates[ph]||newJobDate,location:newJobAddress,assignedEmps,driveFiles});
           }
         }finally{setSubmitting(false);}
       }}>{submitting?'⏳ Création...':'Créer dans l\'agenda'+(newJobPhases.length>1?' ('+newJobPhases.length+' jobs)':'')}</button>
@@ -3839,6 +3871,7 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,ed
 function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const [pts,setPts]=useState([]);
   const [agendaJobs,setAgendaJobs]=useState([]); // jobs de l'agenda — pour choisir plutôt qu'écrire à la main
+  const [showAgendaPicker,setShowAgendaPicker]=useState(false);
   const [tab,setTab]=useState('semaine');
   const [loading,setLoading]=useState(true);
   const [sending,setSending]=useState(false);
@@ -4259,10 +4292,19 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
               <div className="fg" style={{marginBottom:'0.35rem'}}>
                 <label>Job</label>
                 {agendaJobs.length>0&&(
-                  <select value="" onChange={e=>{if(e.target.value)setNewEntry(p=>({...p,job:e.target.value}));}} style={{marginBottom:'0.35rem'}}>
-                    <option value="">— Choisir dans l'agenda —</option>
-                    {[...new Set(agendaJobs.map(j=>j.title).filter(Boolean))].sort().map(t=>(<option key={t} value={t}>{t}</option>))}
-                  </select>
+                  <button className="btn-s" type="button" style={{width:'100%',fontSize:12,marginBottom:'0.35rem'}}
+                    onClick={()=>setShowAgendaPicker(s=>!s)}>
+                    {showAgendaPicker?'✕ Fermer l\'agenda':'📅 Choisir dans l\'agenda'}
+                  </button>
+                )}
+                {showAgendaPicker&&(
+                  <div style={{background:'var(--bg2)',borderRadius:10,padding:'0.6rem',marginBottom:'0.5rem',border:'1px solid var(--border)'}}>
+                    <AgendaEmp jobs={agendaJobs} emp={emp} notify={notify} calendarIds={calendarIds} sid={sid}
+                      onPickJob={j=>{
+                        setNewEntry(p=>({...p,job:j.title,date:localDateStr(new Date(j.start))}));
+                        setShowAgendaPicker(false);
+                      }}/>
+                  </div>
                 )}
                 <input value={newEntry.job} onChange={e=>setNewEntry(p=>({...p,job:e.target.value}))} placeholder="Ou écrire manuellement..."/>
               </div>
@@ -4391,7 +4433,7 @@ function AddressInput({value,onChange,placeholder,style}){
 
 // ── JOB SUMMARY ──────────────────────────────────────────────────────────────
 // ── AGENDA EMPLOYÉ ───────────────────────────────────────────────────────────
-function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh}){
+function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh,onPickJob}){
   const [commandeJob,setCommandeJob]=useState(null);
   const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
   const [selDate,setSelDate]=useState(localDateStr());
@@ -4579,14 +4621,24 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
                   {j.description&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontStyle:'italic',
                     overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.description}</div>}
                 </div>
-                {emp&&(
-                  <button onClick={()=>setCommandeJob(j)}
-                    style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
-                      color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
-                      cursor:'pointer',touchAction:'manipulation',marginTop:2,whiteSpace:'nowrap'}}>
-                    📦 Commander
-                  </button>
-                )}
+                <div style={{display:'flex',flexDirection:'column',gap:4,flexShrink:0}}>
+                  {onPickJob&&(
+                    <button onClick={()=>onPickJob(j)}
+                      style={{background:'rgba(255,122,26,0.15)',border:'1px solid rgba(255,122,26,0.4)',
+                        color:'var(--accent)',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:700,
+                        cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+                      ✓ Choisir
+                    </button>
+                  )}
+                  {emp&&!onPickJob&&(
+                    <button onClick={()=>setCommandeJob(j)}
+                      style={{background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
+                        color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
+                        cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+                      📦 Commander
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
 
@@ -4608,6 +4660,14 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
                         {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
                       </div>
                     </div>
+                    {onPickJob&&(
+                      <button onClick={()=>onPickJob(j)}
+                        style={{flexShrink:0,background:'rgba(255,122,26,0.15)',border:'1px solid rgba(255,122,26,0.4)',
+                          color:'var(--accent)',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:700,
+                          cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+                        ✓ Choisir
+                      </button>
+                    )}
                   </div>
                 ))}
               </>
