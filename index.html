@@ -441,7 +441,24 @@ button{font-family:var(--font-body)}
 //   vrai suivi en arrière-plan pour une app web sans serveur dédié,
 //   particulièrement sur iPhone. Ce n'est donc pas garanti à 100%, mais ça
 //   couvre le cas normal où l'app reste accessible durant le quart.
-const APP_VERSION='v197';
+// v198 (2026-07-21): Suite d'ajustements au panneau "+ Créer" (Punch IN/
+//   Confirmer). 1) Nouveau champ "Nom de la rue" entre Type de travail et
+//   "Info de la job" (renommé, ex-"Reste du nom du job") — mis en MAJUSCULES
+//   automatiquement à la saisie, inclus dans le titre composé final.
+//   2) Le sélecteur "Projet" ne montre maintenant QUE les vrais projets
+//   (adresses avec plusieurs jobs, pas les jobs ponctuels) ET seulement ceux
+//   du contracteur déjà choisi — plus un simple tri, un vrai filtre.
+//   3) Nouveau picker "Employé(s) assigné(s)" (couleur + initiales, comme
+//   les coéquipiers) sous l'aperçu du titre — la couleur de l'événement
+//   créé dans l'agenda suit maintenant le 1er employé assigné (et non plus
+//   automatiquement la personne qui crée la job), et les initiales de tous
+//   les assignés sont ajoutées à la description pour qu'ils retrouvent
+//   correctement leur job dans leur agenda/Punch IN.
+//   4) Mon dashboard : nouvel onglet "⚙️ Config" après Ordres de travail,
+//   avec un interrupteur pour activer/désactiver la géolocalisation
+//   (capture au Punch IN + alerte "punch out oublié") — off par défaut pour
+//   celui qui préfère ne pas l'utiliser.
+const APP_VERSION='v198';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -704,6 +721,18 @@ function getGeoPos(){
     );
   });
 }
+// Préférence de localisation par employé (ON par défaut) — activable/
+// désactivable depuis "Mon dashboard" > Config. Stockée en local (par
+// appareil), comme la permission navigateur elle-même.
+function isGeoEnabled(nom){
+  if(!nom)return true;
+  return localStorage.getItem('geoOptOut_'+nom)!=='1';
+}
+function setGeoEnabled(nom,val){
+  if(!nom)return;
+  if(val)localStorage.removeItem('geoOptOut_'+nom);
+  else localStorage.setItem('geoOptOut_'+nom,'1');
+}
 // Arrondit une heure "HH:MM" au quart d'heure le plus proche (00/15/30/45).
 // Point de départ des punch IN/OUT — l'employé peut ensuite ajuster par
 // pas de 15 min avec le TimePicker.
@@ -780,12 +809,13 @@ function hexToGcalColorId(hex){
   }
   return best;
 }
-async function createCalendarEvent(calId,title,date,empColor,location){
+async function createCalendarEvent(calId,title,date,empColor,location,description){
   try{
     const s=new Date(date+'T07:00:00'),e=new Date(date+'T17:00:00');
     const resource={summary:title,start:{dateTime:s.toISOString()},end:{dateTime:e.toISOString()}};
     if(empColor)resource.colorId=hexToGcalColorId(empColor);
     if(location)resource.location=location;
+    if(description)resource.description=description;
     return (await gapi.client.calendar.events.insert({calendarId:calId||'primary',resource})).result;
   }catch(e){console.error(e);return null;}
 }
@@ -2769,24 +2799,27 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
 
 
 // ── JOB SELECTOR ─────────────────────────────────────────────────────────────
-function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode}){
+function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode,allEmps}){
   const [showCreate,setShowCreate]=useState(false);
-  // Nom du job = préfixe contracteur + préfixe phase + reste du texte (composé plus bas)
+  const [newJobAssignedEmps,setNewJobAssignedEmps]=useState([]);
+  function toggleAssignedEmp(nom){setNewJobAssignedEmps(prev=>prev.includes(nom)?prev.filter(n=>n!==nom):[...prev,nom]);}
+  // Nom du job = préfixe contracteur + préfixe phase + nom de la rue + info libre (composé plus bas)
   const [newJobContractor,setNewJobContractor]=useState('PARTICULIER');
   const [newJobContractorNom,setNewJobContractorNom]=useState('');
   const [newJobPhase,setNewJobPhase]=useState('ROUGH');
   const [newJobPhaseAutre,setNewJobPhaseAutre]=useState('');
+  const [newJobStreet,setNewJobStreet]=useState('');
   const [newJobRest,setNewJobRest]=useState('');
   const [newJobKnownAddr,setNewJobKnownAddr]=useState('');
   const [newJobDate,setNewJobDate]=useState(new Date().toISOString().split('T')[0]);
   const [newJobAddress,setNewJobAddress]=useState('');
   const prefix1Txt=newJobContractor==='PARTICULIER'?newJobContractorNom.trim():newJobContractor;
   const prefix2Txt=newJobPhase==='AUTRE'?newJobPhaseAutre.trim():JOB_PHASE_LABELS[newJobPhase];
-  const newJobTitle=[prefix1Txt,prefix2Txt,newJobRest.trim()].filter(Boolean).join(' - ');
-  // Projets déjà connus (adresses distinctes vues dans l'agenda) — pour pré-remplir
-  // l'adresse tout de suite quand on rattache le nouveau job à un projet existant.
-  // Triés pour que les projets du contracteur déjà choisi (Nom du job, ci-dessus)
-  // apparaissent en premier dans la liste.
+  const newJobTitle=[prefix1Txt,prefix2Txt,newJobStreet.trim(),newJobRest.trim()].filter(Boolean).join(' - ');
+  // Projets déjà connus — mais seulement les vrais "projets" (une adresse qui
+  // revient sur PLUSIEURS jobs), pas les jobs ponctuels qui n'apparaissent
+  // qu'une fois. Filtré en plus pour ne montrer que ceux du contracteur
+  // choisi ci-dessus (Nom du job) — pas tous les contracteurs mélangés.
   const knownProjects=useMemo(()=>{
     const map={};
     (jobs||[]).forEach(j=>{
@@ -2797,11 +2830,9 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode}){
       map[key].count++;
       if(new Date(j.start)>new Date(map[key].last)){map[key].last=j.start;map[key].titre=j.title;}
     });
-    return Object.values(map).sort((a,b)=>{
-      const am=getJobPrefix(a.titre)===newJobContractor,bm=getJobPrefix(b.titre)===newJobContractor;
-      if(am&&!bm)return -1; if(!am&&bm)return 1;
-      return b.count-a.count;
-    });
+    return Object.values(map)
+      .filter(k=>k.count>1&&getJobPrefix(k.titre)===newJobContractor)
+      .sort((a,b)=>b.count-a.count);
   },[jobs,newJobContractor]);
   const [showAll,setShowAll]=useState(false); // false = aujourd'hui seulement
   const [scope,setScope]=useState('mine'); // 'mine' | 'team'
@@ -2936,12 +2967,32 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode}){
             )}
           </div>
           <div className="fg" style={{marginBottom:'0.5rem'}}>
-            <label>Reste du nom du job</label>
+            <label>Nom de la rue</label>
+            <input placeholder="Ex: RUE PRINCIPALE" value={newJobStreet} onChange={e=>setNewJobStreet(e.target.value.toUpperCase())}/>
+          </div>
+          <div className="fg" style={{marginBottom:'0.5rem'}}>
+            <label>Info de la job</label>
             <input placeholder="Ex: 2e étage, cuisine..." value={newJobRest} onChange={e=>setNewJobRest(e.target.value)}/>
           </div>
           {newJobTitle&&(
-            <div style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'0.5rem 0.7rem',marginBottom:'0.6rem',fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,textAlign:'center',color:'var(--text)'}}>
+            <div style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'0.5rem 0.7rem',marginBottom:'0.5rem',fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,textAlign:'center',color:'var(--text)'}}>
               {newJobTitle}
+            </div>
+          )}
+          {(allEmps||[]).length>0&&(
+            <div className="fg" style={{marginBottom:'0.6rem'}}>
+              <label>Employé(s) assigné(s)</label>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:2}}>
+                {allEmps.map(t=>{const sel=newJobAssignedEmps.includes(t.nom);return(
+                  <div key={t.nom} onClick={()=>toggleAssignedEmp(t.nom)}
+                    style={{display:'flex',alignItems:'center',gap:5,padding:'0.22rem 0.5rem 0.22rem 0.22rem',borderRadius:20,cursor:'pointer',
+                      background:sel?rgba(t.couleur,0.18):'var(--bg2)',border:'1px solid '+(sel?t.couleur:'var(--border)')}}>
+                    <div className="emp-av" style={{background:t.couleur,width:20,height:20,fontSize:8,flexShrink:0}}>{t.code}</div>
+                    <span style={{fontSize:11,fontWeight:sel?700:500,color:sel?t.couleur:'var(--muted)'}}>{t.code}</span>
+                  </div>
+                );})}
+              </div>
+              <div style={{fontSize:10,color:'var(--muted)'}}>La couleur/l'initiale sert à coder rapidement à qui va le job dans l'agenda.</div>
             </div>
           )}
           {knownProjects.length>0&&(
@@ -2964,7 +3015,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode}){
                 style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box',display:'block'}}/>
             </div>
           </div>
-          <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress})}>Créer dans l'agenda</button>
+          <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress,assignedEmps:newJobAssignedEmps})}>Créer dans l'agenda</button>
         </div>
       )}
       {!showAll&&todayJobs.length===0&&(
@@ -5165,7 +5216,8 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   const [selJobDate,setSelJobDate]=useState('');
   const [jobs,setJobs]=useState([]);
   const [allJobs,setAllJobs]=useState([]);
-  const [monDashTab,setMonDashTab]=useState('heures'); // 'heures' | 'projets' | 'ot' — pour "Mon dashboard"
+  const [monDashTab,setMonDashTab]=useState('heures'); // 'heures' | 'projets' | 'ot' | 'config' — pour "Mon dashboard"
+  const [geoPrefTick,setGeoPrefTick]=useState(0); // force le re-render du toggle Config après un changement
   const [allOrgPts,setAllOrgPts]=useState([]); // tous les pointages de TOUS les employés — chargé pour l'onglet Ordres de travail (pas juste ceux de l'employé connecté)
   const [loadingOT,setLoadingOT]=useState(false);
   const [result,setResult]=useState(null);
@@ -5226,7 +5278,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   // l'app reste ouverte sur son téléphone — pas de vrai suivi en arrière-
   // plan possible sans serveur (limite connue, surtout sur iPhone).
   useEffect(()=>{
-    if(!selEmp||empStatut!=='in'){activePunchRef.current=null;return;}
+    if(!selEmp||empStatut!=='in'||!isGeoEnabled(selEmp.nom)){activePunchRef.current=null;return;}
     let cancelled=false;
     // Si l'app est rouverte en plein quart (activePunchRef vide car remis à
     // zéro par un rechargement de page), on retrouve le punch IN ouvert et
@@ -5309,7 +5361,8 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
     const data={job:selJob||'',jobColor:selJobColor||'',...punchDataRef.current};
     // Capter la position GPS au Punch IN (best-effort — ne bloque jamais le
     // punch si refusé/indisponible). Sert à l'alerte "punch out oublié".
-    if(type==='in'){
+    // Respecte le choix de l'employé dans Mon dashboard > Config.
+    if(type==='in'&&isGeoEnabled(emp.nom)){
       const geo=await getGeoPos();
       if(geo){data.lat=geo.lat;data.lng=geo.lng;}
     }
@@ -5609,7 +5662,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   if(step==='job')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <TimeHeader/>
-      <JobSelector jobs={allJobs.length>0?allJobs:jobs} emp={selEmp} mode={mode}
+      <JobSelector jobs={allJobs.length>0?allJobs:jobs} emp={selEmp} mode={mode} allEmps={emps}
         onSelect={(t,c)=>{setSelJob(t);setSelJobColor(c);
           const jobObj=jobs.find(j=>j.title===t)||null;
           const todayStr=localDateStr();
@@ -5621,8 +5674,16 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         }}
         onCreateJob={async(nj)=>{
           const calId=calendarIds&&calendarIds[0]||'primary';
-          const gcalColor=selEmp?selEmp.couleur:'#ff7a1a';
-          await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'');
+          // Couleur de l'événement = celle du 1er employé assigné (pas
+          // automatiquement celle de la personne qui crée le job — un
+          // dispatcheur peut créer une job pour quelqu'un d'autre).
+          const assignedList=(nj.assignedEmps||[]).map(nom=>emps.find(e=>e.nom===nom)).filter(Boolean);
+          const gcalColor=assignedList[0]?assignedList[0].couleur:(selEmp?selEmp.couleur:'#ff7a1a');
+          // Codes des employés assignés dans la description — permet à
+          // mentionsEmployee() de les retrouver dans leur agenda/Punch IN
+          // même si l'événement n'a qu'une seule couleur.
+          const description=assignedList.length>0?('👥 '+assignedList.map(e=>e.code).join(', ')):'';
+          await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'',description);
           notify('✅ Job "'+nj.title+'" créé!','success');
           getCalendarJobs(calendarIds).then(setJobs);
           setSelJob(nj.title);setSelJobColor(gcalColor);
@@ -5660,11 +5721,25 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
             <div className={'tab'+(monDashTab==='heures'?' active':'')} onClick={()=>setMonDashTab('heures')}>📋 Mes heures</div>
             <div className={'tab'+(monDashTab==='projets'?' active':'')} onClick={()=>setMonDashTab('projets')}>📁 Projets</div>
             <div className={'tab'+(monDashTab==='ot'?' active':'')} onClick={()=>setMonDashTab('ot')}>🔧 Ordres de travail</div>
+            <div className={'tab'+(monDashTab==='config'?' active':'')} onClick={()=>setMonDashTab('config')}>⚙️ Config</div>
           </div>
           {monDashTab==='heures'?(
             <EmployeeHistory emp={selEmp} sid={sid} notify={notify} folders={folders} calendarIds={calendarIds}/>
           ):monDashTab==='projets'?(
             <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify} calendarIds={calendarIds} onRefresh={refreshProjets}/>
+          ):monDashTab==='config'?(
+            <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.9rem'}}>
+              <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>📍 Localisation</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.7rem',lineHeight:1.4}}>
+                Quand c'est activé, l'app capte ta position au Punch IN et t'avertit si tu sembles avoir quitté le chantier sans avoir punché OUT. Tu peux désactiver ça ici en tout temps.
+              </div>
+              <button className="btn-s" style={{width:'100%',fontWeight:700,
+                  borderColor:isGeoEnabled(selEmp.nom)?'var(--success)':'var(--border2)',
+                  color:isGeoEnabled(selEmp.nom)?'var(--success)':'var(--muted)'}}
+                onClick={()=>{setGeoEnabled(selEmp.nom,!isGeoEnabled(selEmp.nom));setGeoPrefTick(t=>t+1);}}>
+                {isGeoEnabled(selEmp.nom)?'✅ Activée — appuyer pour désactiver':'⬜ Désactivée — appuyer pour activer'}
+              </button>
+            </div>
           ):(
           loadingOT?(
             <div style={{textAlign:'center',color:'var(--muted)',padding:'1rem',fontSize:13}}>⏳ Chargement...</div>
