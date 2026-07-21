@@ -349,7 +349,14 @@ button{font-family:var(--font-body)}
 //   importe le filtre actif. Le filtre ne s'applique plus qu'à la liste
 //   cliquable en dessous, avec un message clair si le filtre cache tout ce
 //   jour-là ("essaie l'autre filtre").
-const APP_VERSION='v190';
+// v191 (2026-07-20): Projets — nouveau filtre "📅 Cette semaine" activé par
+//   défaut au chargement (projets ayant un job cette semaine), compatible
+//   avec le filtre par contracteur existant. Détail d'un projet : nouvelle
+//   section "Fichiers" (repliable) qui rassemble TOUS les fichiers du projet
+//   — ceux attachés en confirmant une job/punch (OT_/AP_) ET ceux attachés
+//   directement sur les événements Google Agenda (les deux sources sont
+//   maintenant lues et fusionnées).
+const APP_VERSION='v191';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -592,7 +599,7 @@ async function getCalendarJobs(calendarIds){
     try{
       const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:50});
       (res.result.items||[]).forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
+        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))});
       });
     }catch(e){console.error(e);}
   }
@@ -609,7 +616,7 @@ async function getAllCalendarJobs(calendarIds){
     try{
       const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:500});
       (res.result.items||[]).forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7'});
+        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))});
       });
     }catch(e){console.error(e);}
   }
@@ -1844,6 +1851,7 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
   const [customMergeAddr,setCustomMergeAddr]=useState('');
   const [mergeFilterCat,setMergeFilterCat]=useState(null);
   const [mergeSearch,setMergeSearch]=useState('');
+  const [showFiles,setShowFiles]=useState(false);
 
   const today=new Date();
   // Sous-préfixes pour trier les événements à l'intérieur d'un projet
@@ -2016,6 +2024,56 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
       {todayJobs.length>0&&(<div style={{marginBottom:'0.6rem'}}><div style={{fontSize:10,fontWeight:700,color:'var(--success)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>Aujourd'hui</div>{todayJobs.map((j,i)=><EventCard key={i} j={j} isPast={false} projPts={projPts} editEvtAddr={editEvtAddr} setEditEvtAddr={setEditEvtAddr} editEvtAddrVal={editEvtAddrVal} setEditEvtAddrVal={setEditEvtAddrVal} saveEvtAddress={saveEvtAddress} pAdresse={p.adresse}/>)}</div>)}
       {futureJobs.length>0&&(<div><div style={{fontSize:10,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:'0.35rem'}}>À venir ({futureJobs.length})</div>{futureJobs.map((j,i)=><EventCard key={i} j={j} isPast={false} projPts={projPts} editEvtAddr={editEvtAddr} setEditEvtAddr={setEditEvtAddr} editEvtAddrVal={editEvtAddrVal} setEditEvtAddrVal={setEditEvtAddrVal} saveEvtAddress={saveEvtAddress} pAdresse={p.adresse}/>)}</div>)}
       {p.jobs.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1rem',fontSize:12}}>Aucun événement pour ce projet.</div>}
+      {(()=>{
+        // Fichiers du projet : ceux attachés aux pointages (fichiersURL) + ceux
+        // attachés directement sur les événements Google Agenda (attachments).
+        const punchFiles=[];
+        (projPts||[]).forEach(p2=>{
+          (p2.fichiersURL||[]).forEach(raw=>{
+            if(!raw)return;
+            const url=raw.split('|')[0];
+            const nom=raw.includes('|')?raw.split('|')[1]:'Fichier';
+            punchFiles.push({url,nom,source:'punch',who:p2.nom,date:p2.date});
+          });
+        });
+        const calFiles=[];
+        (p.jobs||[]).forEach(j=>{
+          (j.attachments||[]).forEach(a=>{
+            if(!a.url)return;
+            calFiles.push({url:a.url,nom:a.title||'Fichier',source:'calendrier',who:j.title,date:j.start?localDateStr(new Date(j.start)):''});
+          });
+        });
+        const allFiles=[...punchFiles,...calFiles];
+        return(
+          <div style={{marginTop:'0.75rem',borderTop:'1px solid var(--border)',paddingTop:'0.65rem'}}>
+            <div onClick={()=>setShowFiles(s=>!s)} style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',touchAction:'manipulation'}}>
+              <div style={{fontSize:10,fontWeight:700,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em'}}>📎 Fichiers ({allFiles.length})</div>
+              <span style={{fontSize:9,color:'var(--muted)'}}>{showFiles?'▲':'▼'}</span>
+            </div>
+            {showFiles&&(
+              allFiles.length===0?(
+                <div style={{color:'var(--muted)',fontSize:11,padding:'0.5rem 0'}}>Aucun fichier trouvé pour ce projet.</div>
+              ):(
+                <div style={{marginTop:'0.4rem'}}>
+                  {allFiles.map((f,i)=>{
+                    const isOT=f.nom.startsWith('OT_');
+                    const isAP=f.nom.startsWith('AP_');
+                    const icon=isOT?'🔧':isAP?'📋':f.source==='calendrier'?'📅':'📎';
+                    return(
+                      <a key={i} href={f.url} target="_blank" rel="noreferrer"
+                        style={{display:'flex',alignItems:'center',gap:6,background:'var(--bg3)',borderRadius:6,padding:'0.3rem 0.55rem',marginBottom:3,textDecoration:'none',color:'var(--text)',fontSize:11}}>
+                        <span>{icon}</span>
+                        <span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{f.nom}</span>
+                        <span style={{color:'var(--muted)',fontSize:10,flexShrink:0}}>{f.who}{f.date?' · '+f.date:''}</span>
+                      </a>
+                    );
+                  })}
+                </div>
+              )
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -2078,6 +2136,18 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
   const [showClosed,setShowClosed]=useState(false);
   const [filterPrefix,setFilterPrefix]=useState('PARTICULIER');
   const [search,setSearch]=useState('');
+  const [weekOnly,setWeekOnly]=useState(true); // "Cette semaine" activé par défaut au chargement
+
+  // Bornes de la semaine courante (lundi → dimanche)
+  const weekDatesProj=useMemo(()=>{
+    const d=new Date();d.setHours(0,0,0,0);
+    const dow=d.getDay();
+    const diffToMonday=(dow+6)%7;
+    const monday=new Date(d);monday.setDate(d.getDate()-diffToMonday);
+    const arr=[];
+    for(let i=0;i<7;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);arr.push(localDateStr(dd));}
+    return arr;
+  },[]);
 
   // Charger depuis Sheets, avec migration automatique depuis localStorage
   useEffect(()=>{
@@ -2194,6 +2264,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
   const statuts={'en-cours':{label:'En cours',color:'var(--success)',bg:'rgba(63,185,80,0.1)'},'a-venir':{label:'À venir',color:'var(--accent)',bg:'rgba(47,129,247,0.1)'},ferme:{label:'Fermé',color:'var(--muted)',bg:'var(--bg3)'}};
 
   let actifs=projets.filter(p=>p.statut!=='ferme');
+  if(weekOnly)actifs=actifs.filter(p=>p.jobs.some(j=>weekDatesProj.some(d=>jobCouvreDate(j,d))));
   if(filterPrefix)actifs=actifs.filter(p=>p.prefix===filterPrefix);
   if(search)actifs=actifs.filter(p=>(p.titre+p.adresse+p.po).toLowerCase().includes(search.toLowerCase()));
   const fermes=projets.filter(p=>p.statut==='ferme');
@@ -2235,7 +2306,12 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
             ↻ Actualiser
           </button>
         )}
-        <div style={{display:'flex',gap:'0.3rem'}}>
+        <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap'}}>
+          {!showClosed&&(
+            <div onClick={()=>setWeekOnly(w=>!w)} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:weekOnly?700:400,background:weekOnly?'rgba(210,153,34,0.15)':'var(--bg3)',border:'1px solid '+(weekOnly?'var(--warning)':'var(--border)'),color:weekOnly?'var(--warning)':'var(--muted)'}}>
+              📅 Cette semaine
+            </div>
+          )}
           <div onClick={()=>{setShowClosed(false);setFilterPrefix(null);}} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:!showClosed?700:400,background:!showClosed?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(!showClosed?'var(--accent)':'var(--border)'),color:!showClosed?'var(--accent)':'var(--muted)'}}>Actifs</div>
           <div onClick={()=>setShowClosed(true)} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:showClosed?700:400,background:showClosed?'rgba(100,100,100,0.15)':'var(--bg3)',border:'1px solid '+(showClosed?'var(--muted)':'var(--border)'),color:'var(--muted)'}}>
             Fermés {fermes.length>0&&'('+fermes.length+')'}
@@ -2266,6 +2342,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
         </div>
       )}
       {displayList.length===0&&!showClosed&&projets.length===0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>Ajoutez des adresses dans vos événements Google Agenda.</div>)}
+      {displayList.length===0&&!showClosed&&projets.length>0&&weekOnly&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>Aucun projet avec un job cette semaine — <span style={{cursor:'pointer',textDecoration:'underline'}} onClick={()=>setWeekOnly(false)}>voir tous les actifs</span></div>)}
       {showClosed&&fermesFiltered.length===0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'1.5rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>Aucun projet fermé.</div>)}
       {showClosed&&fermesFiltered.map(p=>{
         const s=statuts[p.statut]||statuts['en-cours'];
