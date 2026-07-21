@@ -356,7 +356,23 @@ button{font-family:var(--font-body)}
 //   — ceux attachés en confirmant une job/punch (OT_/AP_) ET ceux attachés
 //   directement sur les événements Google Agenda (les deux sources sont
 //   maintenant lues et fusionnées).
-const APP_VERSION='v191';
+// v192 (2026-07-20): Deux ajustements Projets + correctif MAJEUR probable de
+//   la saga "jobs du jour invisibles". Ajustements : la section Fichiers du
+//   détail d'un projet est maintenant ouverte par défaut (repliable au
+//   besoin) ; le filtre "Cette semaine" a été déplacé hors de la barre
+//   Actifs/Fermés pour se retrouver avec les chips de contracteur (ce n'est
+//   pas un filtre de statut, il se combine avec le contracteur).
+//   CORRECTIF MAJEUR : getCalendarJobs/getAllCalendarJobs utilisaient
+//   maxResults sans pagination — sur la fenêtre large (-180/+90 jours,
+//   plafond 500), avec plusieurs employés qui punchent chaque jour, le
+//   nombre total d'événements dans l'historique passé pouvait dépasser 500
+//   AVANT MÊME d'atteindre aujourd'hui, ce qui coupait silencieusement les
+//   jobs du jour de la liste. C'est probablement la vraie cause de toute la
+//   saga "on voit le job dans Aujourd'hui/Demain (fenêtre étroite -3/+14j)
+//   mais pas dans Agenda ou Punch IN/Confirmer (fenêtre large)". Corrigé
+//   avec une pagination complète (pageToken) qui récupère TOUS les
+//   événements de la plage, peu importe leur nombre.
+const APP_VERSION='v192';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -590,6 +606,30 @@ function useClock(){
 function nowTimeStr(){const n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
 
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
+// Récupère TOUS les événements d'un calendrier sur une plage de dates, en
+// suivant les pages (pageToken) jusqu'au bout. IMPORTANT: sans pagination,
+// maxResults tronque silencieusement les résultats — sur une plage large
+// (ex: -180/+90 jours) avec plusieurs employés qui punchent chaque jour, on
+// peut largement dépasser 500 événements rien que dans l'historique passé,
+// ce qui poussait les jobs D'AUJOURD'HUI hors de la liste tronquée. C'est la
+// cause probable de "les jobs du jour n'apparaissent pas dans Agenda/Punch
+// IN/Confirmer alors qu'ils sont visibles ailleurs" (les autres vues utilisent
+// une fenêtre plus étroite, moins susceptible d'être tronquée).
+async function fetchCalEventsPaged(calId,timeMin,timeMax){
+  const items=[];
+  let pageToken=undefined;
+  let guard=0; // garde-fou anti-boucle infinie
+  do{
+    const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin,timeMax,singleEvents:true,orderBy:'startTime',maxResults:250,pageToken});
+    (res.result.items||[]).forEach(e=>items.push(e));
+    pageToken=res.result.nextPageToken;
+    guard++;
+  }while(pageToken&&guard<40);
+  return items;
+}
+function mapCalEvent(e){
+  return{id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
+}
 async function getCalendarJobs(calendarIds){
   const now=new Date();
   const start=new Date(now);start.setDate(start.getDate()-3); // punch: 3 jours passés
@@ -597,9 +637,9 @@ async function getCalendarJobs(calendarIds){
   const all=[];
   for(const calId of (calendarIds||['primary'])){
     try{
-      const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:50});
-      (res.result.items||[]).forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))});
+      const items=await fetchCalEventsPaged(calId,start.toISOString(),end.toISOString());
+      items.forEach(e=>{
+        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e));
       });
     }catch(e){console.error(e);}
   }
@@ -614,9 +654,9 @@ async function getAllCalendarJobs(calendarIds){
   const all=[];
   for(const calId of (calendarIds||['primary'])){
     try{
-      const res=await gapi.client.calendar.events.list({calendarId:calId,timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:true,orderBy:'startTime',maxResults:500});
-      (res.result.items||[]).forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push({id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))});
+      const items=await fetchCalEventsPaged(calId,start.toISOString(),end.toISOString());
+      items.forEach(e=>{
+        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e));
       });
     }catch(e){console.error(e);}
   }
@@ -1851,7 +1891,7 @@ function ProjDetail({p,projPts,calJobs,statuts,calendarIds,notify,projData,saveP
   const [customMergeAddr,setCustomMergeAddr]=useState('');
   const [mergeFilterCat,setMergeFilterCat]=useState(null);
   const [mergeSearch,setMergeSearch]=useState('');
-  const [showFiles,setShowFiles]=useState(false);
+  const [showFiles,setShowFiles]=useState(true); // ouvert par défaut — l'utilisateur peut le refermer au besoin
 
   const today=new Date();
   // Sous-préfixes pour trier les événements à l'intérieur d'un projet
@@ -2307,11 +2347,6 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
           </button>
         )}
         <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap'}}>
-          {!showClosed&&(
-            <div onClick={()=>setWeekOnly(w=>!w)} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:weekOnly?700:400,background:weekOnly?'rgba(210,153,34,0.15)':'var(--bg3)',border:'1px solid '+(weekOnly?'var(--warning)':'var(--border)'),color:weekOnly?'var(--warning)':'var(--muted)'}}>
-              📅 Cette semaine
-            </div>
-          )}
           <div onClick={()=>{setShowClosed(false);setFilterPrefix(null);}} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:!showClosed?700:400,background:!showClosed?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(!showClosed?'var(--accent)':'var(--border)'),color:!showClosed?'var(--accent)':'var(--muted)'}}>Actifs</div>
           <div onClick={()=>setShowClosed(true)} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:showClosed?700:400,background:showClosed?'rgba(100,100,100,0.15)':'var(--bg3)',border:'1px solid '+(showClosed?'var(--muted)':'var(--border)'),color:'var(--muted)'}}>
             Fermés {fermes.length>0&&'('+fermes.length+')'}
@@ -2320,6 +2355,10 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
       </div>
       {!showClosed&&(
         <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
+          <div onClick={()=>setWeekOnly(w=>!w)} style={{padding:'0.2rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:weekOnly?700:400,background:weekOnly?'rgba(210,153,34,0.15)':'var(--bg3)',border:'1px solid '+(weekOnly?'var(--warning)':'var(--border)'),color:weekOnly?'var(--warning)':'var(--muted)'}}>
+            📅 Cette semaine
+          </div>
+          <div style={{width:1,background:'var(--border)',margin:'0.15rem 0.15rem'}}></div>
           {['PARTICULIER',...PREFIXES].map(p=>{
             const count=prefixCounts[p]||0;
             if(count===0)return null;
