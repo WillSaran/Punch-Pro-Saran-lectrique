@@ -426,7 +426,22 @@ button{font-family:var(--font-body)}
 //   champ Date sur mobile : chaque input date est maintenant entouré d'un
 //   conteneur avec overflow:hidden qui force le rognage, au cas où le
 //   rendu natif du sélecteur de date ignore sa largeur CSS.
-const APP_VERSION='v196';
+// v197 (2026-07-21): Alerte "punch out oublié" basée sur la localisation.
+//   Au Punch IN, l'app capte (avec permission du navigateur) la position GPS
+//   et la sauvegarde avec le pointage (2 nouvelles colonnes dans Sheets,
+//   invisibles si refusé — le punch n'est jamais bloqué). Pendant qu'un
+//   employé reste punché IN, l'app vérifie sa position toutes les ~3 min ;
+//   s'il s'est éloigné de plus de 500m de l'endroit où il a punché sans
+//   avoir punché OUT, il reçoit un avertissement (dans l'app + notification
+//   du téléphone s'il a accepté). Un service worker minimal (sw.js) a été
+//   ajouté pour permettre ces notifications.
+//   LIMITE IMPORTANTE à connaître : ça ne fonctionne que pendant que l'app
+//   reste ouverte sur le téléphone de l'employé (chaque gars doit l'utiliser
+//   sur SON propre cellulaire, pas un appareil partagé) — il n'existe pas de
+//   vrai suivi en arrière-plan pour une app web sans serveur dédié,
+//   particulièrement sur iPhone. Ce n'est donc pas garanti à 100%, mais ça
+//   couvre le cas normal où l'app reste accessible durant le quart.
+const APP_VERSION='v197';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -663,6 +678,32 @@ function useClock(){
   return now;
 }
 function nowTimeStr(){const n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+// Distance en mètres entre deux coordonnées GPS (formule haversine) — sert à
+// l'alerte "punch out oublié" (comparer la position actuelle à celle captée
+// au punch IN).
+function distMeters(lat1,lng1,lat2,lng2){
+  const R=6371000;
+  const toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1),dLng=toRad(lng2-lng1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+// Distance au-delà de laquelle on considère qu'un employé encore punché IN a
+// quitté le chantier, et fréquence de vérification pendant que l'app est ouverte.
+const GEOFENCE_METERS=500;
+const GEOFENCE_CHECK_MS=3*60*1000;
+// Capte la position GPS actuelle (best-effort) — ne bloque jamais l'appelant,
+// se résout à null si refusé/indisponible/timeout.
+function getGeoPos(){
+  return new Promise(resolve=>{
+    if(!navigator.geolocation){resolve(null);return;}
+    navigator.geolocation.getCurrentPosition(
+      p=>resolve({lat:p.coords.latitude,lng:p.coords.longitude}),
+      ()=>resolve(null),
+      {enableHighAccuracy:false,timeout:6000,maximumAge:60000}
+    );
+  });
+}
 // Arrondit une heure "HH:MM" au quart d'heure le plus proche (00/15/30/45).
 // Point de départ des punch IN/OUT — l'employé peut ensuite ajuster par
 // pas de 15 min avec le TimePicker.
@@ -1120,14 +1161,20 @@ async function addPointage(sid,emp,type,data){
       data.deplacement||0,data.heures||0,
       data.note||'',
       (data.fichiersURL||[]).join(' | '),
-      (data.coequipiers||[]).join(', ')
+      (data.coequipiers||[]).join(', '),
+      // Coordonnées GPS captées au moment du punch (surtout utile au punch IN,
+      // pour l'alerte "quitté le chantier sans punch out") — vide si la
+      // localisation a été refusée/indisponible, ça ne bloque jamais le punch.
+      data.lat!=null?data.lat:'',
+      data.lng!=null?data.lng:''
     ]]}
   }));
 }
 async function getPointages(sid,filter){
-  const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Pointages!A2:N'}));
+  const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Pointages!A2:P'}));
   let rows=(res.result.values||[]).map((r,i)=>({
     nom:r[0],type:r[1],datetime:r[2],date:r[3],heure:r[4],semaine:r[5],mois:r[6],
+    lat:r[14]?safeFloat(r[14]):null,lng:r[15]?safeFloat(r[15]):null,
     job:r[7]||'',jobColor:r[8]||'',deplacement:safeFloat(r[9]),
     heures:safeFloat(r[10]),note:r[11]||'',
     fichiersURL:(r[12]||'').split(' | ').filter(Boolean),
@@ -5125,6 +5172,10 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   const punchDataRef=useRef({});
   const ptsRef=useRef([]);
   const [ptsForOut,setPtsForOut]=useState([]);
+  // Géo-alerte "punch out oublié" : coordonnées du punch IN actif + set des
+  // punchs déjà notifiés (évite de spammer la même alerte en boucle).
+  const activePunchRef=useRef(null);
+  const geoNotifiedRef=useRef(new Set());
 
   const pad=n=>String(n).padStart(2,'0');
   const days=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
@@ -5167,6 +5218,58 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
     return()=>clearInterval(t);
   },[calendarIds?calendarIds.join(','):'',refreshKey]);
 
+  // ── GÉO-ALERTE "PUNCH OUT OUBLIÉ" ──────────────────────────────────────
+  // Pendant qu'un employé est punché IN, on vérifie périodiquement sa
+  // position par rapport à celle captée au moment du punch IN. S'il s'en
+  // est éloigné (>500m) sans avoir punché OUT, on l'avertit (toast +
+  // notification native si permise). Ça ne fonctionne que pendant que
+  // l'app reste ouverte sur son téléphone — pas de vrai suivi en arrière-
+  // plan possible sans serveur (limite connue, surtout sur iPhone).
+  useEffect(()=>{
+    if(!selEmp||empStatut!=='in'){activePunchRef.current=null;return;}
+    let cancelled=false;
+    // Si l'app est rouverte en plein quart (activePunchRef vide car remis à
+    // zéro par un rechargement de page), on retrouve le punch IN ouvert et
+    // ses coordonnées à partir des pointages déjà enregistrés.
+    async function ensureActivePunch(){
+      if(activePunchRef.current)return;
+      try{
+        const p=await getPointages(sid,{nom:selEmp.nom});
+        const combined=combinePts(p.filter(r=>r.nom===selEmp.nom));
+        const open=combined.find(l=>l.type==='pair'&&l.heures==null);
+        if(open){
+          const raw=p.find(r=>r.row===open.inRow);
+          if(raw&&raw.lat!=null&&raw.lng!=null&&!cancelled){
+            activePunchRef.current={job:open.job||'',lat:raw.lat,lng:raw.lng,key:selEmp.nom+'|'+raw.datetime};
+          }
+        }
+      }catch(e){console.error('Géo-alerte (reconstruction):',e);}
+    }
+    ensureActivePunch();
+    async function check(){
+      const ap=activePunchRef.current;
+      if(cancelled||!ap)return;
+      const pos=await getGeoPos();
+      if(!pos||cancelled)return;
+      const d=distMeters(pos.lat,pos.lng,ap.lat,ap.lng);
+      if(d>GEOFENCE_METERS&&!geoNotifiedRef.current.has(ap.key)){
+        geoNotifiedRef.current.add(ap.key);
+        const msg=selEmp.nom+' semble avoir quitté "'+(ap.job||'le chantier')+'" (~'+Math.round(d)+'m) sans punch out.';
+        notify('📍 '+msg,'warn');
+        if(typeof Notification!=='undefined'&&Notification.permission==='granted'){
+          try{
+            navigator.serviceWorker?.getRegistration().then(reg=>{
+              if(reg)reg.showNotification('PunchPro — Punch out oublié?',{body:msg,icon:'icon-192.png'});
+              else new Notification('PunchPro — Punch out oublié?',{body:msg,icon:'icon-192.png'});
+            });
+          }catch(e){/* silencieux — la notif in-app (toast) reste affichée de toute façon */}
+        }
+      }
+    }
+    const t=setInterval(check,GEOFENCE_CHECK_MS);
+    return()=>{cancelled=true;clearInterval(t);};
+  },[selEmp?.nom,empStatut,sid]);
+
   useEffect(()=>{
     if(step==='emps')setNavBack(null);
     else setNavBack(()=>goBack);
@@ -5204,6 +5307,12 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
       return;
     }
     const data={job:selJob||'',jobColor:selJobColor||'',...punchDataRef.current};
+    // Capter la position GPS au Punch IN (best-effort — ne bloque jamais le
+    // punch si refusé/indisponible). Sert à l'alerte "punch out oublié".
+    if(type==='in'){
+      const geo=await getGeoPos();
+      if(geo){data.lat=geo.lat;data.lng=geo.lng;}
+    }
     try{
       if(type==='confirm'){
         const confirmedData={
@@ -5327,6 +5436,14 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
       }
       ptsRef.current=allPts;
       setPtsForOut(allPts);
+      // Mettre à jour l'état de la géo-alerte : un punch IN avec coordonnées
+      // devient le "punch actif" à surveiller ; un punch OUT l'annule.
+      if(type==='in'&&data.lat!=null&&data.lng!=null){
+        activePunchRef.current={job:data.job||'',lat:data.lat,lng:data.lng,key:emp.nom+'|'+Date.now()};
+        geoNotifiedRef.current=new Set();
+      }else if(type==='out'){
+        activePunchRef.current=null;
+      }
       const selJobInfo=jobs.find(j=>j.title===selJob)||null;
       setResult({ok:true,nom:emp.nom,type,
         heure:data.customTime||now.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'}),
@@ -5387,6 +5504,17 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
             <div className="ps"><div className="v">{calcH(rpts.filter(p=>p.mois===curMois))}h</div><div className="l">Mois</div></div>
             <div className="ps"><div className="v">{Math.round(rpts.filter(p=>p.semaine===curWeek&&(p.type==='in'||p.type==='confirm')).reduce((s,p)=>s+(p.deplacement||0),0))}m</div><div className="l">Dépl.</div></div>
           </div>
+          {/* Opt-in alertes géo — demande de permission sur un vrai clic (Safari
+              ignore Notification.requestPermission() appelé depuis un timer) */}
+          {result.type==='in'&&typeof Notification!=='undefined'&&Notification.permission==='default'&&(
+            <div style={{background:'rgba(255,122,26,0.08)',border:'1px solid rgba(255,122,26,0.3)',borderRadius:8,padding:'0.5rem 0.65rem',margin:'8px 0',textAlign:'left'}}>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:5}}>🔔 Recevoir une alerte si tu quittes le chantier sans punch out?</div>
+              <button className="btn-s" style={{width:'100%',fontSize:11,padding:'0.35rem'}}
+                onClick={()=>Notification.requestPermission().then(p=>{if(p==='granted')notify('🔔 Alertes activées','success');})}>
+                Activer les alertes
+              </button>
+            </div>
+          )}
           {/* Bouton appel de service après punch OUT ou confirm */}
           {(result.type==='out'||result.type==='confirm')&&(
             <button className="btn-s" style={{marginTop:'0.6rem',width:'100%',borderColor:'rgba(255,122,26,0.4)',color:'var(--accent)',fontSize:12}}
@@ -6730,6 +6858,14 @@ function App(){
       )}
     </div>
   );
+}
+
+// Service worker minimal — permet d'afficher des notifications locales
+// (alerte "punch out oublié") et rend l'app installable comme PWA.
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.warn('SW non enregistré:',e));
+  });
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
