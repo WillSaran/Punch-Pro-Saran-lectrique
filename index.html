@@ -399,7 +399,21 @@ button{font-family:var(--font-body)}
 //   3) combinePts() : l'appariement punch IN → punch OUT exige maintenant
 //   la même date (comme c'était déjà le cas pour confirm → in), pour éviter
 //   qu'un IN se retrouve appairé par erreur avec un OUT d'un autre jour.
-const APP_VERSION='v194';
+// v195 (2026-07-21): Refonte du panneau "+ Créer" dans Punch IN/Confirmer une
+//   job. 1) L'option "Sans job" est retirée du Punch IN et de Confirmer une
+//   job (elle reste disponible seulement au Punch OUT, pour fermer une job
+//   au besoin). 2) Un sélecteur "Projet" apparaît maintenant au-dessus du nom
+//   du job — si on choisit un projet déjà connu (adresse déjà vue dans
+//   l'agenda), l'adresse se remplit tout de suite. 3) Le "Nom du job" se
+//   compose maintenant de deux préfixes à choisir (contracteur : PAY, CRS,
+//   ASC, GGP, SAR, BOM, 5PIL, RROY, GOU, ou "Particulier" — dans ce cas on
+//   peut écrire le nom du client ; puis une phase : Rough, Finition, Bornes
+//   ou Autre) suivis du reste du texte écrit librement. 4) Correctif
+//   d'affichage mobile : tous les champs de type date (Créer un job, date de
+//   la job en confirmant, entrées manuelles/édition d'historique) ont
+//   maintenant max-width:100% et min-width:0 pour éviter qu'ils débordent de
+//   leur case sur téléphone.
+const APP_VERSION='v195';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -625,6 +639,10 @@ function getJobPrefix(title){
   for(const p of JOB_PREFIXES)if(u.startsWith(p))return p;
   return 'PARTICULIER';
 }
+// Préfixes de "phase" de chantier (rough-in, finition, bornes de recharge...)
+// — deuxième préfixe optionnel accolé au nom du job, en plus du contracteur.
+const JOB_PHASES=['ROUGH','FINITION','BORNES','AUTRE'];
+const JOB_PHASE_LABELS={ROUGH:'Rough',FINITION:'Finition',BORNES:'Bornes',AUTRE:'Autre'};
 function useClock(){
   const [now,setNow]=useState(new Date());
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),1000);return()=>clearInterval(t);},[]);
@@ -1748,7 +1766,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
       <div className="dur-section">
         <div className="csec">Date de la job</div>
         <input type="date" value={dateTravail} onChange={e=>setDateTravail(e.target.value)}
-          style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box'}}/>
+          style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box'}}/>
         {jobDate&&dateTravail!==jobDate&&(
           <div style={{fontSize:10,color:'var(--warning)',marginTop:4}}>
             ⚠️ Différente de la date de l'agenda ({new Date(jobDate+'T12:00:00').toLocaleDateString('fr-CA',{day:'numeric',month:'long'})})
@@ -2688,11 +2706,34 @@ function NoAddrCard({j,estEnCours,projData,saveProjData,confirmCloseNoAddr,setCo
 
 
 // ── JOB SELECTOR ─────────────────────────────────────────────────────────────
-function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
+function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode}){
   const [showCreate,setShowCreate]=useState(false);
-  const [newJobTitle,setNewJobTitle]=useState('');
+  // Nom du job = préfixe contracteur + préfixe phase + reste du texte (composé plus bas)
+  const [newJobContractor,setNewJobContractor]=useState('PARTICULIER');
+  const [newJobContractorNom,setNewJobContractorNom]=useState('');
+  const [newJobPhase,setNewJobPhase]=useState('ROUGH');
+  const [newJobPhaseAutre,setNewJobPhaseAutre]=useState('');
+  const [newJobRest,setNewJobRest]=useState('');
+  const [newJobKnownAddr,setNewJobKnownAddr]=useState('');
   const [newJobDate,setNewJobDate]=useState(new Date().toISOString().split('T')[0]);
   const [newJobAddress,setNewJobAddress]=useState('');
+  const prefix1Txt=newJobContractor==='PARTICULIER'?newJobContractorNom.trim():newJobContractor;
+  const prefix2Txt=newJobPhase==='AUTRE'?newJobPhaseAutre.trim():JOB_PHASE_LABELS[newJobPhase];
+  const newJobTitle=[prefix1Txt,prefix2Txt,newJobRest.trim()].filter(Boolean).join(' - ');
+  // Projets déjà connus (adresses distinctes vues dans l'agenda) — pour pré-remplir
+  // l'adresse tout de suite quand on rattache le nouveau job à un projet existant.
+  const knownProjects=useMemo(()=>{
+    const map={};
+    (jobs||[]).forEach(j=>{
+      const loc=(j.location||'').trim();
+      if(!loc)return;
+      const key=loc.toLowerCase();
+      if(!map[key])map[key]={adresse:loc,titre:j.title,count:0,last:j.start};
+      map[key].count++;
+      if(new Date(j.start)>new Date(map[key].last)){map[key].last=j.start;map[key].titre=j.title;}
+    });
+    return Object.values(map).sort((a,b)=>b.count-a.count);
+  },[jobs]);
   const [showAll,setShowAll]=useState(false); // false = aujourd'hui seulement
   const [scope,setScope]=useState('mine'); // 'mine' | 'team'
   const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
@@ -2786,7 +2827,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
             {showAll?'📅 Aujourd\'hui':'📋 Tout l\'agenda'}
           </button>
           <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem'}} onClick={()=>setShowCreate(!showCreate)}>+ Créer</button>
-          <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem'}} onClick={onSkip}>Sans job</button>
+          {mode==='out'&&<button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem'}} onClick={onSkip}>Sans job</button>}
         </div>
       </div>
 
@@ -2803,12 +2844,44 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
 
       {showCreate&&(
         <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.65rem',border:'1px solid var(--border2)'}}>
-          <div className="fg" style={{marginBottom:'0.4rem'}}><label>Nom du job</label><input placeholder="Ex: Chantier St-Laurent" value={newJobTitle} onChange={e=>setNewJobTitle(e.target.value)}/></div>
+          {knownProjects.length>0&&(
+            <div className="fg" style={{marginBottom:'0.5rem'}}>
+              <label>Projet</label>
+              <select value={newJobKnownAddr} onChange={e=>{
+                const val=e.target.value;setNewJobKnownAddr(val);
+                if(val){const kp=knownProjects.find(k=>k.adresse===val);if(kp)setNewJobAddress(kp.adresse);}
+              }}>
+                <option value="">— Nouveau projet —</option>
+                {knownProjects.map(k=>(<option key={k.adresse} value={k.adresse}>{k.titre} — {k.adresse}</option>))}
+              </select>
+            </div>
+          )}
+          <div className="fg" style={{marginBottom:'0.5rem'}}>
+            <label>Nom du job</label>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:'0.4rem'}}>
+              {[...JOB_PREFIXES,'PARTICULIER'].map(c=>(
+                <div key={c} onClick={()=>setNewJobContractor(c)} style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,cursor:'pointer',fontWeight:newJobContractor===c?700:500,background:newJobContractor===c?'var(--accent)':'var(--bg2)',color:newJobContractor===c?'#fff':'var(--muted)',border:'1px solid '+(newJobContractor===c?'var(--accent)':'var(--border)')}}>{c==='PARTICULIER'?'Particulier':c}</div>
+              ))}
+            </div>
+            {newJobContractor==='PARTICULIER'&&(
+              <input placeholder="Nom du particulier" value={newJobContractorNom} onChange={e=>setNewJobContractorNom(e.target.value)} style={{marginBottom:'0.4rem'}}/>
+            )}
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:'0.4rem'}}>
+              {JOB_PHASES.map(ph=>(
+                <div key={ph} onClick={()=>setNewJobPhase(ph)} style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,cursor:'pointer',fontWeight:newJobPhase===ph?700:500,background:newJobPhase===ph?'var(--accent2)':'var(--bg2)',color:newJobPhase===ph?'#fff':'var(--muted)',border:'1px solid '+(newJobPhase===ph?'var(--accent2)':'var(--border)')}}>{JOB_PHASE_LABELS[ph]}</div>
+              ))}
+            </div>
+            {newJobPhase==='AUTRE'&&(
+              <input placeholder="Préciser (ex: Câblage, Inspection...)" value={newJobPhaseAutre} onChange={e=>setNewJobPhaseAutre(e.target.value)} style={{marginBottom:'0.4rem'}}/>
+            )}
+            <input placeholder="Reste du nom (ex: 2e étage, cuisine...)" value={newJobRest} onChange={e=>setNewJobRest(e.target.value)}/>
+            {newJobTitle&&<div style={{fontSize:10,color:'var(--muted)',marginTop:5}}>→ {newJobTitle}</div>}
+          </div>
           <div className="fg" style={{marginBottom:'0.4rem'}}><label>Adresse (optionnel)</label><AddressInput value={newJobAddress} onChange={setNewJobAddress} placeholder="Ex: 123 rue Principale, Montréal"/></div>
           <div className="fg" style={{marginBottom:'0.55rem'}}>
             <label>Date</label>
             <input type="date" value={newJobDate} onChange={e=>setNewJobDate(e.target.value)}
-              style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box'}}/>
+              style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box'}}/>
           </div>
           <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress})}>Créer dans l'agenda</button>
         </div>
@@ -3292,7 +3365,7 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,ed
       <div className="fg" style={{marginBottom:'0.4rem'}}>
         <label>Date</label>
         <input type="date" value={editData.date||line.date} onChange={e=>setEditData(p=>({...p,date:e.target.value}))}
-          style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.5rem',width:'100%',fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38}}/>
+          style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.5rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box'}}/>
       </div>
       <div className="fg" style={{marginBottom:'0.4rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
       <div style={{marginBottom:'0.4rem'}}>
@@ -3749,7 +3822,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                                   <div className="fg" style={{marginBottom:'0.3rem'}}>
                                     <label>Date</label>
                                     <input type="date" value={editData.date||line.date} onChange={e=>setEditData(p=>({...p,date:e.target.value}))}
-                                      style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.5rem',width:'100%',fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38}}/>
+                                      style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.5rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box'}}/>
                                   </div>
                                   <div className="fg" style={{marginBottom:'0.3rem'}}><label>Job</label><input value={editData.job} onChange={e=>setEditData(p=>({...p,job:e.target.value}))}/></div>
                                   <div style={{marginBottom:'0.35rem'}}>
@@ -3820,7 +3893,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
               <div style={{fontWeight:700,fontSize:12,marginBottom:'0.5rem',color:'var(--accent)'}}>➕ Nouvelle entrée</div>
               <div className="fg" style={{marginBottom:'0.35rem'}}>
                 <label>Date</label>
-                <input type="date" value={newEntry.date} onChange={e=>setNewEntry(p=>({...p,date:e.target.value}))} style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem 0.5rem',width:'100%',fontSize:13}}/>
+                <input type="date" value={newEntry.date} onChange={e=>setNewEntry(p=>({...p,date:e.target.value}))} style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem 0.5rem',width:'100%',maxWidth:'100%',minWidth:0,boxSizing:'border-box',fontSize:13,minHeight:38}}/>
               </div>
               <div className="fg" style={{marginBottom:'0.35rem'}}>
                 <label>Job</label>
@@ -5368,7 +5441,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   if(step==='job')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <TimeHeader/>
-      <JobSelector jobs={allJobs.length>0?allJobs:jobs} emp={selEmp}
+      <JobSelector jobs={allJobs.length>0?allJobs:jobs} emp={selEmp} mode={mode}
         onSelect={(t,c)=>{setSelJob(t);setSelJobColor(c);
           const jobObj=jobs.find(j=>j.title===t)||null;
           const todayStr=localDateStr();
