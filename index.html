@@ -487,7 +487,23 @@ button{font-family:var(--font-body)}
 //   "📎 Ajouter depuis Drive", via le sélecteur Google Picker) au lieu de
 //   seulement pouvoir uploader une nouvelle photo — les fichiers choisis
 //   sont attachés à l'événement une fois créé.
-const APP_VERSION='v200';
+// v201 (2026-07-22): Deux correctifs/ajouts. 1) Fix "The API developer key
+//   is invalid" sur le bouton Ajouter depuis Drive : le Picker utilisait la
+//   clé API par défaut codée en dur au lieu de la vraie clé active de la
+//   configuration — corrigé (ACTIVE_API_KEY capturée au démarrage).
+//   2) CreateJobForm permet maintenant de sélectionner PLUSIEURS types de
+//   travail à la fois (ex: Rough + Finition) — une job séparée est créée
+//   par phase choisie, chacune avec sa propre date ajustable, mais toutes
+//   partagent le contracteur, la rue, l'info, les employés assignés ET les
+//   mêmes fichiers Drive attachés (plus besoin de les re-choisir pour
+//   chaque phase). Répond au cas des contracteurs qui envoient une journée
+//   de rough et une journée de finition avec le même document.
+// v202 (2026-07-22): Dans "Mes heures" > Nouvelle entrée manuelle, un menu
+//   "— Choisir dans l'agenda —" apparaît au-dessus du champ Job (si des
+//   jobs existent dans l'agenda) — l'employé peut choisir une job connue en
+//   un clic, ou continuer à l'écrire à la main comme avant (les deux
+//   options restent disponibles).
+const APP_VERSION='v202';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -907,7 +923,7 @@ async function openDrivePicker(onPicked){
     const picker=new google.picker.PickerBuilder()
       .addView(view)
       .setOAuthToken(token.access_token)
-      .setDeveloperKey(DEFAULT_CFG.apiKey)
+      .setDeveloperKey(ACTIVE_API_KEY||DEFAULT_CFG.apiKey)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
       .setCallback(data=>{
         if(data.action===google.picker.Action.PICKED){
@@ -937,10 +953,12 @@ async function findCalendarEventByTitle(calendarIds,title){
 function loadScript(src){return new Promise(res=>{const s=document.createElement('script');s.src=src;s.onload=res;document.head.appendChild(s);});}
 
 
+let ACTIVE_API_KEY=null; // clé API réellement utilisée à l'exécution (peut différer de DEFAULT_CFG si reconfigurée) — utile pour le Picker Drive
 async function initLibs(cfg,onToken){
   await loadScript('https://apis.google.com/js/api.js');
   await new Promise(res=>gapi.load('client',res));
   await gapi.client.init({apiKey:cfg.apiKey,discoveryDocs:DISCOVERY});
+  ACTIVE_API_KEY=cfg.apiKey;
   await loadScript('https://accounts.google.com/gsi/client');
   tokenClient=google.accounts.oauth2.initTokenClient({
     client_id:cfg.clientId,
@@ -2893,8 +2911,9 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
   const [newJobSecondEmp,setNewJobSecondEmp]=useState(null); // compagnon/apprenti optionnel — initiales seulement, pas de couleur
   const [newJobContractor,setNewJobContractor]=useState('PARTICULIER');
   const [newJobContractorNom,setNewJobContractorNom]=useState('');
-  const [newJobPhase,setNewJobPhase]=useState('ROUGH');
+  const [newJobPhases,setNewJobPhases]=useState(['ROUGH']); // multi-select — permet de créer plusieurs jobs (ex: Rough + Finition) d'un coup
   const [newJobPhaseAutre,setNewJobPhaseAutre]=useState('');
+  const [phaseDates,setPhaseDates]=useState({}); // date par phase quand plus d'une est sélectionnée — sinon newJobDate partagé
   const [newJobStreet,setNewJobStreet]=useState('');
   const [newJobRest,setNewJobRest]=useState('');
   const [newJobKnownAddr,setNewJobKnownAddr]=useState('');
@@ -2902,6 +2921,7 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
   const [newJobAddress,setNewJobAddress]=useState('');
   const [newJobDriveFiles,setNewJobDriveFiles]=useState([]); // fichiers Drive déjà existants à attacher
   const [projData,setProjData]=useState({});
+  const [submitting,setSubmitting]=useState(false);
 
   useEffect(()=>{
     if(initialDate)setNewJobDate(initialDate);
@@ -2919,13 +2939,27 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
     if(newJobSecondEmp===nom)setNewJobSecondEmp(null); // ne peut pas être principal ET second en même temps
   }
   function toggleSecondEmp(nom){setNewJobSecondEmp(prev=>prev===nom?null:nom);}
+  function togglePhase(ph){
+    setNewJobPhases(prev=>{
+      if(prev.includes(ph)){
+        const next=prev.filter(p=>p!==ph);
+        return next.length?next:prev; // garder au moins une phase sélectionnée
+      }
+      return [...prev,ph];
+    });
+  }
   const assignedEmpObj=(allEmps||[]).find(e=>e.nom===newJobAssignedEmp)||null;
   const secondEmpObj=(allEmps||[]).find(e=>e.nom===newJobSecondEmp)||null;
 
   const prefix1Txt=newJobContractor==='PARTICULIER'?newJobContractorNom.trim():newJobContractor;
-  const prefix2Txt=newJobPhase==='AUTRE'?newJobPhaseAutre.trim():JOB_PHASE_LABELS[newJobPhase];
-  const newJobTitle=[prefix1Txt,prefix2Txt,newJobStreet.trim(),newJobRest.trim(),assignedEmpObj?assignedEmpObj.code:'',secondEmpObj?secondEmpObj.code:'']
-    .filter(Boolean).join(' - ');
+  function phaseLabel(ph){return ph==='AUTRE'?newJobPhaseAutre.trim():JOB_PHASE_LABELS[ph];}
+  function titleForPhase(ph){
+    return [prefix1Txt,phaseLabel(ph),newJobStreet.trim(),newJobRest.trim(),assignedEmpObj?assignedEmpObj.code:'',secondEmpObj?secondEmpObj.code:'']
+      .filter(Boolean).join(' - ');
+  }
+  // Aperçu : un titre par phase sélectionnée (ex: Rough + Finition = 2 jobs créées)
+  const previewTitles=newJobPhases.map(ph=>titleForPhase(ph)).filter(Boolean);
+  const newJobTitle=previewTitles[0]||''; // utilisé pour le bouton disabled + rétrocompatibilité
 
   // Projets déjà connus — seulement les vrais "projets" (adresse qui revient
   // sur PLUSIEURS jobs), filtrés sur le contracteur choisi ci-dessus, avec
@@ -2963,11 +2997,12 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
       <div className="fg" style={{marginBottom:'0.55rem'}}>
         <label style={{color:'var(--accent2)'}}>Type de travail</label>
         <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:'0.4rem'}}>
-          {JOB_PHASES.map(ph=>(
-            <div key={ph} onClick={()=>setNewJobPhase(ph)} style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer',background:newJobPhase===ph?'var(--accent2)':'var(--bg2)',color:newJobPhase===ph?'#fff':'var(--muted)',border:'1px solid '+(newJobPhase===ph?'var(--accent2)':'var(--border)')}}>{JOB_PHASE_LABELS[ph]}</div>
-          ))}
+          {JOB_PHASES.map(ph=>{const sel=newJobPhases.includes(ph);return(
+            <div key={ph} onClick={()=>togglePhase(ph)} style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer',background:sel?'var(--accent2)':'var(--bg2)',color:sel?'#fff':'var(--muted)',border:'1px solid '+(sel?'var(--accent2)':'var(--border)')}}>{JOB_PHASE_LABELS[ph]}</div>
+          );})}
         </div>
-        {newJobPhase==='AUTRE'&&(
+        <div style={{fontSize:10,color:'var(--muted)',marginBottom:'0.3rem'}}>Choisis-en plusieurs pour créer une job par phase (ex: Rough + Finition) — les mêmes fichiers Drive s'attachent à chacune.</div>
+        {newJobPhases.includes('AUTRE')&&(
           <input placeholder="Préciser (ex: Câblage, Inspection...)" value={newJobPhaseAutre} onChange={e=>setNewJobPhaseAutre(e.target.value)} style={{marginBottom:'0.2rem'}}/>
         )}
       </div>
@@ -2979,9 +3014,23 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
         <label>Info de la job</label>
         <input placeholder="Ex: 2E ÉTAGE, CUISINE..." value={newJobRest} onChange={e=>setNewJobRest(e.target.value.toUpperCase())}/>
       </div>
-      {newJobTitle&&(
-        <div style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'0.5rem 0.7rem',marginBottom:'0.5rem',fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,textAlign:'center',color:'var(--text)'}}>
-          {newJobTitle}
+      {previewTitles.length>0&&(
+        <div style={{marginBottom:'0.5rem',display:'flex',flexDirection:'column',gap:5}}>
+          {newJobPhases.map(ph=>{
+            const t=titleForPhase(ph);
+            if(!t)return null;
+            return(
+              <div key={ph} style={{background:'var(--bg2)',border:'1px solid var(--border2)',borderRadius:8,padding:'0.5rem 0.7rem',display:'flex',alignItems:'center',gap:8}}>
+                <div style={{flex:1,fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,color:'var(--text)'}}>{t}</div>
+                {newJobPhases.length>1&&(
+                  <div style={{width:'auto',overflow:'hidden',borderRadius:6,boxSizing:'border-box',flexShrink:0}}>
+                    <input type="date" value={phaseDates[ph]||newJobDate} onChange={e=>setPhaseDates(prev=>({...prev,[ph]:e.target.value}))}
+                      style={{color:'var(--text)',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.3rem 0.5rem',fontSize:11,colorScheme:'dark',cursor:'pointer',boxSizing:'border-box'}}/>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       {(allEmps||[]).length>0&&(
@@ -3056,7 +3105,17 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
             style={{color:'var(--text)',background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,padding:'0.55rem 0.75rem',width:'100%',maxWidth:'100%',minWidth:0,fontSize:13,colorScheme:'dark',cursor:'pointer',minHeight:38,boxSizing:'border-box',display:'block'}}/>
         </div>
       </div>
-      <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle} onClick={()=>onCreateJob({title:newJobTitle,date:newJobDate,location:newJobAddress,assignedEmps:[newJobAssignedEmp,newJobSecondEmp].filter(Boolean),driveFiles:newJobDriveFiles})}>Créer dans l'agenda</button>
+      <button className="btn-p" style={{marginTop:0}} disabled={!newJobTitle||submitting} onClick={async()=>{
+        setSubmitting(true);
+        try{
+          const assignedEmps=[newJobAssignedEmp,newJobSecondEmp].filter(Boolean);
+          for(const ph of newJobPhases){
+            const title=titleForPhase(ph);
+            if(!title)continue;
+            await onCreateJob({title,date:phaseDates[ph]||newJobDate,location:newJobAddress,assignedEmps,driveFiles:newJobDriveFiles});
+          }
+        }finally{setSubmitting(false);}
+      }}>{submitting?'⏳ Création...':'Créer dans l\'agenda'+(newJobPhases.length>1?' ('+newJobPhases.length+' jobs)':'')}</button>
     </div>
   );
 }
@@ -3779,6 +3838,7 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,ed
 
 function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const [pts,setPts]=useState([]);
+  const [agendaJobs,setAgendaJobs]=useState([]); // jobs de l'agenda — pour choisir plutôt qu'écrire à la main
   const [tab,setTab]=useState('semaine');
   const [loading,setLoading]=useState(true);
   const [sending,setSending]=useState(false);
@@ -3817,6 +3877,12 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   const hasNextWeek=selectedWeekIdx<allWeeks.length-1;
 
   useEffect(()=>{load();},[]);
+  // Jobs de l'agenda — pour pouvoir CHOISIR une job existante plutôt que de
+  // toujours l'écrire à la main dans "Nouvelle entrée".
+  useEffect(()=>{
+    if(!calendarIds||!calendarIds.length)return;
+    getAllCalendarJobs(calendarIds).then(setAgendaJobs).catch(()=>{});
+  },[calendarIds?calendarIds.join(','):'']);
   async function load(){
     setLoading(true);
     const p=await getPointages(sid,{nom:emp.nom});
@@ -4192,7 +4258,13 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
               </div>
               <div className="fg" style={{marginBottom:'0.35rem'}}>
                 <label>Job</label>
-                <input value={newEntry.job} onChange={e=>setNewEntry(p=>({...p,job:e.target.value}))} placeholder="Nom de la job"/>
+                {agendaJobs.length>0&&(
+                  <select value="" onChange={e=>{if(e.target.value)setNewEntry(p=>({...p,job:e.target.value}));}} style={{marginBottom:'0.35rem'}}>
+                    <option value="">— Choisir dans l'agenda —</option>
+                    {[...new Set(agendaJobs.map(j=>j.title).filter(Boolean))].sort().map(t=>(<option key={t} value={t}>{t}</option>))}
+                  </select>
+                )}
+                <input value={newEntry.job} onChange={e=>setNewEntry(p=>({...p,job:e.target.value}))} placeholder="Ou écrire manuellement..."/>
               </div>
               <div style={{marginBottom:'0.35rem'}}>
                 <label style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',display:'block',marginBottom:4}}>Heures</label>
