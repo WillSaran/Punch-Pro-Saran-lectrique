@@ -311,7 +311,14 @@ button{font-family:var(--font-body)}
 //   l'onglet OT strictement filtré (v184) ne trouvait plus rien, et l'ancien
 //   onglet non filtré montrait "les deux" sans distinction possible. Corrigé
 //   en gardant le format "url|nomFichier" intact jusqu'à la sauvegarde.
-const APP_VERSION='v186';
+// v187 (2026-07-20): Onglet "Ordres de travail" dans Mon dashboard montre
+//   maintenant les OT de TOUS les employés (nom affiché sur chaque entrée),
+//   pas juste ceux de l'employé connecté. Ajout d'un message de diagnostic
+//   dans Punch IN/Confirmer une job quand aucune job ne s'affiche — indique
+//   si le problème vient du chargement (0 job chargé) ou du filtre Mes
+//   jobs/Toute l'équipe, pour cibler précisément le bug signalé où une job
+//   visible dans Mon dashboard n'apparaît dans aucun des deux filtres ici.
+const APP_VERSION='v187';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2690,7 +2697,21 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
               </div>
             );
           })}
-          {sorted.length===0&&<div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>Aucune job aujourd'hui</div>}
+          {sorted.length===0&&(
+            <div style={{color:'var(--muted)',textAlign:'center',padding:'1.5rem',fontSize:13}}>
+              Aucune job aujourd'hui
+              {baseJobs.length>0&&(
+                <div style={{fontSize:10,marginTop:6,opacity:0.7}}>
+                  ({baseJobs.length} job{baseJobs.length!==1?'s':''} aujourd'hui au total, mais {scope==='mine'?'aucune à ton nom':'toutes à ton nom'} — essaie l'autre filtre ci-dessus)
+                </div>
+              )}
+              {jobs.length===0&&(
+                <div style={{fontSize:10,marginTop:6,opacity:0.7}}>
+                  (0 job chargé depuis l'agenda Google en ce moment — problème de chargement, pas de filtre)
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -4751,7 +4772,9 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   const [selJobDate,setSelJobDate]=useState('');
   const [jobs,setJobs]=useState([]);
   const [allJobs,setAllJobs]=useState([]);
-  const [monDashTab,setMonDashTab]=useState('heures'); // 'heures' | 'projets' — pour "Mon dashboard"
+  const [monDashTab,setMonDashTab]=useState('heures'); // 'heures' | 'projets' | 'ot' — pour "Mon dashboard"
+  const [allOrgPts,setAllOrgPts]=useState([]); // tous les pointages de TOUS les employés — chargé pour l'onglet Ordres de travail (pas juste ceux de l'employé connecté)
+  const [loadingOT,setLoadingOT]=useState(false);
   const [result,setResult]=useState(null);
   const punchDataRef=useRef({});
   const ptsRef=useRef([]);
@@ -4767,6 +4790,14 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   // Live statut from emps list (not stale copy)
   const liveEmp=selEmp?emps.find(e=>e.nom===selEmp.nom)||selEmp:null;
   const empStatut=liveEmp?liveEmp.statut:'out';
+
+  // Ordres de travail = liste org-wide (tous les employés), pas juste l'employé connecté
+  useEffect(()=>{
+    if(monDashTab==='ot'&&sid){
+      setLoadingOT(true);
+      getPointages(sid,{}).then(p=>{setAllOrgPts(p);setLoadingOT(false);}).catch(e=>{console.error(e);setLoadingOT(false);});
+    }
+  },[monDashTab,sid]);
 
   function refreshCalJobs(){
     if(calendarIds&&calendarIds.length){
@@ -5142,8 +5173,9 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         getAllCalendarJobs(calendarIds).then(setAllJobs);
       }
     };
-    // Ordres de travail : uniquement les fichiers tagués OT_ (pas les appels de service AP_, pas les fichiers ordinaires)
-    const otEntries=allPts.map(p=>({
+    // Ordres de travail : TOUS les employés (pas juste celui connecté), uniquement
+    // les fichiers tagués OT_ (pas les appels de service AP_, pas les fichiers ordinaires)
+    const otEntries=allOrgPts.map(p=>({
       ...p,
       otFiles:(p.fichiersURL||[]).filter(u=>u&&(u.toLowerCase().includes('ot_')))
     })).filter(p=>p.otFiles.length>0).sort((a,b)=>new Date(b.datetime||b.date)-new Date(a.datetime||a.date));
@@ -5160,15 +5192,17 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           ):monDashTab==='projets'?(
             <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify} calendarIds={calendarIds} onRefresh={refreshProjets}/>
           ):(
-          otEntries.length===0?(
+          loadingOT?(
+            <div style={{textAlign:'center',color:'var(--muted)',padding:'1rem',fontSize:13}}>⏳ Chargement...</div>
+          ):otEntries.length===0?(
             <div style={{background:'var(--bg3)',borderRadius:10,padding:'1rem',textAlign:'center',color:'var(--muted)',fontSize:12}}>
-              Aucun ordre de travail trouvé. Les photos/fichiers tagués « OT » lors d'une confirmation de job ou d'une facture apparaîtront ici.
+              Aucun ordre de travail trouvé. Les photos/fichiers tagués « OT » lors d'une confirmation de job ou d'une facture apparaîtront ici (tous employés confondus).
             </div>
           ):(
             otEntries.map((p,i)=>(
               <div key={i} style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem 0.85rem',marginBottom:'0.5rem',borderLeft:'3px solid var(--warning)'}}>
                 <div style={{fontWeight:600,fontSize:13,marginBottom:3}}>{p.job||'Sans job'}</div>
-                <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>{p.date} · {p.heure}</div>
+                <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>👷 {p.nom} · {p.date} · {p.heure}</div>
                 {p.otFiles.map((u,j)=>{
                   const urlClean=u.split('|')[0];
                   const nom=u.includes('|')?u.split('|')[1]:null;
