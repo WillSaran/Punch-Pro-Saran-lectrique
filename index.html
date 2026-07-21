@@ -386,7 +386,20 @@ button{font-family:var(--font-body)}
 //   contracteur (désactive le filtre semaine). Ce n'est plus un simple
 //   filtre combinable, mais un point d'entrée qui mène vers les
 //   contracteurs, comme demandé.
-const APP_VERSION='v193';
+// v194 (2026-07-21): Trois correctifs sur les heures. 1) L'heure de départ
+//   proposée pour Punch IN/OUT est maintenant arrondie au quart d'heure le
+//   plus proche (avant : l'heure exacte à la minute était utilisée comme
+//   point de départ, ce qui fait que les pas de 15 min du sélecteur ne
+//   retombaient jamais sur une heure ronde). 2) Correctif d'une ligne
+//   fantôme dans l'historique personnel : quand un collègue punch pour vous
+//   en vous ajoutant comme coéquipier, votre historique affichait EN PLUS
+//   de la vraie ligne (avec les heures) une ligne fantôme "juste un punch
+//   in" — c'était le punch IN brut du collègue qui se glissait dans vos
+//   données. Filtré pour ne garder que ce qui vous appartient réellement.
+//   3) combinePts() : l'appariement punch IN → punch OUT exige maintenant
+//   la même date (comme c'était déjà le cas pour confirm → in), pour éviter
+//   qu'un IN se retrouve appairé par erreur avec un OUT d'un autre jour.
+const APP_VERSION='v194';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -573,7 +586,7 @@ function combinePts(pts){
       lines.push({date:p.date,type:'confirm',heure:matchIn?matchIn.heure:'',heureOut:p.heure,job:p.job,jobColor:p.jobColor,heures:h,deplacement:p.deplacement,note:p.note,fichiersURL:p.fichiersURL,coequipiers:p.coequipiers,inRow:matchIn?matchIn.row:p.row,outRow:p.row,semaine:p.semaine,nom:p.nom,ot:0});
     }else if(p.type==='in'){
       processed.add(p.row);
-      const matchOut=sorted.find(o=>o.type==='out'&&o.nom===p.nom&&!processed.has(o.row)&&new Date(o.datetime)>new Date(p.datetime));
+      const matchOut=sorted.find(o=>o.type==='out'&&o.nom===p.nom&&!processed.has(o.row)&&o.date===p.date&&new Date(o.datetime)>new Date(p.datetime));
       let h=0;
       if(matchOut){
         processed.add(matchOut.row);
@@ -618,6 +631,16 @@ function useClock(){
   return now;
 }
 function nowTimeStr(){const n=new Date();return String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');}
+// Arrondit une heure "HH:MM" au quart d'heure le plus proche (00/15/30/45).
+// Point de départ des punch IN/OUT — l'employé peut ensuite ajuster par
+// pas de 15 min avec le TimePicker.
+function roundToQuarterStr(t){
+  const[h,m]=(t||'00:00').split(':').map(Number);
+  let total=(h*60+(m||0));
+  total=Math.round(total/15)*15;
+  total=((total%1440)+1440)%1440;
+  return String(Math.floor(total/60)).padStart(2,'0')+':'+String(total%60).padStart(2,'0');
+}
 
 // ── CALENDAR ──────────────────────────────────────────────────────────────────
 // Récupère TOUS les événements d'un calendrier sur une plage de dates, en
@@ -1457,7 +1480,7 @@ function PinPad({empName,empCouleur,empCode,label,onSubmit,onCancel}){
 
 
 function PunchInScreen({emp,allEmps,selJob,selJobColor,selJobData,onConfirm}){
-  const [time,setTime]=useState(nowTimeStr());
+  const [time,setTime]=useState(roundToQuarterStr(nowTimeStr()));
   const [coequipiers,setCoequipiers]=useState([]);
   const [note,setNote]=useState('');
   const teammates=(allEmps||[]).filter(e=>e.nom!==emp.nom);
@@ -1502,7 +1525,7 @@ function PunchInScreen({emp,allEmps,selJob,selJobColor,selJobData,onConfirm}){
 
 function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,folders,calendarIds,calJobs}){
   const [selJobData,setSelJobData]=useState(null);
-  const [timeOut,setTimeOut]=useState(nowTimeStr());
+  const [timeOut,setTimeOut]=useState(roundToQuarterStr(nowTimeStr()));
   const [diner,setDiner]=useState(false);
   const [deplacement,setDeplacement]=useState(0);
   const [note,setNote]=useState('');
@@ -3433,7 +3456,13 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
   async function load(){
     setLoading(true);
     const p=await getPointages(sid,{nom:emp.nom});
-    setPts(p);
+    // getPointages inclut aussi les lignes "in" d'un collègue qui a puncher
+    // pour cet employé (tagué comme coéquipier) — utile ailleurs pour la
+    // logique de punch-out du poinçonneur original, mais ici ça crée une
+    // ligne fantôme "juste un punch in" en double de la vraie ligne
+    // 'confirm' (avec les heures) déjà enregistrée au nom de cet employé.
+    // On ne garde que ce qui lui appartient réellement.
+    setPts(p.filter(r=>r.nom===emp.nom));
     setLoading(false);
   }
 
