@@ -21,7 +21,7 @@
   --bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;--bg4:#21262d;
   --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
   --text:#e6edf3;--muted:#7d8590;
-  --accent:#2f81f7;--accent2:#6e40c9;
+  --accent:#ff7a1a;--accent2:#ff4d1a;--accent-rgb:255,122,26;
   --success:#3fb950;--warning:#d29922;--danger:#f85149;
   --font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif;
   --topbar-h:50px;
@@ -38,8 +38,8 @@ button{font-family:var(--font-body)}
 .fg input,.fg select,.fg textarea{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:0.55rem 0.75rem;color:var(--text);font-family:var(--font-body);font-size:13px;outline:none;transition:border-color 0.2s}
 .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--accent)}
 .fg small{display:block;margin-top:0.28rem;font-size:11px;color:var(--muted)}
-.btn-p{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:8px;padding:0.7rem;color:#fff;font-family:var(--font-head);font-size:14px;font-weight:700;cursor:pointer;transition:opacity 0.2s;margin-top:0.4rem;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-.btn-p:hover{opacity:0.88}.btn-p:disabled{opacity:0.4;cursor:not-allowed}
+.btn-p{width:100%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;border-radius:9px;padding:0.7rem;color:#fff;font-family:var(--font-head);font-size:14px;font-weight:700;cursor:pointer;transition:all 0.2s;margin-top:0.4rem;touch-action:manipulation;-webkit-tap-highlight-color:transparent;box-shadow:0 4px 16px rgba(255,90,20,0.28)}
+.btn-p:hover{opacity:0.92;box-shadow:0 6px 20px rgba(255,90,20,0.4);transform:translateY(-1px)}.btn-p:disabled{opacity:0.4;cursor:not-allowed;box-shadow:none;transform:none}
 .btn-s{background:transparent;border:1px solid var(--border2);border-radius:8px;padding:0.5rem 0.9rem;color:var(--text);font-size:12px;cursor:pointer;transition:background 0.2s;white-space:nowrap;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .btn-s:hover{background:var(--bg3)}
 .app-wrap{min-height:100vh;display:flex;flex-direction:column}
@@ -73,21 +73,21 @@ button{font-family:var(--font-body)}
 .toggle-knob{width:12px;height:12px;border-radius:50%;background:#fff;position:absolute;top:2px;left:2px;transition:left 0.2s}
 .toggle.on .toggle-knob{left:18px}
 .content{flex:1;padding:1.1rem;max-width:1080px;margin:0 auto;width:100%}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.1rem}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.1rem;box-shadow:0 2px 10px rgba(0,0,0,0.18)}
 .card-title{font-family:var(--font-head);font-size:0.92rem;font-weight:700;margin-bottom:0.75rem}
 .csec{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.09em;color:var(--muted);margin-bottom:0.5rem}
 .welcome{min-height:calc(100vh - var(--topbar-h));display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:1.25rem 1rem;text-align:center;overflow-y:auto}
 .w-time{font-family:var(--font-head);font-size:3rem;font-weight:800;letter-spacing:-2px;line-height:1;margin-top:0.5rem}
 .w-date{font-size:12px;color:var(--muted);margin:0.25rem 0 1.5rem}
-.emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.45rem;max-width:600px;width:100%}
-.emp-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:0.85rem 0.5rem;cursor:pointer;transition:all 0.18s;text-align:center;-webkit-tap-highlight-color:transparent}
+.emp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:0.5rem;max-width:600px;width:100%}
+.emp-card{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:0.9rem 0.5rem;cursor:pointer;transition:all 0.2s cubic-bezier(.2,.7,.3,1);text-align:center;-webkit-tap-highlight-color:transparent}
 .emp-card:active{transform:scale(0.96)}
-.emp-card:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,0.35)}
-.emp-av-lg{width:42px;height:42px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;margin:0 auto 0.4rem}
+.emp-card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,0.4);border-color:var(--border2)}
+.emp-av-lg{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;margin:0 auto 0.45rem;box-shadow:0 0 0 3px var(--bg2),0 0 0 4px rgba(255,255,255,0.08)}
 .mode-wrap{max-width:360px;width:100%;text-align:left}
-.mode-btn{display:flex;align-items:center;gap:12px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1rem 1.1rem;cursor:pointer;transition:all 0.18s;width:100%;margin-bottom:0.45rem;-webkit-tap-highlight-color:transparent}
-.mode-btn:hover,.mode-btn:active{border-color:var(--accent);background:rgba(47,129,247,0.06)}
-.mode-icon{font-size:1.5rem;flex-shrink:0}
+.mode-btn{display:flex;align-items:center;gap:14px;background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:0.9rem 1.1rem;cursor:pointer;transition:all 0.2s cubic-bezier(.2,.7,.3,1);width:100%;margin-bottom:0.5rem;-webkit-tap-highlight-color:transparent}
+.mode-btn:hover,.mode-btn:active{border-color:rgba(255,122,26,0.4);background:rgba(255,122,26,0.07);transform:translateY(-1px);box-shadow:0 8px 22px rgba(255,122,26,0.14)}
+.mode-icon{font-size:1.25rem;flex-shrink:0;width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(255,122,26,0.2),rgba(255,77,26,0.08));border:1px solid rgba(255,122,26,0.18)}
 .mode-title{font-family:var(--font-head);font-weight:700;font-size:0.88rem}
 .mode-desc{font-size:11px;color:var(--muted);margin-top:2px}
 .job-wrap{max-width:520px;width:100%;text-align:left}
@@ -103,7 +103,7 @@ button{font-family:var(--font-body)}
 .travel-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:0.35rem;margin-top:0.4rem}
 .travel-opt{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:0.45rem;cursor:pointer;text-align:center;transition:all 0.15s;-webkit-tap-highlight-color:transparent}
 .travel-opt:active{transform:scale(0.94)}
-.travel-opt.sel{border-color:var(--accent);background:rgba(47,129,247,0.12)}
+.travel-opt.sel{border-color:var(--accent);background:rgba(255,122,26,0.12)}
 .travel-opt .tv{font-family:var(--font-head);font-size:0.95rem;font-weight:800;color:var(--accent)}
 .travel-opt .tl{font-size:9px;color:var(--muted)}
 .teammate-list{display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.4rem}
@@ -113,7 +113,7 @@ button{font-family:var(--font-body)}
 .file-item{display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:0.4rem 0.65rem}
 .file-add-row{display:flex;gap:0.4rem}
 .file-zone{flex:1;border:1px dashed var(--border2);border-radius:8px;padding:0.6rem;text-align:center;cursor:pointer;transition:all 0.2s;-webkit-tap-highlight-color:transparent}
-.file-zone:active{border-color:var(--accent);background:rgba(47,129,247,0.05)}
+.file-zone:active{border-color:var(--accent);background:rgba(255,122,26,0.05)}
 .pin-wrap{background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.1rem;max-width:300px;width:100%}
 .pin-display{background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:0.6rem 1rem;text-align:center;font-family:var(--font-head);font-size:1.6rem;letter-spacing:0.5rem;margin-bottom:0.75rem;min-height:50px;display:flex;align-items:center;justify-content:center;color:var(--accent)}
 .pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:0.38rem}
@@ -372,14 +372,28 @@ button{font-family:var(--font-body)}
 //   mais pas dans Agenda ou Punch IN/Confirmer (fenêtre large)". Corrigé
 //   avec une pagination complète (pageToken) qui récupère TOUS les
 //   événements de la plage, peu importe leur nombre.
-const APP_VERSION='v192';
+// v193 (2026-07-20): Deux changements. 1) Refonte esthétique aux couleurs de
+//   Saran Électrique : la teinte d'accent bleue (#2f81f7/#6e40c9) est
+//   remplacée par l'orange de marque (#ff7a1a/#ff4d1a) partout dans
+//   l'application (boutons, icônes, cartes, liens, agenda) ; polish visuel
+//   des boutons de mode d'accès, cartes employés et cartes génériques
+//   (coins plus arrondis, ombres douces, légère animation au survol) ; le
+//   logo dans la barre du haut a maintenant un fond noir arrondi pour mieux
+//   ressortir. 2) Projets : la vue par défaut "Cette semaine" (sans
+//   contracteur sélectionné) affiche maintenant les projets regroupés PAR
+//   CONTRACTEUR au lieu d'être triés par statut — chaque groupe a un lien
+//   "Voir tous ses projets →" qui bascule vers la liste complète de ce
+//   contracteur (désactive le filtre semaine). Ce n'est plus un simple
+//   filtre combinable, mais un point d'entrée qui mène vers les
+//   contracteurs, comme demandé.
+const APP_VERSION='v193';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
-const EMP_COLORS=['#2f81f7','#6e40c9','#3fb950','#d29922','#f85149','#0ea5e9','#ec4899','#a855f7','#22c55e','#f97316',
+const EMP_COLORS=['#ff7a1a','#ff4d1a','#3fb950','#d29922','#f85149','#0ea5e9','#ec4899','#a855f7','#22c55e','#f97316',
   // Couleurs Google Agenda officielles
   '#7986cb','#33b679','#8e24aa','#e67c73','#f6c026','#f5511d','#039be5','#616161','#3f51b5','#0b8043','#d50000'];
-const GCAL_COLORS={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000','':'#2f81f7'};
+const GCAL_COLORS={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000','':'#ff7a1a'};
 const BOSS_EMAILS=['info@saranelectrique.com','saranelectrique@gmail.com'];
 const STOCK_SHEET_ID='1SoCciTEXkvCu61oFg3UbyParAkoNJfu-GulAdJnB0d0';
 
@@ -573,7 +587,7 @@ function combinePts(pts){
 }
 function rgba(hex,a){
   try{const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return 'rgba('+r+','+g+','+b+','+(a||0.15)+')';}
-  catch{return 'rgba(47,129,247,'+(a||0.15)+')';}
+  catch{return 'rgba(255,122,26,'+(a||0.15)+')';}
 }
 function colorDist(c1,c2){
   try{const r1=parseInt(c1.slice(1,3),16),g1=parseInt(c1.slice(3,5),16),b1=parseInt(c1.slice(5,7),16),r2=parseInt(c2.slice(1,3),16),g2=parseInt(c2.slice(3,5),16),b2=parseInt(c2.slice(5,7),16);return Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);}
@@ -628,7 +642,7 @@ async function fetchCalEventsPaged(calId,timeMin,timeMax){
   return items;
 }
 function mapCalEvent(e){
-  return{id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#2f81f7',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
+  return{id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#ff7a1a',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
 }
 async function getCalendarJobs(calendarIds){
   const now=new Date();
@@ -1322,7 +1336,7 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
             {visibleFolders.map(f=>(
               <div key={f.id} onClick={()=>selectMode(f)} style={{padding:'0.25rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
                 fontWeight:selFolder?.id===f.id?700:400,
-                background:selFolder?.id===f.id?'rgba(47,129,247,0.15)':'var(--bg3)',
+                background:selFolder?.id===f.id?'rgba(255,122,26,0.15)':'var(--bg3)',
                 border:'1px solid '+(selFolder?.id===f.id?'var(--accent)':'var(--border)'),
                 color:selFolder?.id===f.id?'var(--accent)':'var(--muted)'}}>
                 {f.name}
@@ -1464,7 +1478,7 @@ function PunchInScreen({emp,allEmps,selJob,selJobColor,selJobData,onConfirm}){
               <span style={{fontSize:11,color:'var(--muted)',flex:1}}>📍 {selJobData.location}</span>
               <a href={'https://maps.google.com/?q='+encodeURIComponent(selJobData.location)}
                 target="_blank" rel="noreferrer"
-                style={{background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:6,padding:'0.2rem 0.55rem',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0}}>
+                style={{background:'rgba(255,122,26,0.15)',color:'var(--accent)',borderRadius:6,padding:'0.2rem 0.55rem',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0}}>
                 🗺 Maps
               </a>
             </div>
@@ -1514,7 +1528,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
     });
     return !hasOut;
   });
-  const jobOptions=[...new Map(openJobs.map(p=>[(p.job||'__')+p.heure,{job:p.job||'',jobColor:p.jobColor||'#2f81f7',heure:p.heure,datetime:p.datetime,date:p.date,coequipiers:p.coequipiers||[],nom:p.nom}])).values()].sort((a,b)=>new Date(b.datetime)-new Date(a.datetime));
+  const jobOptions=[...new Map(openJobs.map(p=>[(p.job||'__')+p.heure,{job:p.job||'',jobColor:p.jobColor||'#ff7a1a',heure:p.heure,datetime:p.datetime,date:p.date,coequipiers:p.coequipiers||[],nom:p.nom}])).values()].sort((a,b)=>new Date(b.datetime)-new Date(a.datetime));
 
   function calcH(){
     if(!selJobData||!selJobData.datetime)return 0;
@@ -1559,7 +1573,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
               <div key={i} className="job-btn" style={{borderLeftWidth:4,borderLeftColor:j.gcalColor||'var(--accent)',marginBottom:'0.3rem'}}
                 onClick={()=>setSelJobData({
                   job:j.title,
-                  jobColor:j.gcalColor||'#2f81f7',
+                  jobColor:j.gcalColor||'#ff7a1a',
                   heure:matchIn?matchIn.heure:'',
                   datetime:matchIn?matchIn.datetime:new Date().toISOString(),
                   date:matchIn?matchIn.date:localDateStr(),
@@ -1791,7 +1805,7 @@ function buildProjets(calJobs,pts){
         key,code,adresse,
         nom:code==='PARTICULIER'?(adresse||job.title):(code+' — '+(adresse||job.title)),
         jobs:[],po:'',dateDebut:job.start?localDateStr(new Date(job.start)):'',
-        couleur:job.gcalColor||'#2f81f7'
+        couleur:job.gcalColor||'#ff7a1a'
       };
     }
     if(!map[key].jobs.includes(job.title))map[key].jobs.push(job.title);
@@ -1808,7 +1822,7 @@ function buildProjets(calJobs,pts){
     }
     if(!matched){
       const key=code+'||'+p.job;
-      if(!map[key]){map[key]={key,code,adresse:p.job,nom:code==='PARTICULIER'?p.job:(code+' — '+p.job),jobs:[p.job],po:'',dateDebut:p.date||'',couleur:p.jobColor||'#2f81f7'};}
+      if(!map[key]){map[key]={key,code,adresse:p.job,nom:code==='PARTICULIER'?p.job:(code+' — '+p.job),jobs:[p.job],po:'',dateDebut:p.date||'',couleur:p.jobColor||'#ff7a1a'};}
     }
   }
   return Object.values(map).sort((a,b)=>a.nom.localeCompare(b.nom));
@@ -1871,7 +1885,7 @@ function EventCard({j,isPast,projPts,editEvtAddr,setEditEvtAddr,editEvtAddrVal,s
           {fichiers.map((raw,i)=>{
             const url=raw.split('|')[0];const nom=raw.includes('|')?raw.split('|')[1]:('Fichier '+(i+1));
             const isOT=nom.startsWith('OT_');const isAP=nom.startsWith('AP_');
-            return(<a key={i} href={url} target="_blank" rel="noreferrer" style={{fontSize:10,background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:5,padding:'1px 7px',textDecoration:'none'}}>{isOT?'🔧':isAP?'📋':'📎'} {nom}</a>);
+            return(<a key={i} href={url} target="_blank" rel="noreferrer" style={{fontSize:10,background:'rgba(255,122,26,0.15)',color:'var(--accent)',borderRadius:5,padding:'1px 7px',textDecoration:'none'}}>{isOT?'🔧':isAP?'📋':'📎'} {nom}</a>);
           })}
         </div>
       )}
@@ -2301,7 +2315,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
   const [addAddrJob,setAddAddrJob]=useState(null); // job sans adresse en cours d'édition
   const [confirmCloseNoAddr,setConfirmCloseNoAddr]=useState(null); // id du job sans adresse en attente de confirmation de fermeture
   const [addAddrVal,setAddAddrVal]=useState('');
-  const statuts={'en-cours':{label:'En cours',color:'var(--success)',bg:'rgba(63,185,80,0.1)'},'a-venir':{label:'À venir',color:'var(--accent)',bg:'rgba(47,129,247,0.1)'},ferme:{label:'Fermé',color:'var(--muted)',bg:'var(--bg3)'}};
+  const statuts={'en-cours':{label:'En cours',color:'var(--success)',bg:'rgba(63,185,80,0.1)'},'a-venir':{label:'À venir',color:'var(--accent)',bg:'rgba(255,122,26,0.1)'},ferme:{label:'Fermé',color:'var(--muted)',bg:'var(--bg3)'}};
 
   let actifs=projets.filter(p=>p.statut!=='ferme');
   if(weekOnly)actifs=actifs.filter(p=>p.jobs.some(j=>weekDatesProj.some(d=>jobCouvreDate(j,d))));
@@ -2347,7 +2361,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
           </button>
         )}
         <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap'}}>
-          <div onClick={()=>{setShowClosed(false);setFilterPrefix(null);}} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:!showClosed?700:400,background:!showClosed?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(!showClosed?'var(--accent)':'var(--border)'),color:!showClosed?'var(--accent)':'var(--muted)'}}>Actifs</div>
+          <div onClick={()=>{setShowClosed(false);setFilterPrefix(null);}} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:!showClosed?700:400,background:!showClosed?'rgba(255,122,26,0.15)':'var(--bg3)',border:'1px solid '+(!showClosed?'var(--accent)':'var(--border)'),color:!showClosed?'var(--accent)':'var(--muted)'}}>Actifs</div>
           <div onClick={()=>setShowClosed(true)} style={{padding:'0.22rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:showClosed?700:400,background:showClosed?'rgba(100,100,100,0.15)':'var(--bg3)',border:'1px solid '+(showClosed?'var(--muted)':'var(--border)'),color:'var(--muted)'}}>
             Fermés {fermes.length>0&&'('+fermes.length+')'}
           </div>
@@ -2362,7 +2376,7 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
           {['PARTICULIER',...PREFIXES].map(p=>{
             const count=prefixCounts[p]||0;
             if(count===0)return null;
-            return(<div key={p} onClick={()=>setFilterPrefix(filterPrefix===p?null:p)} style={{padding:'0.2rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:filterPrefix===p?700:400,background:filterPrefix===p?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(filterPrefix===p?'var(--accent)':'var(--border)'),color:filterPrefix===p?'var(--accent)':'var(--muted)'}}>
+            return(<div key={p} onClick={()=>setFilterPrefix(filterPrefix===p?null:p)} style={{padding:'0.2rem 0.6rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:filterPrefix===p?700:400,background:filterPrefix===p?'rgba(255,122,26,0.15)':'var(--bg3)',border:'1px solid '+(filterPrefix===p?'var(--accent)':'var(--border)'),color:filterPrefix===p?'var(--accent)':'var(--muted)'}}>
               {p} <span style={{fontSize:9,opacity:0.7}}>{count}</span>
             </div>);
           })}
@@ -2409,7 +2423,27 @@ function ProjectsView({sid,pts,emps,calJobs,isAdmin,notify,calendarIds,onRefresh
           </div>
         );
       })}
-      {!showClosed&&(()=>{
+      {!showClosed&&weekOnly&&!filterPrefix?(()=>{
+        // Vue par défaut "Cette semaine" : regroupée par contracteur, pas un
+        // filtre — cliquer "Voir tous →" navigue vers TOUS les projets de ce
+        // contracteur (désactive la semaine, active le filtre contracteur).
+        const cardProps={statuts,editKey,editPO,setEditPO,editTitre,setEditTitre,editStatut,setEditStatut,setEditKey,saveEdit,startEdit,setSelProj,saveProjData,projData};
+        const groups={};
+        actifs.forEach(p=>{(groups[p.prefix]=groups[p.prefix]||[]).push(p);});
+        const order=Object.keys(groups).sort((a,b)=>groups[b].length-groups[a].length);
+        return(<>
+          {order.map(prefix=>(
+            <div key={prefix} style={{marginBottom:'0.85rem'}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}>
+                <div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',whiteSpace:'nowrap'}}>📦 {prefix} <span style={{color:'var(--muted)',fontWeight:400}}>({groups[prefix].length})</span></div>
+                <div style={{flex:1,height:1,background:'var(--border)'}}></div>
+                <span onClick={()=>{setFilterPrefix(prefix);setWeekOnly(false);}} style={{fontSize:10,color:'var(--muted)',cursor:'pointer',textDecoration:'underline',flexShrink:0,touchAction:'manipulation'}}>Voir tous ses projets →</span>
+              </div>
+              {groups[prefix].map(p=><ProjCard key={p.key} p={p} {...cardProps}/>)}
+            </div>
+          ))}
+        </>);
+      })():!showClosed&&(()=>{
         const enCours=actifs.filter(p=>p.statut==='en-cours');
         const aVenir=actifs.filter(p=>p.statut==='a-venir');
         const autres=actifs.filter(p=>p.statut!=='en-cours'&&p.statut!=='a-venir');
@@ -2791,7 +2825,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip}){
                 <div key={i} onClick={()=>setSelDate(dStr)} style={{
                   aspectRatio:'1',borderRadius:8,cursor:'pointer',touchAction:'manipulation',
                   display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,
-                  background:isSelected?'var(--accent)':isToday?'rgba(47,129,247,0.15)':'var(--bg3)',
+                  background:isSelected?'var(--accent)':isToday?'rgba(255,122,26,0.15)':'var(--bg3)',
                   border:isToday&&!isSelected?'1px solid var(--accent)':'1px solid transparent',
                   transition:'background 0.15s'
                 }}>
@@ -3045,7 +3079,7 @@ function AppelDeService({emp,job,adresse,onClose,notify}){
                 <div key={t} onClick={()=>setType(type===t?'':t)}
                   style={{padding:'0.3rem 0.7rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
                     fontWeight:type===t?700:400,
-                    background:type===t?'rgba(47,129,247,0.15)':'var(--bg4)',
+                    background:type===t?'rgba(255,122,26,0.15)':'var(--bg4)',
                     border:'1px solid '+(type===t?'var(--accent)':'var(--border)'),
                     color:type===t?'var(--accent)':'var(--muted)'}}>
                   {t}
@@ -3057,7 +3091,7 @@ function AppelDeService({emp,job,adresse,onClose,notify}){
                 <div key={id} onClick={()=>setVal(v=>!v)}
                   style={{padding:'0.3rem 0.7rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',
                     fontWeight:val?700:400,
-                    background:val?'rgba(47,129,247,0.15)':'var(--bg4)',
+                    background:val?'rgba(255,122,26,0.15)':'var(--bg4)',
                     border:'1px solid '+(val?'var(--accent)':'var(--border)'),
                     color:val?'var(--accent)':'var(--muted)'}}>
                   {label}
@@ -3261,7 +3295,7 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,ed
             <div key={v} onClick={()=>setEditData(p=>({...p,deplacement:v}))}
               style={{padding:'0.25rem 0.55rem',borderRadius:7,fontSize:11,cursor:'pointer',touchAction:'manipulation',
                 fontWeight:editData.deplacement===v?700:400,
-                background:editData.deplacement===v?'rgba(47,129,247,0.15)':'var(--bg3)',
+                background:editData.deplacement===v?'rgba(255,122,26,0.15)':'var(--bg3)',
                 border:'1px solid '+(editData.deplacement===v?'var(--accent)':'var(--border)'),
                 color:editData.deplacement===v?'var(--accent)':'var(--muted)'}}>
               {v===0?'Aucun':v+' min'}
@@ -3342,7 +3376,7 @@ function LineCard({line,lineKey,editKey,editData,setEditData,closeEdit,onSave,ed
               const nom=raw.includes('|')?raw.split('|')[1]:'Voir fichier Drive';
               const icon=nom.startsWith('OT_')?'🔧':nom.startsWith('AP_')?'📋':'📎';
               return(<a key={fi} href={url} target="_blank" rel="noreferrer"
-                style={{fontSize:10,color:'var(--accent)',background:'rgba(47,129,247,0.1)',borderRadius:4,padding:'2px 7px',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
+                style={{fontSize:10,color:'var(--accent)',background:'rgba(255,122,26,0.1)',borderRadius:4,padding:'2px 7px',textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
                 {icon} {nom}
               </a>);
             })}
@@ -3577,7 +3611,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                   <div key={j.date}>
                     <div style={{display:'flex',alignItems:'center',gap:8,padding:'0.5rem 0.75rem',
                       borderBottom:idx<joursView.length-1||isExpanded?'1px solid var(--border)':'none',
-                      background:isExpanded?'rgba(47,129,247,0.06)':(idx%2===0?'var(--bg3)':'var(--bg2)')}}>
+                      background:isExpanded?'rgba(255,122,26,0.06)':(idx%2===0?'var(--bg3)':'var(--bg2)')}}>
                       <div onClick={()=>setExpandedDate(isExpanded?null:j.date)}
                         style={{fontSize:10,color:'var(--accent)',flexShrink:0,width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:4,background:'var(--bg4)',cursor:'pointer',touchAction:'manipulation',fontWeight:700}}>
                         {isExpanded?'▼':'▶'}
@@ -3705,7 +3739,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                                         <div key={v} onClick={()=>setEditData(p=>({...p,deplacement:v}))}
                                           style={{padding:'0.2rem 0.5rem',borderRadius:6,fontSize:11,cursor:'pointer',
                                             fontWeight:editData.deplacement===v?700:400,
-                                            background:editData.deplacement===v?'rgba(47,129,247,0.15)':'var(--bg4)',
+                                            background:editData.deplacement===v?'rgba(255,122,26,0.15)':'var(--bg4)',
                                             border:'1px solid '+(editData.deplacement===v?'var(--accent)':'var(--border)'),
                                             color:editData.deplacement===v?'var(--accent)':'var(--muted)'}}>
                                           {v===0?'Aucun':v+'m'}
@@ -3780,7 +3814,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                     <div key={v} onClick={()=>setNewEntry(p=>({...p,deplacement:v}))}
                       style={{padding:'0.2rem 0.5rem',borderRadius:6,fontSize:11,cursor:'pointer',touchAction:'manipulation',
                         fontWeight:newEntry.deplacement===v?700:400,
-                        background:newEntry.deplacement===v?'rgba(47,129,247,0.15)':'var(--bg4)',
+                        background:newEntry.deplacement===v?'rgba(255,122,26,0.15)':'var(--bg4)',
                         border:'1px solid '+(newEntry.deplacement===v?'var(--accent)':'var(--border)'),
                         color:newEntry.deplacement===v?'var(--accent)':'var(--muted)'}}>
                       {v===0?'Aucun':v+'m'}
@@ -3795,7 +3829,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
                   try{
                     const dt=new Date(newEntry.date+'T12:00:00');
                     await addPointage(sid,emp,'confirm',{
-                      job:newEntry.job,jobColor:emp.couleur||'#2f81f7',
+                      job:newEntry.job,jobColor:emp.couleur||'#ff7a1a',
                       heures:newEntry.heures,deplacement:newEntry.deplacement,
                       note:newEntry.note,fichiersURL:[],coequipiers:[],
                       jobDate:newEntry.date
@@ -4004,7 +4038,7 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds}){
             <div key={i} onClick={()=>setSelDate(dStr)} style={{
               aspectRatio:'1',borderRadius:8,cursor:'pointer',touchAction:'manipulation',
               display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3,
-              background:isSelected?'var(--accent)':isToday?'rgba(47,129,247,0.15)':'var(--bg3)',
+              background:isSelected?'var(--accent)':isToday?'rgba(255,122,26,0.15)':'var(--bg3)',
               border:isToday&&!isSelected?'1px solid var(--accent)':'1px solid transparent',
               transition:'background 0.15s'
             }}>
@@ -4127,7 +4161,7 @@ function ConvertisseurPiedsMetres(){
             onChange={e=>onPiedsChange(e.target.value)}
             placeholder="0"
             inputMode="decimal"
-            style={{width:'100%',background:lastEdited==='pieds'?'rgba(47,129,247,0.1)':'var(--bg2)',border:'1px solid '+(lastEdited==='pieds'?'var(--accent)':'var(--border)'),borderRadius:8,padding:'0.55rem 0.6rem',color:'var(--text)',fontSize:16,fontFamily:'var(--font-head)',fontWeight:700,textAlign:'center'}}/>
+            style={{width:'100%',background:lastEdited==='pieds'?'rgba(255,122,26,0.1)':'var(--bg2)',border:'1px solid '+(lastEdited==='pieds'?'var(--accent)':'var(--border)'),borderRadius:8,padding:'0.55rem 0.6rem',color:'var(--text)',fontSize:16,fontFamily:'var(--font-head)',fontWeight:700,textAlign:'center'}}/>
         </div>
         <div style={{fontSize:16,color:'var(--muted)',marginTop:14}}>=</div>
         <div>
@@ -4137,7 +4171,7 @@ function ConvertisseurPiedsMetres(){
             onChange={e=>onMetresChange(e.target.value)}
             placeholder="0"
             inputMode="decimal"
-            style={{width:'100%',background:lastEdited==='metres'?'rgba(47,129,247,0.1)':'var(--bg2)',border:'1px solid '+(lastEdited==='metres'?'var(--accent)':'var(--border)'),borderRadius:8,padding:'0.55rem 0.6rem',color:'var(--text)',fontSize:16,fontFamily:'var(--font-head)',fontWeight:700,textAlign:'center'}}/>
+            style={{width:'100%',background:lastEdited==='metres'?'rgba(255,122,26,0.1)':'var(--bg2)',border:'1px solid '+(lastEdited==='metres'?'var(--accent)':'var(--border)'),borderRadius:8,padding:'0.55rem 0.6rem',color:'var(--text)',fontSize:16,fontFamily:'var(--font-head)',fontWeight:700,textAlign:'center'}}/>
         </div>
       </div>
     </div>
@@ -4316,7 +4350,7 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
               style={{flex:1,background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.55rem',color:'var(--text)',fontSize:12}}/>
             <button title="Item pas dans le catalogue — l'écrire directement" onClick={()=>setShowCustomItem(s=>!s)}
               style={{flexShrink:0,width:30,height:30,borderRadius:6,border:'1px solid '+(showCustomItem?'var(--accent)':'var(--border)'),
-                background:showCustomItem?'rgba(47,129,247,0.15)':'var(--bg3)',color:showCustomItem?'var(--accent)':'var(--muted)',
+                background:showCustomItem?'rgba(255,122,26,0.15)':'var(--bg3)',color:showCustomItem?'var(--accent)':'var(--muted)',
                 fontSize:16,fontWeight:700,cursor:'pointer',touchAction:'manipulation',display:'flex',alignItems:'center',justifyContent:'center'}}>
               +
             </button>
@@ -4363,7 +4397,7 @@ function StockCamionBloc({camionId,camionNom,emp,notify}){
                           }}
                           style={{padding:'0.4rem 0.5rem 0.4rem 0.9rem',fontSize:11,color:isSelected?'var(--accent)':'var(--text)',
                             fontWeight:isSelected?600:400,borderTop:'1px solid var(--border)',cursor:'pointer',touchAction:'manipulation',
-                            background:isSelected?'rgba(47,129,247,0.08)':'transparent',
+                            background:isSelected?'rgba(255,122,26,0.08)':'transparent',
                             display:'flex',alignItems:'center',justifyContent:'space-between'}}>
                           <span>{it.desc}</span>
                           <span style={{color:'var(--muted)',fontSize:10}}>{isSelected?'▼':''}</span>
@@ -5197,7 +5231,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
               <span style={{fontSize:11,color:'var(--muted)',flex:1,textAlign:'left'}}>📍 {result.location}</span>
               <a href={'https://maps.google.com/?q='+encodeURIComponent(result.location)}
                 target="_blank" rel="noreferrer"
-                style={{background:'rgba(47,129,247,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.22rem 0.6rem',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
+                style={{background:'rgba(255,122,26,0.2)',color:'var(--accent)',borderRadius:6,padding:'0.22rem 0.6rem',fontSize:11,fontWeight:600,textDecoration:'none',flexShrink:0,touchAction:'manipulation'}}>
                 🗺 Maps
               </a>
             </div>
@@ -5213,7 +5247,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           </div>
           {/* Bouton appel de service après punch OUT ou confirm */}
           {(result.type==='out'||result.type==='confirm')&&(
-            <button className="btn-s" style={{marginTop:'0.6rem',width:'100%',borderColor:'rgba(47,129,247,0.4)',color:'var(--accent)',fontSize:12}}
+            <button className="btn-s" style={{marginTop:'0.6rem',width:'100%',borderColor:'rgba(255,122,26,0.4)',color:'var(--accent)',fontSize:12}}
               onClick={()=>setStep('appel-service')}>
               📋 Créer un appel de service
             </button>
@@ -5229,7 +5263,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   if(step==='appel-service')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <AppelDeService
-        emp={selEmp||{nom:'',couleur:'#2f81f7',code:'??'}}
+        emp={selEmp||{nom:'',couleur:'#ff7a1a',code:'??'}}
         job={selJob||result?.job||''}
         adresse={jobs.find(j=>j.title===(selJob||result?.job))?.location||result?.location||''}
         notify={notify}
@@ -5317,7 +5351,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         }}
         onCreateJob={async(nj)=>{
           const calId=calendarIds&&calendarIds[0]||'primary';
-          const gcalColor=selEmp?selEmp.couleur:'#2f81f7';
+          const gcalColor=selEmp?selEmp.couleur:'#ff7a1a';
           await createCalendarEvent(calId,nj.title,nj.date,gcalColor,nj.location||'');
           notify('✅ Job "'+nj.title+'" créé!','success');
           getCalendarJobs(calendarIds).then(setJobs);
@@ -5558,7 +5592,7 @@ function ConfigScreen({cfg,sid,notify,onRefresh,onClose}){
         )}
         {tab==='technique'&&(
           <div style={{maxWidth:560,display:'flex',flexDirection:'column',gap:'0.75rem'}}>
-            <div style={{background:'rgba(47,129,247,0.08)',border:'1px solid rgba(47,129,247,0.25)',borderRadius:10,padding:'0.65rem 0.85rem',fontSize:11,color:'var(--muted)'}}>
+            <div style={{background:'rgba(255,122,26,0.08)',border:'1px solid rgba(255,122,26,0.25)',borderRadius:10,padding:'0.65rem 0.85rem',fontSize:11,color:'var(--muted)'}}>
               ℹ️ Ces valeurs techniques sont fixées directement dans le code de l'application.
               Elles sont affichées ici pour référence seulement — pour les changer, il faut modifier le code (contacte ton développeur).
             </div>
@@ -5663,7 +5697,7 @@ function EmpForm({data,setData,onSave,onCancel,isEdit}){
               </div>
             </div>
           ))}
-          <div style={{background:'rgba(47,129,247,0.1)',border:'1px solid rgba(47,129,247,0.3)',borderRadius:8,padding:'0.4rem 0.6rem',display:'flex',alignItems:'center',gap:8,cursor:'pointer'}} onClick={()=>togglePerm('config')}>
+          <div style={{background:'rgba(255,122,26,0.1)',border:'1px solid rgba(255,122,26,0.3)',borderRadius:8,padding:'0.4rem 0.6rem',display:'flex',alignItems:'center',gap:8,cursor:'pointer'}} onClick={()=>togglePerm('config')}>
             <input type="checkbox" checked={perms.includes('config')} onChange={()=>{}} style={{width:15,height:15,flexShrink:0,cursor:'pointer'}}/>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontSize:11,fontWeight:600,color:'var(--accent)'}}>⚙ Configuration</div>
@@ -5740,7 +5774,7 @@ function EmployeesManager({sid,notify,onRefresh}){
             <div style={{flex:1,marginLeft:'0.55rem'}}>
               <div style={{fontSize:12,fontWeight:500,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
                 {emp.nom}
-                {emp.permissions&&emp.permissions.some(p=>p!=='config')&&<span style={{fontSize:9,background:'rgba(47,129,247,0.15)',color:'var(--accent)',borderRadius:4,padding:'1px 5px',fontWeight:700}}>🗂️ Gestionnaire ({emp.permissions.filter(p=>p!=='config').length})</span>}
+                {emp.permissions&&emp.permissions.some(p=>p!=='config')&&<span style={{fontSize:9,background:'rgba(255,122,26,0.15)',color:'var(--accent)',borderRadius:4,padding:'1px 5px',fontWeight:700}}>🗂️ Gestionnaire ({emp.permissions.filter(p=>p!=='config').length})</span>}
                 {emp.permissions&&emp.permissions.includes('config')&&<span style={{fontSize:9,background:'rgba(210,153,34,0.15)',color:'var(--warning)',borderRadius:4,padding:'1px 5px',fontWeight:700}}>⚙ Configuration</span>}
               </div>
               <div style={{fontSize:10,color:'var(--muted)',fontFamily:'monospace'}}>
@@ -5841,7 +5875,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
     const map={};
     for(const p of pts){
       if(!p.job||(p.type!=='in'&&p.type!=='confirm'))continue;
-      if(!map[p.job])map[p.job]={job:p.job,color:p.jobColor||'#2f81f7',heures:0,deplacement:0,count:0,confirmCount:0,inOutCount:0,fichiers:[],lastDate:p.datetime||p.date||null};
+      if(!map[p.job])map[p.job]={job:p.job,color:p.jobColor||'#ff7a1a',heures:0,deplacement:0,count:0,confirmCount:0,inOutCount:0,fichiers:[],lastDate:p.datetime||p.date||null};
       if(p.type==='confirm'){map[p.job].heures+=p.heures||0;map[p.job].confirmCount++;}
       else{
         // NOUVEAU — même correctif que pour le punch-out: on ne considère que les
@@ -6054,11 +6088,11 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
           <div>
             {/* Filtre par contracteur — un seul à la fois, ou "Tous" */}
             <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.75rem'}}>
-              <div onClick={()=>setJobsFilterPrefix(null)} style={{padding:'0.2rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:!jobsFilterPrefix?700:400,background:!jobsFilterPrefix?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(!jobsFilterPrefix?'var(--accent)':'var(--border)'),color:!jobsFilterPrefix?'var(--accent)':'var(--muted)'}}>
+              <div onClick={()=>setJobsFilterPrefix(null)} style={{padding:'0.2rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:!jobsFilterPrefix?700:400,background:!jobsFilterPrefix?'rgba(255,122,26,0.15)':'var(--bg3)',border:'1px solid '+(!jobsFilterPrefix?'var(--accent)':'var(--border)'),color:!jobsFilterPrefix?'var(--accent)':'var(--muted)'}}>
                 Tous <span style={{fontSize:9,opacity:0.7}}>{stats.length}</span>
               </div>
               {groupOrder.map(prefix=>(
-                <div key={prefix} onClick={()=>setJobsFilterPrefix(jobsFilterPrefix===prefix?null:prefix)} style={{padding:'0.2rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:jobsFilterPrefix===prefix?700:400,background:jobsFilterPrefix===prefix?'rgba(47,129,247,0.15)':'var(--bg3)',border:'1px solid '+(jobsFilterPrefix===prefix?'var(--accent)':'var(--border)'),color:jobsFilterPrefix===prefix?'var(--accent)':'var(--muted)'}}>
+                <div key={prefix} onClick={()=>setJobsFilterPrefix(jobsFilterPrefix===prefix?null:prefix)} style={{padding:'0.2rem 0.65rem',borderRadius:8,fontSize:11,cursor:'pointer',touchAction:'manipulation',fontWeight:jobsFilterPrefix===prefix?700:400,background:jobsFilterPrefix===prefix?'rgba(255,122,26,0.15)':'var(--bg3)',border:'1px solid '+(jobsFilterPrefix===prefix?'var(--accent)':'var(--border)'),color:jobsFilterPrefix===prefix?'var(--accent)':'var(--muted)'}}>
                   {prefix} <span style={{fontSize:9,opacity:0.7}}>{groups[prefix].length}</span>
                 </div>
               ))}
@@ -6169,7 +6203,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
                     <div style={{fontSize:11,color:'var(--muted)',marginTop:2,marginLeft:16}}>{new Date(j.start).toLocaleDateString('fr-CA',{weekday:'long',month:'long',day:'numeric'})} {j.location?' · '+j.location:''}</div>
                     {ass.length>0&&<div style={{marginTop:4,marginLeft:16}}>{ass.map(a=><span key={a.nom} className="achip" style={{background:rgba(a.couleur,0.2),color:a.couleur}}><span style={{width:6,height:6,borderRadius:'50%',background:a.couleur,display:'inline-block'}}></span>{a.nom}</span>)}</div>}
                   </div>
-                  <button className="btn-sm" style={{flexShrink:0,fontSize:10,padding:'0.2rem 0.5rem',background:'rgba(47,129,247,0.1)',border:'1px solid rgba(47,129,247,0.3)',color:'var(--accent)'}}
+                  <button className="btn-sm" style={{flexShrink:0,fontSize:10,padding:'0.2rem 0.5rem',background:'rgba(255,122,26,0.1)',border:'1px solid rgba(255,122,26,0.3)',color:'var(--accent)'}}
                     onClick={()=>setSelectedJobForAppel(j)}>
                     📋
                   </button>
@@ -6264,7 +6298,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:1000,display:'flex',alignItems:'flex-start',justifyContent:'center',overflowY:'auto',padding:'1rem'}}>
           <div style={{background:'var(--bg)',borderRadius:14,padding:'1rem',maxWidth:560,width:'100%',maxHeight:'95vh',overflowY:'auto'}}>
             <AppelDeService
-              emp={{nom:'Admin',couleur:'#2f81f7',code:'AD'}}
+              emp={{nom:'Admin',couleur:'#ff7a1a',code:'AD'}}
               job={selectedJobForAppel.title||''}
               adresse={selectedJobForAppel.location||''}
               notify={notify}
@@ -6503,7 +6537,7 @@ function App(){
           {navBack
             ?<button className="back-btn" onClick={navBack} style={{touchAction:'manipulation'}}>← Retour</button>
             :<div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
-              <img src="logo.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}} onError={e=>e.target.style.display='none'}/>
+              <img src="logo.png" alt="" style={{width:30,height:30,objectFit:'contain',flexShrink:0,borderRadius:8,background:'#000',padding:2}} onError={e=>e.target.style.display='none'}/>
               <div className="logo">Saran Électrique</div>
               <span style={{fontSize:8,color:'var(--muted)',fontFamily:'monospace',flexShrink:0}}>{APP_VERSION}</span>
             </div>
@@ -6539,7 +6573,7 @@ function App(){
             {authLoading||returningFromRedirect?'⏳ Connexion en cours...':'🔐 Se connecter avec Google'}
           </button>
           {(authLoading||returningFromRedirect)&&(
-            <div style={{background:'rgba(47,129,247,0.1)',border:'1px solid var(--accent)',borderRadius:10,padding:'0.75rem 1rem',marginTop:'0.75rem',position:'relative',zIndex:1,maxWidth:280}}>
+            <div style={{background:'rgba(255,122,26,0.1)',border:'1px solid var(--accent)',borderRadius:10,padding:'0.75rem 1rem',marginTop:'0.75rem',position:'relative',zIndex:1,maxWidth:280}}>
               <div style={{fontSize:13,fontWeight:600,color:'var(--accent)',marginBottom:4}}>⏳ Connexion en cours...</div>
               <div style={{fontSize:11,color:'var(--muted)'}}>Veuillez patienter quelques secondes. Ne réappuyez pas sur le bouton.</div>
             </div>
