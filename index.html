@@ -512,7 +512,19 @@ button{font-family:var(--font-body)}
 //   Rough + Finition), chaque phase peut maintenant avoir en plus son PROPRE
 //   fichier Drive spécifique ("📎 Fichier spécifique à ROUGH"), en plus des
 //   fichiers Drive partagés qui s'appliquent à toutes les phases.
-const APP_VERSION='v203';
+// v204 (2026-07-22): Trois ajouts. 1) "Mode bureau" — un bouton dans le menu
+//   (sidebar) permet d'activer un affichage 2 colonnes sur ordinateur: dans
+//   l'Agenda (vue Mois), le calendrier prend la moitié gauche de l'écran et
+//   le détail du jour (jobs + bouton "Créer un job") prend la moitié droite,
+//   pour tout voir sans défiler. 2) L'Agenda (utilisé partout: Mes jobs,
+//   Dashboard équipe, Mes heures) a maintenant 3 vues: Mois (comme avant),
+//   Semaine (les 7 jours de la semaine avec les jobs listés en dessous de
+//   chacun, plus un bouton "Voir" pour ouvrir un jour en détail) et Jour (le
+//   détail complet d'une seule journée avec navigation ◀/▶). 3) Les cartes de
+//   job affichent maintenant la description AU COMPLET (plus de troncature)
+//   et TOUS les fichiers attachés (Google Drive), cliquables, dans les 3
+//   vues de l'agenda.
+const APP_VERSION='v204';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -811,6 +823,26 @@ function setGeoEnabled(nom,val){
   if(!nom)return;
   if(val)localStorage.removeItem('geoOptOut_'+nom);
   else localStorage.setItem('geoOptOut_'+nom,'1');
+}
+// "Mode bureau" — layout 2 colonnes pour l'Agenda sur grand écran (calendrier
+// à gauche, détail du jour + création de job à droite), au lieu de tout
+// empiler comme sur mobile. Stocké en local + événement custom pour que
+// tous les composants qui l'utilisent (peu importe où ils sont dans l'arbre)
+// se remettent à jour dès qu'on le change dans la sidebar, sans avoir à
+// faire passer un prop à travers plusieurs niveaux de composants.
+function isDesktopMode(){return localStorage.getItem('punchpro_desktop')==='1';}
+function setDesktopModePref(val){
+  localStorage.setItem('punchpro_desktop',val?'1':'0');
+  window.dispatchEvent(new Event('punchpro-desktop-change'));
+}
+function useDesktopMode(){
+  const [v,setV]=useState(isDesktopMode);
+  useEffect(()=>{
+    const onChange=()=>setV(isDesktopMode());
+    window.addEventListener('punchpro-desktop-change',onChange);
+    return()=>window.removeEventListener('punchpro-desktop-change',onChange);
+  },[]);
+  return v;
 }
 // Arrondit une heure "HH:MM" au quart d'heure le plus proche (00/15/30/45).
 // Point de départ des punch IN/OUT — l'employé peut ensuite ajuster par
@@ -4439,6 +4471,8 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
   const [selDate,setSelDate]=useState(localDateStr());
   const [scope,setScope]=useState('mine'); // 'mine' | 'team'
   const [showCreateHere,setShowCreateHere]=useState(false);
+  const [viewMode,setViewMode]=useState('mois'); // 'mois' | 'semaine' | 'jour'
+  const desktopMode=useDesktopMode();
   const today=localDateStr();
 
   async function handleCreateJobHere(nj){
@@ -4504,6 +4538,29 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
   function nextMonth(){const d=new Date(viewMonth);d.setMonth(d.getMonth()+1);setViewMonth(d);}
   function goToday(){const d=new Date();d.setDate(1);d.setHours(0,0,0,0);setViewMonth(d);setSelDate(today);}
 
+  // Navigation semaine/jour : déplace selDate et resynchronise viewMonth pour la vue mois
+  function shiftSelDate(deltaDays){
+    const d=new Date(selDate+'T12:00:00');
+    d.setDate(d.getDate()+deltaDays);
+    setSelDate(localDateStr(d));
+    const vm=new Date(d);vm.setDate(1);vm.setHours(0,0,0,0);
+    setViewMonth(vm);
+  }
+  function prevWeek(){shiftSelDate(-7);}
+  function nextWeek(){shiftSelDate(7);}
+  function prevDay(){shiftSelDate(-1);}
+  function nextDay(){shiftSelDate(1);}
+
+  // Les 7 jours (Lun→Dim) de la semaine contenant selDate
+  const weekDays=useMemo(()=>{
+    const d=new Date(selDate+'T12:00:00');
+    const dow=(d.getDay()+6)%7; // 0=Lun...6=Dim
+    const monday=new Date(d);monday.setDate(d.getDate()-dow);
+    const out=[];
+    for(let i=0;i<7;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);out.push(dd);}
+    return out;
+  },[selDate]);
+
   if(commandeJob)return(
     <div style={{width:'100%'}}>
       <CommandeRapide
@@ -4513,18 +4570,109 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
     </div>
   );
 
-  const selInfo=parDate[selDate]||{mine:[],other:[]};
-  const visMine=scope!=='team'?selInfo.mine:[];
-  const visOther=scope!=='mine'?selInfo.other:[];
-  const selDateObj=new Date(selDate+'T12:00:00');
-
-  return(
-    <div style={{width:'100%',maxWidth:640}}>
-      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.75rem'}}>
-        {onBack&&<button className="btn-s" style={{fontSize:11,padding:'0.25rem 0.6rem'}} onClick={onBack}>← Retour</button>}
-        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>📅 Agenda — {emp?.nom||'Équipe'}</div>
+  // Carte détaillée d'une job — description complète + tous les fichiers attachés
+  function jobCard(j,i,keyPrefix,isMine){
+    return(
+      <div key={keyPrefix+i} style={{background:isMine?'var(--bg3)':'var(--bg2)',borderRadius:9,padding:'0.55rem 0.7rem',
+        marginBottom:'0.35rem',borderLeft:'3px solid '+(isMine?(emp?.couleur||j.gcalColor||'var(--accent)'):(j.gcalColor||'var(--muted)')),
+        opacity:isMine?1:0.9,
+        display:'flex',alignItems:'flex-start',gap:8,flexWrap:'wrap'}}>
+        <div style={{flex:'1 1 200px',minWidth:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+            {isMine&&emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
+            <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
+          </div>
+          {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>📍 {j.location}</div>}
+          <div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>
+            🕐 {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+            {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+          </div>
+          {j.description&&<div style={{fontSize:10,color:'var(--muted)',marginTop:3,fontStyle:'italic',
+            whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{j.description}</div>}
+          {(j.attachments||[]).length>0&&(
+            <div style={{marginTop:4,display:'flex',flexDirection:'column',gap:2}}>
+              {j.attachments.map((a,ai)=>(
+                <a key={ai} href={a.url} target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:'var(--accent)',
+                  textDecoration:'none',display:'flex',alignItems:'center',gap:4,wordBreak:'break-all'}}>
+                  📎 {a.title}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:4,flexShrink:0}}>
+          {onPickJob&&(
+            <button onClick={()=>onPickJob(j)}
+              style={{background:'rgba(255,122,26,0.15)',border:'1px solid rgba(255,122,26,0.4)',
+                color:'var(--accent)',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:700,
+                cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+              ✓ Choisir
+            </button>
+          )}
+          {isMine&&emp&&!onPickJob&&(
+            <button onClick={()=>setCommandeJob(j)}
+              style={{background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
+                color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
+                cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+              📦 Commander
+            </button>
+          )}
+        </div>
       </div>
+    );
+  }
 
+  // Bloc "détail du jour" (utilisé en vue mois, semaine et jour) : titre, +Créer, liste des jobs
+  function dayDetailBlock(dStr,showCreateBtn){
+    const info=parDate[dStr]||{mine:[],other:[]};
+    const vm=scope!=='team'?info.mine:[];
+    const vo=scope!=='mine'?info.other:[];
+    const dObj=new Date(dStr+'T12:00:00');
+    return(
+      <div key={'dd'+dStr}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem'}}>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:12,textTransform:'capitalize',color:dStr===today?'var(--accent)':'var(--text)',flex:1}}>
+            {dStr===today?"Aujourd'hui — ":''}{dObj.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}
+          </div>
+          {showCreateBtn&&(
+            <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem',flexShrink:0}} onClick={()=>setShowCreateHere(s=>!s)}>
+              {showCreateHere?'✕ Fermer':'+ Créer un job'}
+            </button>
+          )}
+        </div>
+
+        {showCreateBtn&&showCreateHere&&(
+          <CreateJobForm jobs={jobs} allEmps={allEmps} sid={sid} onCreateJob={handleCreateJobHere} initialDate={dStr}/>
+        )}
+
+        {vm.length===0&&vo.length===0?(
+          <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>
+            {(info.mine.length+info.other.length)>0?(
+              scope==='team'
+                ?"Il y a bien "+(info.mine.length+info.other.length)+" job(s) ce jour-là, mais assignée(s) à toi seulement — rien pour \"toute l'équipe\"."
+                :"Il y a bien "+(info.mine.length+info.other.length)+" job(s) ce jour-là, mais assignée(s) à d'autres — rien pour \"mes jobs\"."
+            ):"Aucun événement ce jour-là."}
+          </div>
+        ):(
+          <>
+            {vm.map((j,i)=>jobCard(j,i,'mine',true))}
+            {vo.length>0&&(
+              <>
+                <div style={{display:'flex',alignItems:'center',gap:8,margin:'0.5rem 0 0.3rem',paddingLeft:2}}>
+                  <div style={{fontSize:9,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Autres équipes</div>
+                  <div style={{flex:1,height:1,background:'var(--border)'}}></div>
+                </div>
+                {vo.map((j,i)=>jobCard(j,i,'other',false))}
+              </>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  const calendarGrid=(
+    <div>
       {/* Navigation mois */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.6rem'}}>
         <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={prevMonth}>◀</button>
@@ -4533,17 +4681,6 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
           <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem'}} onClick={goToday}>Aujourd'hui</button>
         </div>
         <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={nextMonth}>▶</button>
-      </div>
-
-      {/* Filtre portée : mes jobs / toute l'équipe */}
-      <div style={{display:'flex',gap:6,marginBottom:'0.65rem'}}>
-        {[['mine','👤 Mes jobs'],['team','🏗️ Toute l\'équipe']].map(([k,lbl])=>(
-          <button key={k} onClick={()=>setScope(k)} className="btn-s" style={{
-            fontSize:10,padding:'0.3rem 0.55rem',flex:1,
-            background:scope===k?'var(--accent)':'var(--bg3)',
-            color:scope===k?'#fff':'var(--text)',fontWeight:scope===k?700:500
-          }}>{lbl}</button>
-        ))}
       </div>
 
       {/* Grille calendrier */}
@@ -4578,103 +4715,98 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
           );
         })}
       </div>
+    </div>
+  );
 
-      {/* Détail du jour sélectionné */}
-      <div style={{borderTop:'1px solid var(--border)',paddingTop:'0.65rem'}}>
-        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.5rem'}}>
-          <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:12,textTransform:'capitalize',color:selDate===today?'var(--accent)':'var(--text)',flex:1}}>
-            {selDate===today?"Aujourd'hui — ":''}{selDateObj.toLocaleDateString('fr-CA',{weekday:'long',day:'numeric',month:'long'})}
-          </div>
-          <button className="btn-s" style={{fontSize:11,padding:'0.22rem 0.6rem',flexShrink:0}} onClick={()=>setShowCreateHere(s=>!s)}>
-            {showCreateHere?'✕ Fermer':'+ Créer un job'}
-          </button>
-        </div>
+  const dayDetailSection=(
+    <div style={{borderTop:desktopMode?'none':'1px solid var(--border)',paddingTop:desktopMode?0:'0.65rem'}}>
+      {dayDetailBlock(selDate,true)}
+    </div>
+  );
 
-        {showCreateHere&&(
-          <CreateJobForm jobs={jobs} allEmps={allEmps} sid={sid} onCreateJob={handleCreateJobHere} initialDate={selDate}/>
-        )}
+  return(
+    <div style={{width:'100%',maxWidth:desktopMode?1100:640}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.75rem'}}>
+        {onBack&&<button className="btn-s" style={{fontSize:11,padding:'0.25rem 0.6rem'}} onClick={onBack}>← Retour</button>}
+        <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem'}}>📅 Agenda — {emp?.nom||'Équipe'}</div>
+      </div>
 
-        {visMine.length===0&&visOther.length===0?(
-          <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>
-            {(selInfo.mine.length+selInfo.other.length)>0?(
-              scope==='team'
-                ?"Il y a bien "+(selInfo.mine.length+selInfo.other.length)+" job(s) ce jour-là, mais assignée(s) à toi seulement — rien pour \"toute l'équipe\"."
-                :"Il y a bien "+(selInfo.mine.length+selInfo.other.length)+" job(s) ce jour-là, mais assignée(s) à d'autres — rien pour \"mes jobs\"."
-            ):"Aucun événement ce jour-là."}
+      {/* Sélecteur de vue : mois / semaine / jour */}
+      <div style={{display:'flex',gap:6,marginBottom:'0.6rem'}}>
+        {[['mois','📆 Mois'],['semaine','🗓️ Semaine'],['jour','📄 Jour']].map(([k,lbl])=>(
+          <button key={k} onClick={()=>setViewMode(k)} className="btn-s" style={{
+            fontSize:10,padding:'0.3rem 0.55rem',flex:1,
+            background:viewMode===k?'var(--accent)':'var(--bg3)',
+            color:viewMode===k?'#fff':'var(--text)',fontWeight:viewMode===k?700:500
+          }}>{lbl}</button>
+        ))}
+      </div>
+
+      {/* Filtre portée : mes jobs / toute l'équipe */}
+      <div style={{display:'flex',gap:6,marginBottom:'0.65rem'}}>
+        {[['mine','👤 Mes jobs'],['team','🏗️ Toute l\'équipe']].map(([k,lbl])=>(
+          <button key={k} onClick={()=>setScope(k)} className="btn-s" style={{
+            fontSize:10,padding:'0.3rem 0.55rem',flex:1,
+            background:scope===k?'var(--accent)':'var(--bg3)',
+            color:scope===k?'#fff':'var(--text)',fontWeight:scope===k?700:500
+          }}>{lbl}</button>
+        ))}
+      </div>
+
+      {viewMode==='mois'&&(
+        desktopMode?(
+          <div style={{display:'flex',gap:'1.25rem',alignItems:'flex-start'}}>
+            <div style={{flex:'1 1 50%',minWidth:0}}>{calendarGrid}</div>
+            <div style={{flex:'1 1 50%',minWidth:0,borderLeft:'1px solid var(--border)',paddingLeft:'1.25rem'}}>{dayDetailSection}</div>
           </div>
         ):(
-          <>
-            {visMine.map((j,i)=>(
-              <div key={'mine'+i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.55rem 0.7rem',
-                marginBottom:'0.35rem',borderLeft:'3px solid '+(emp?.couleur||j.gcalColor||'var(--accent)'),
-                display:'flex',alignItems:'flex-start',gap:8}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:'flex',alignItems:'center',gap:6}}>
-                    {emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
-                    <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
-                  </div>
-                  {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>📍 {j.location}</div>}
-                  <div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>
-                    🕐 {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                    {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                  </div>
-                  {j.description&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2,fontStyle:'italic',
-                    overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.description}</div>}
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:4,flexShrink:0}}>
-                  {onPickJob&&(
-                    <button onClick={()=>onPickJob(j)}
-                      style={{background:'rgba(255,122,26,0.15)',border:'1px solid rgba(255,122,26,0.4)',
-                        color:'var(--accent)',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:700,
-                        cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
-                      ✓ Choisir
-                    </button>
-                  )}
-                  {emp&&!onPickJob&&(
-                    <button onClick={()=>setCommandeJob(j)}
-                      style={{background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
-                        color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
-                        cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
-                      📦 Commander
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
+          <>{calendarGrid}{dayDetailSection}</>
+        )
+      )}
 
-            {visOther.length>0&&(
-              <>
-                <div style={{display:'flex',alignItems:'center',gap:8,margin:'0.5rem 0 0.3rem',paddingLeft:2}}>
-                  <div style={{fontSize:9,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Autres équipes</div>
-                  <div style={{flex:1,height:1,background:'var(--border)'}}></div>
-                </div>
-                {visOther.map((j,i)=>(
-                  <div key={'other'+i} style={{background:'var(--bg2)',borderRadius:9,padding:'0.5rem 0.65rem',
-                    marginBottom:'0.35rem',borderLeft:'3px solid '+(j.gcalColor||'var(--muted)'),opacity:0.85,
-                    display:'flex',alignItems:'flex-start',gap:8}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
-                      {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>📍 {j.location}</div>}
-                      <div style={{fontSize:10,color:'var(--muted)',marginTop:2}}>
-                        🕐 {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                        {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                      </div>
+      {viewMode==='semaine'&&(
+        <div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.7rem'}}>
+            <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={prevWeek}>◀</button>
+            <div style={{display:'flex',alignItems:'center',gap:8}}>
+              <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,textTransform:'capitalize'}}>
+                {weekDays[0].toLocaleDateString('fr-CA',{day:'numeric',month:'short'})} – {weekDays[6].toLocaleDateString('fr-CA',{day:'numeric',month:'short'})}
+              </div>
+              <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem'}} onClick={goToday}>Aujourd'hui</button>
+            </div>
+            <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={nextWeek}>▶</button>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:desktopMode?'repeat(7,1fr)':'1fr',gap:'0.6rem'}}>
+            {weekDays.map((d,wi)=>{
+              const dStr=localDateStr(d);
+              const isToday=dStr===today;
+              return(
+                <div key={wi} style={{background:'var(--bg2)',borderRadius:10,padding:'0.6rem',
+                  border:isToday?'1px solid var(--accent)':'1px solid var(--border)'}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.4rem'}}>
+                    <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:11,textTransform:'capitalize',color:isToday?'var(--accent)':'var(--text)'}}>
+                      {joursFr[d.getDay()]} {d.getDate()}
                     </div>
-                    {onPickJob&&(
-                      <button onClick={()=>onPickJob(j)}
-                        style={{flexShrink:0,background:'rgba(255,122,26,0.15)',border:'1px solid rgba(255,122,26,0.4)',
-                          color:'var(--accent)',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:700,
-                          cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
-                        ✓ Choisir
-                      </button>
-                    )}
+                    <button className="btn-s" style={{fontSize:9,padding:'0.15rem 0.4rem'}} onClick={()=>{setSelDate(dStr);setViewMode('jour');}}>Voir</button>
                   </div>
-                ))}
-              </>
-            )}
-          </>
-        )}
-      </div>
+                  {dayDetailBlock(dStr,false)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {viewMode==='jour'&&(
+        <div>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'0.7rem'}}>
+            <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={prevDay}>◀</button>
+            <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem'}} onClick={goToday}>Aujourd'hui</button>
+            <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={nextDay}>▶</button>
+          </div>
+          {dayDetailSection}
+        </div>
+      )}
     </div>
   );
 }
@@ -6954,6 +7086,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   );
 }
 function App(){
+  const desktopMode=useDesktopMode();
   const [cfg,setCfg]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem('pp_cfg')||'null');
@@ -7152,6 +7285,11 @@ function App(){
               <div style={{fontSize:12,fontWeight:600,wordBreak:'break-all'}}>{userEmail}</div>
             </div>
             <button className="btn-s" style={{width:'100%',marginBottom:'0.5rem',touchAction:'manipulation'}} onClick={()=>{onRefresh();setShowSidebar(false);}}>↻ Rafraîchir</button>
+            <button className="btn-s" style={{width:'100%',marginBottom:'0.5rem',touchAction:'manipulation',
+              background:desktopMode?'var(--accent)':'var(--bg3)',color:desktopMode?'#fff':'var(--text)'}}
+              onClick={()=>setDesktopModePref(!desktopMode)}>
+              {desktopMode?'🖥️ Mode bureau: ON':'🖥️ Mode bureau: OFF'}
+            </button>
             <button className="btn-s" style={{width:'100%',marginTop:'auto',color:'var(--danger)',borderColor:'var(--danger)',touchAction:'manipulation'}} onClick={()=>{handleReset();setShowSidebar(false);}}>↩ Déconnexion</button>
           </>
         )}
