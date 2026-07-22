@@ -561,7 +561,19 @@ button{font-family:var(--font-body)}
 //   où il est assigné) / "Toutes" — la vue et la logique sont maintenant
 //   partagées (FacturesManquantesView) entre le Dashboard équipe et le
 //   dashboard employé.
-const APP_VERSION='v208';
+// v209 (2026-07-22): Cinq ajustements. 1) Dashboard équipe: la section
+//   Messages (repliable) est remplacée par "Facture manquante" directement
+//   visible. 2) Dashboard équipe: l'onglet "Employés" est retiré (redondant
+//   avec l'écran Configuration, accessible via la permission 'config'). 3)
+//   Libellés renommés au singulier: "Facture manquante" partout (onglets et
+//   toggles). 4) Dashboard employé: l'onglet "Facture manquante" est
+//   repositionné juste après "Mes heures". 5) Correspondance employé
+//   améliorée: si le titre/description de la job ne mentionne aucun employé
+//   par nom/code, on se rabat sur la couleur de l'événement (comparée aux
+//   couleurs assignées) pour quand même afficher qui est assigné — utile
+//   pour les jobs créées avant la convention de titre codée ou directement
+//   dans Google Agenda (ex: onglet "Particuliers").
+const APP_VERSION='v209';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1482,6 +1494,7 @@ async function updateBanqueStatus(sid,row,statut){
 // (colonne B) est rempli, la facture (colonne M) est vide ou "0", et la date
 // (colonne A, format dd/MM/yyyy) est dans le passé. Statut "manquante" si
 // l'appel de service (colonne K) est aussi vide, sinon "en-traitement".
+function _cellStr_(v){return(v===null||v===undefined)?'':String(v).trim();}
 async function getFacturesManquantes(){
   const out=[];
   const today=new Date();today.setHours(0,0,0,0);
@@ -1492,15 +1505,15 @@ async function getFacturesManquantes(){
         spreadsheetId:SUIVI_TRAVAUX_SID,
         range:"'"+feuille+"'!A3:N"
       }));
-    }catch(e){continue;} // onglet inexistant/inaccessible — on saute
+    }catch(e){console.warn('[Facture manquante] onglet "'+feuille+'" ignoré:',e&&e.message||e);continue;}
     const rows=res.result.values||[];
     rows.forEach(r=>{
-      const dateStr=(r[0]||'').toString().trim();
-      const projet=(r[1]||'').toString().trim();
-      const appel=(r[10]||'').toString().trim();
-      const ot=(r[11]||'').toString().trim();
-      const facture=(r[12]||'').toString().trim();
-      const eventId=(r[13]||'').toString().trim();
+      const dateStr=_cellStr_(r[0]);
+      const projet=_cellStr_(r[1]);
+      const appel=_cellStr_(r[10]);
+      const ot=_cellStr_(r[11]);
+      const facture=_cellStr_(r[12]);
+      const eventId=_cellStr_(r[13]);
       if(!projet)return;
       if(facture!==''&&facture!=='0')return;
       const parts=dateStr.split('/');
@@ -6213,9 +6226,9 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         <div style={{width:'100%',maxWidth:640}}>
           <div className="tabs" style={{marginBottom:'0.75rem'}}>
             <div className={'tab'+(monDashTab==='heures'?' active':'')} onClick={()=>setMonDashTab('heures')}>📋 Mes heures</div>
+            <div className={'tab'+(monDashTab==='factures'?' active':'')} onClick={()=>setMonDashTab('factures')}>🧾 Facture manquante</div>
             <div className={'tab'+(monDashTab==='projets'?' active':'')} onClick={()=>setMonDashTab('projets')}>📁 Projets</div>
             <div className={'tab'+(monDashTab==='ot'?' active':'')} onClick={()=>setMonDashTab('ot')}>🔧 Ordres de travail</div>
-            <div className={'tab'+(monDashTab==='factures'?' active':'')} onClick={()=>setMonDashTab('factures')}>🧾 Factures</div>
             <div className={'tab'+(monDashTab==='config'?' active':'')} onClick={()=>setMonDashTab('config')}>⚙️ Config</div>
           </div>
           {monDashTab==='heures'?(
@@ -6505,12 +6518,11 @@ function ConfigScreen({cfg,sid,notify,onRefresh,onClose}){
 // ── ADMIN VIEW ────────────────────────────────────────────────────────────────
 
 const ADMIN_PERM_OPTIONS=[
-  ['dashboard','📊 Dashboard','Aperçu du jour, présences, heures de l\'équipe, messages'],
+  ['dashboard','📊 Dashboard','Aperçu du jour, présences, heures de l\'équipe, factures manquantes'],
   ['projets','📁 Projets','Jobs en cours de toute l\'équipe'],
   ['jobs-stats','📍 Par job','Heures cumulées par job/chantier + historique de pointage'],
   ['agenda','📅 Agenda','Agenda complet, 14 prochains jours'],
   ['ot-admin','🔧 OT','Ordres de travail & appels de service'],
-  ['employes','👷 Employés','Ajouter/modifier/supprimer des employés, PIN (sensible)'],
 ];
 
 function EmpForm({data,setData,onSave,onCancel,isEdit}){
@@ -6675,10 +6687,24 @@ function FacturesManquantesView({emps,jobsForLookup,meEmp}){
     if(!id)return null;
     return (jobsForLookup||[]).find(j=>j.id===id)||null;
   }
+  // Assignés d'une job : d'abord par mention textuelle (code/nom dans le titre),
+  // sinon par repli sur la couleur de l'événement (utile pour les jobs créées
+  // avant la convention de titre codée, ou directement dans Google Agenda) —
+  // couleur la plus proche parmi les employés, sous un seuil de tolérance.
   function getAssignees(job){
     if(!job)return[];
     const txt=job.title+' '+(job.description||'');
-    return (emps||[]).filter(e=>mentionsEmployee(txt,e));
+    let found=(emps||[]).filter(e=>mentionsEmployee(txt,e));
+    if(found.length===0&&job.gcalColor){
+      let best=null,bestDist=40;
+      (emps||[]).forEach(e=>{
+        if(!e.couleur)return;
+        const d=colorDist(job.gcalColor,e.couleur);
+        if(d<bestDist){bestDist=d;best=e;}
+      });
+      if(best)found=[best];
+    }
+    return found;
   }
 
   let liste=(facturesManquantes||[]).map(t=>{
@@ -6811,7 +6837,6 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   const [selEmp,setSelEmp]=useState('');
   const [histTab,setHistTab]=useState('semaine');
   const [parJobView,setParJobView]=useState('parjob'); // 'parjob' | 'historique' | 'factures' — sous-vues fusionnées de l'onglet "Par job"
-  const [showMessages,setShowMessages]=useState(false); // Messages déplacés dans Dashboard comme option repliable
   const [selectedJobForAppel,setSelectedJobForAppel]=useState(null); // job sélectionnée pour appel de service
 
   const today=localDateStr();
@@ -6828,13 +6853,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
     getAllCalendarJobs(calendarIds).then(setAllJobs);
   }
 
-  const unread=msgs.filter(m=>!m.lu);
   const eMap=Object.fromEntries(emps.map(e=>[e.nom,e]));
-
-  async function handleMarkRead(msg){
-    await markMessageRead(sid,msg.row);
-    setMsgs(m=>m.map(x=>x.row===msg.row?{...x,lu:true}:x));
-  }
 
   function getHist(){
     let p=selEmp?pts.filter(x=>x.nom===selEmp):pts;
@@ -6911,10 +6930,9 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   return(
     <div>
       <div className="tabs">
-        {[['dashboard','📊 Dashboard'],['employes','👷 Employés'],['projets','📁 Projets'],['jobs-stats','📍 Par job'],['agenda','📅 Agenda'],['ot-admin','🔧 OT']].filter(([k])=>!allowedTabs||allowedTabs.includes(k)).map(([k,l])=>(
+        {[['dashboard','📊 Dashboard'],['projets','📁 Projets'],['jobs-stats','📍 Par job'],['agenda','📅 Agenda'],['ot-admin','🔧 OT']].filter(([k])=>!allowedTabs||allowedTabs.includes(k)).map(([k,l])=>(
           <div key={k} className={'tab'+(tab===k?' active':'')} onClick={()=>setTab(k)} style={{position:'relative'}}>
             {l}
-            {k==='dashboard'&&unread.length>0&&<span className="nav-badge">{unread.length}</span>}
           </div>
         ))}
       </div>
@@ -6999,34 +7017,10 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
         </div>
 
         <div className="card" style={{marginTop:'0.85rem'}}>
-          <div onClick={()=>setShowMessages(s=>!s)} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',touchAction:'manipulation'}}>
-            <div className="csec" style={{margin:0,flex:1}}>💬 Messages {unread.length>0&&<span style={{background:'var(--danger)',color:'#fff',borderRadius:8,padding:'1px 7px',fontSize:11,marginLeft:6}}>{unread.length}</span>}</div>
-            <span style={{fontSize:11,color:'var(--muted)'}}>{showMessages?'▲ Fermer':'▼ Voir'}</span>
-          </div>
-          {showMessages&&(
-            <div style={{marginTop:'0.65rem'}}>
-              {unread.length>0&&<button className="btn-s" style={{fontSize:11,marginBottom:'0.6rem'}} onClick={async()=>{for(const m of unread)await markMessageRead(sid,m.row);setMsgs(ms=>ms.map(x=>({...x,lu:true})));notify('Tout lu','success');}}>Tout lire</button>}
-              {msgs.length===0?<div style={{color:'var(--muted)',fontSize:13}}>Aucun message.</div>:
-              msgs.map((msg,i)=>(
-                <div key={i} className={'msg-card'+(msg.lu?' read':'')}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:600}}>{msg.de} — <span style={{color:'var(--warning)'}}>{msg.action}</span></div>
-                      <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{msg.details}</div>
-                      <div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>{new Date(msg.datetime).toLocaleDateString('fr-CA')} {new Date(msg.datetime).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}</div>
-                    </div>
-                    {!msg.lu&&<button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:'var(--muted)',flexShrink:0}} onClick={()=>handleMarkRead(msg)}>✓</button>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="csec">🧾 Facture manquante</div>
+          <FacturesManquantesView emps={emps} jobsForLookup={allJobs.length>0?allJobs:jobs} meEmp={null}/>
         </div>
         </div>
-      )}
-
-      {tab==='employes'&&(!allowedTabs||allowedTabs.includes('employes'))&&(
-        <EmployeesManager sid={sid} notify={notify} onRefresh={onRefresh}/>
       )}
 
       {tab==='projets'&&(
@@ -7038,7 +7032,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
       {tab==='jobs-stats'&&(
         <div>
           <div style={{display:'flex',gap:6,marginBottom:'0.75rem',flexWrap:'wrap'}}>
-            {[['parjob','📍 Par job'],['historique','📋 Historique'],['factures','🧾 Factures manquantes']].map(([k,l])=>(
+            {[['parjob','📍 Par job'],['historique','📋 Historique'],['factures','🧾 Facture manquante']].map(([k,l])=>(
               <button key={k} onClick={()=>setParJobView(k)} className="btn-s" style={{
                 fontSize:11,padding:'0.3rem 0.7rem',
                 background:parJobView===k?'var(--accent)':'var(--bg3)',
