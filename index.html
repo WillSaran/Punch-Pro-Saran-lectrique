@@ -573,7 +573,12 @@ button{font-family:var(--font-body)}
 //   couleurs assignées) pour quand même afficher qui est assigné — utile
 //   pour les jobs créées avant la convention de titre codée ou directement
 //   dans Google Agenda (ex: onglet "Particuliers").
-const APP_VERSION='v209';
+// v210 (2026-07-22): Sélecteur de fichier Drive (Créer un job) — au lieu de
+//   montrer tout le Drive en vrac, le Picker affiche maintenant un onglet par
+//   dossier partagé déjà configuré dans l'app (PAD SERVICE À TRAITER, PLAN &
+//   SPECS, PLAN ENCASTRÉS, COMPTEUR HQ, PHOTOS & VIDÉOS, REF FACTURE, REF OT),
+//   plus un onglet "Tout mon Drive" en secours si le fichier est ailleurs.
+const APP_VERSION='v210';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1017,9 +1022,12 @@ async function openDrivePicker(onPicked){
     await ensurePickerLoaded();
     const token=gapi.client.getToken();
     if(!token||!token.access_token){console.error('Pas de jeton Google actif pour le Picker');return;}
-    const view=new google.picker.DocsView().setIncludeFolders(true).setSelectFolderEnabled(false);
-    const picker=new google.picker.PickerBuilder()
-      .addView(view)
+    // Un onglet par dossier Drive partagé déjà configuré (PAD SERVICE, PLAN &
+    // SPECS, etc.) au lieu de montrer tout le Drive en vrac — plus rapide à
+    // naviguer. Un onglet "Tout mon Drive" reste dispo en secours si le
+    // fichier n'est pas dans un de ces dossiers.
+    const folders=parseDriveFolders(DEFAULT_CFG.driveFolders);
+    const builder=new google.picker.PickerBuilder()
       .setOAuthToken(token.access_token)
       .setDeveloperKey(ACTIVE_API_KEY||DEFAULT_CFG.apiKey)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
@@ -1028,8 +1036,16 @@ async function openDrivePicker(onPicked){
           const files=(data.docs||[]).map(d=>({id:d.id,name:d.name,mimeType:d.mimeType}));
           onPicked(files);
         }
-      })
-      .build();
+      });
+    if(folders.length>0){
+      folders.forEach(f=>{
+        builder.addView(new google.picker.DocsView().setParent(f.id).setIncludeFolders(true).setSelectFolderEnabled(false).setLabel(f.name));
+      });
+      builder.addView(new google.picker.DocsView().setIncludeFolders(true).setSelectFolderEnabled(false).setLabel('Tout mon Drive'));
+    }else{
+      builder.addView(new google.picker.DocsView().setIncludeFolders(true).setSelectFolderEnabled(false));
+    }
+    const picker=builder.build();
     picker.setVisible(true);
   }catch(e){console.error('Erreur Picker Drive:',e);}
 }
