@@ -552,7 +552,16 @@ button{font-family:var(--font-body)}
 //   groupées par contracteur, avec un bouton Actualiser. Première étape vers
 //   la synchronisation OT/AP décrite par l'utilisateur — l'écriture
 //   automatique vers ce Sheet suivra dans une prochaine version.
-const APP_VERSION='v207';
+// v208 (2026-07-22): Factures manquantes — trois améliorations. 1) Chaque
+//   ligne affiche maintenant la couleur + le nom du/des employé(s) assigné(s)
+//   à la job (croisé via l'Event ID, le même identifiant que Google Calendar).
+//   2) Toggle "Par contracteur" (groupé, le plus de manquants en premier) /
+//   "Par date" (liste plate triée par date). 3) Nouvel onglet "🧾 Factures"
+//   dans le dashboard de chaque employé, avec un toggle "Mes factures" (jobs
+//   où il est assigné) / "Toutes" — la vue et la logique sont maintenant
+//   partagées (FacturesManquantesView) entre le Dashboard équipe et le
+//   dashboard employé.
+const APP_VERSION='v208';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -6206,12 +6215,15 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
             <div className={'tab'+(monDashTab==='heures'?' active':'')} onClick={()=>setMonDashTab('heures')}>📋 Mes heures</div>
             <div className={'tab'+(monDashTab==='projets'?' active':'')} onClick={()=>setMonDashTab('projets')}>📁 Projets</div>
             <div className={'tab'+(monDashTab==='ot'?' active':'')} onClick={()=>setMonDashTab('ot')}>🔧 Ordres de travail</div>
+            <div className={'tab'+(monDashTab==='factures'?' active':'')} onClick={()=>setMonDashTab('factures')}>🧾 Factures</div>
             <div className={'tab'+(monDashTab==='config'?' active':'')} onClick={()=>setMonDashTab('config')}>⚙️ Config</div>
           </div>
           {monDashTab==='heures'?(
             <EmployeeHistory emp={selEmp} sid={sid} notify={notify} folders={folders} calendarIds={calendarIds}/>
           ):monDashTab==='projets'?(
             <ProjectsView sid={sid} pts={allPts} emps={emps} calJobs={allJobs.length>0?allJobs:jobs} isAdmin={false} notify={notify} calendarIds={calendarIds} onRefresh={refreshProjets}/>
+          ):monDashTab==='factures'?(
+            <FacturesManquantesView emps={emps} jobsForLookup={allJobs.length>0?allJobs:jobs} meEmp={selEmp}/>
           ):monDashTab==='config'?(
             <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.9rem'}}>
               <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>📍 Localisation</div>
@@ -6643,6 +6655,145 @@ function EmployeesManager({sid,notify,onRefresh}){
   );
 }
 
+// ── FACTURES MANQUANTES (vue partagée: Dashboard équipe ET dashboard employé) ──
+// Lit le Sheet externe "Suivi Travaux" et enrichit chaque ligne avec la
+// couleur/nom du ou des employés assignés, en croisant l'Event ID (colonne N,
+// même ID que Google Calendar) avec les jobs déjà chargés dans l'app.
+function FacturesManquantesView({emps,jobsForLookup,meEmp}){
+  const [facturesManquantes,setFacturesManquantes]=useState(null); // null = pas encore chargé
+  const [loadingFactures,setLoadingFactures]=useState(false);
+  const [viewMode,setViewMode]=useState('contracteur'); // 'contracteur' | 'date'
+  const [scope,setScope]=useState('mine'); // 'mine' | 'all' — pertinent seulement si meEmp fourni
+
+  function load(){
+    setLoadingFactures(true);
+    getFacturesManquantes().then(f=>{setFacturesManquantes(f);setLoadingFactures(false);});
+  }
+  useEffect(()=>{load();},[]);
+
+  function getJobByEventId(id){
+    if(!id)return null;
+    return (jobsForLookup||[]).find(j=>j.id===id)||null;
+  }
+  function getAssignees(job){
+    if(!job)return[];
+    const txt=job.title+' '+(job.description||'');
+    return (emps||[]).filter(e=>mentionsEmployee(txt,e));
+  }
+
+  let liste=(facturesManquantes||[]).map(t=>{
+    const job=getJobByEventId(t.eventId);
+    return{...t,assignees:job?getAssignees(job):[]};
+  });
+  if(meEmp&&scope==='mine')liste=liste.filter(t=>t.assignees.some(e=>e.nom===meEmp.nom));
+
+  const manquantes=liste.filter(t=>t.statut==='manquante');
+  const enTraitement=liste.filter(t=>t.statut==='en-traitement');
+
+  function projetCell(t){
+    const primary=t.assignees[0];
+    return(
+      <>
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          {primary&&<span style={{width:8,height:8,borderRadius:'50%',background:primary.couleur,flexShrink:0}}></span>}
+          <span>{t.projet}</span>
+        </div>
+        {t.assignees.length>0&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{t.assignees.map(e=>e.nom).join(', ')}</div>}
+      </>
+    );
+  }
+
+  function bloc(titre,items,couleur){
+    if(viewMode==='date')return(
+      <div className="card" style={{marginBottom:'0.75rem'}}>
+        <div className="card-title" style={{color:couleur}}>{titre} <span style={{fontWeight:400,fontSize:11,color:'var(--muted)'}}>({items.length})</span></div>
+        {items.length===0?(
+          <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0'}}>Aucune — tout est à jour.</div>
+        ):(
+          <div style={{overflowX:'auto'}}>
+            <table className="htable" style={{minWidth:500}}>
+              <thead><tr><th>Contracteur</th><th>Date</th><th>Projet</th><th>Appel de service</th></tr></thead>
+              <tbody>
+                {items.map((t,i)=>(
+                  <tr key={i}>
+                    <td style={{fontSize:11,fontWeight:600}}>{t.feuille}</td>
+                    <td style={{fontSize:11,whiteSpace:'nowrap'}}>{t.date}</td>
+                    <td style={{fontSize:12}}>{projetCell(t)}</td>
+                    <td style={{fontSize:11}}>{t.appel||<span style={{color:'var(--muted)',fontStyle:'italic'}}>Aucun appel</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+    // Vue "par contracteur" — groupé, feuille avec le plus de manquants en premier
+    const groups={};
+    items.forEach(t=>{(groups[t.feuille]=groups[t.feuille]||[]).push(t);});
+    const order=Object.keys(groups).sort((a,b)=>groups[b].length-groups[a].length);
+    return(
+      <div className="card" style={{marginBottom:'0.75rem'}}>
+        <div className="card-title" style={{color:couleur}}>{titre} <span style={{fontWeight:400,fontSize:11,color:'var(--muted)'}}>({items.length})</span></div>
+        {items.length===0?(
+          <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0'}}>Aucune — tout est à jour.</div>
+        ):order.map(feuille=>(
+          <div key={feuille} style={{marginBottom:'0.65rem'}}>
+            <div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.05em',marginBottom:4}}>📦 {feuille} <span style={{color:'var(--muted)',fontWeight:400}}>({groups[feuille].length})</span></div>
+            <div style={{overflowX:'auto'}}>
+              <table className="htable" style={{minWidth:400}}>
+                <thead><tr><th>Date</th><th>Projet</th><th>Appel de service</th></tr></thead>
+                <tbody>
+                  {groups[feuille].map((t,i)=>(
+                    <tr key={i}>
+                      <td style={{fontSize:11,whiteSpace:'nowrap'}}>{t.date}</td>
+                      <td style={{fontSize:12}}>{projetCell(t)}</td>
+                      <td style={{fontSize:11}}>{t.appel||<span style={{color:'var(--muted)',fontStyle:'italic'}}>Aucun appel</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return(
+    <div>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.75rem',flexWrap:'wrap'}}>
+        <div style={{display:'flex',gap:6}}>
+          {[['contracteur','📦 Par contracteur'],['date','📅 Par date']].map(([k,l])=>(
+            <button key={k} onClick={()=>setViewMode(k)} className="btn-s" style={{fontSize:11,padding:'0.3rem 0.6rem',
+              background:viewMode===k?'var(--accent)':'var(--bg3)',color:viewMode===k?'#fff':'var(--text)',fontWeight:viewMode===k?700:500}}>{l}</button>
+          ))}
+        </div>
+        {meEmp&&(
+          <div style={{display:'flex',gap:6}}>
+            {[['mine','👤 Mes factures'],['all','🏗️ Toutes']].map(([k,l])=>(
+              <button key={k} onClick={()=>setScope(k)} className="btn-s" style={{fontSize:11,padding:'0.3rem 0.6rem',
+                background:scope===k?'var(--accent)':'var(--bg3)',color:scope===k?'#fff':'var(--text)',fontWeight:scope===k?700:500}}>{l}</button>
+            ))}
+          </div>
+        )}
+        <div style={{flex:1}}></div>
+        <button className="btn-s" style={{fontSize:11}} onClick={load}>↻ Actualiser</button>
+      </div>
+      {loadingFactures?(
+        <div style={{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:13}}>⏳ Chargement...</div>
+      ):facturesManquantes===null?null:liste.length===0?(
+        <div className="card"><div style={{textAlign:'center',color:'var(--muted)',padding:'1rem'}}>{meEmp&&scope==='mine'?'Aucune facture manquante pour toi 🎉':'Aucune donnée.'}</div></div>
+      ):(
+        <div>
+          {bloc('🔴 Factures manquantes — aucun appel de service',manquantes,'var(--danger)')}
+          {bloc('🟠 En traitement — appel de service fait, facture à venir',enTraitement,'var(--warning)')}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   const [tab,setTab]=useState('dashboard');
   useEffect(()=>{
@@ -6660,8 +6811,6 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   const [selEmp,setSelEmp]=useState('');
   const [histTab,setHistTab]=useState('semaine');
   const [parJobView,setParJobView]=useState('parjob'); // 'parjob' | 'historique' | 'factures' — sous-vues fusionnées de l'onglet "Par job"
-  const [facturesManquantes,setFacturesManquantes]=useState(null); // null = pas encore chargé
-  const [loadingFactures,setLoadingFactures]=useState(false);
   const [showMessages,setShowMessages]=useState(false); // Messages déplacés dans Dashboard comme option repliable
   const [selectedJobForAppel,setSelectedJobForAppel]=useState(null); // job sélectionnée pour appel de service
 
@@ -6890,13 +7039,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
         <div>
           <div style={{display:'flex',gap:6,marginBottom:'0.75rem',flexWrap:'wrap'}}>
             {[['parjob','📍 Par job'],['historique','📋 Historique'],['factures','🧾 Factures manquantes']].map(([k,l])=>(
-              <button key={k} onClick={()=>{
-                setParJobView(k);
-                if(k==='factures'&&facturesManquantes===null){
-                  setLoadingFactures(true);
-                  getFacturesManquantes().then(f=>{setFacturesManquantes(f);setLoadingFactures(false);});
-                }
-              }} className="btn-s" style={{
+              <button key={k} onClick={()=>setParJobView(k)} className="btn-s" style={{
                 fontSize:11,padding:'0.3rem 0.7rem',
                 background:parJobView===k?'var(--accent)':'var(--bg3)',
                 color:parJobView===k?'#fff':'var(--text)',fontWeight:parJobView===k?700:500
@@ -7020,57 +7163,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
           )}
 
           {parJobView==='factures'&&(
-            <div>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.75rem'}}>
-                <div style={{fontSize:11,color:'var(--muted)',flex:1}}>
-                  Depuis le Sheet "Suivi Travaux" — jobs passées sans facture enregistrée.
-                </div>
-                <button className="btn-s" style={{fontSize:11}} onClick={()=>{
-                  setLoadingFactures(true);
-                  getFacturesManquantes().then(f=>{setFacturesManquantes(f);setLoadingFactures(false);});
-                }}>↻ Actualiser</button>
-              </div>
-              {loadingFactures?(
-                <div style={{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:13}}>⏳ Chargement...</div>
-              ):(()=>{
-                const liste=facturesManquantes||[];
-                const manquantes=liste.filter(t=>t.statut==='manquante');
-                const enTraitement=liste.filter(t=>t.statut==='en-traitement');
-                if(liste.length===0)return(
-                  <div className="card"><div style={{textAlign:'center',color:'var(--muted)',padding:'1rem'}}>Aucune donnée — clique "Actualiser".</div></div>
-                );
-                const bloc=(titre,items,couleur)=>(
-                  <div className="card" style={{marginBottom:'0.75rem'}}>
-                    <div className="card-title" style={{color:couleur}}>{titre} <span style={{fontWeight:400,fontSize:11,color:'var(--muted)'}}>({items.length})</span></div>
-                    {items.length===0?(
-                      <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0'}}>Aucune — tout est à jour.</div>
-                    ):(
-                      <div style={{overflowX:'auto'}}>
-                        <table className="htable" style={{minWidth:500}}>
-                          <thead><tr><th>Contracteur</th><th>Date</th><th>Projet</th><th>Appel de service</th></tr></thead>
-                          <tbody>
-                            {items.map((t,i)=>(
-                              <tr key={i}>
-                                <td style={{fontSize:11,fontWeight:600}}>{t.feuille}</td>
-                                <td style={{fontSize:11,whiteSpace:'nowrap'}}>{t.date}</td>
-                                <td style={{fontSize:12}}>{t.projet}</td>
-                                <td style={{fontSize:11}}>{t.appel||<span style={{color:'var(--muted)',fontStyle:'italic'}}>Aucun appel</span>}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                );
-                return(
-                  <div>
-                    {bloc('🔴 Factures manquantes — aucun appel de service',manquantes,'var(--danger)')}
-                    {bloc('🟠 En traitement — appel de service fait, facture à venir',enTraitement,'var(--warning)')}
-                  </div>
-                );
-              })()}
-            </div>
+            <FacturesManquantesView emps={emps} jobsForLookup={allJobs.length>0?allJobs:jobs} meEmp={null}/>
           )}
         </div>
       )}
