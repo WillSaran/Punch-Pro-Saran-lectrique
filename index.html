@@ -578,7 +578,12 @@ button{font-family:var(--font-body)}
 //   dossier partagé déjà configuré dans l'app (PAD SERVICE À TRAITER, PLAN &
 //   SPECS, PLAN ENCASTRÉS, COMPTEUR HQ, PHOTOS & VIDÉOS, REF FACTURE, REF OT),
 //   plus un onglet "Tout mon Drive" en secours si le fichier est ailleurs.
-const APP_VERSION='v210';
+// v211 (2026-07-22): Fix — l'onglet "PLAN & SPECS" (et les autres dossiers
+//   partagés) du sélecteur Drive (Créer un job) pouvait apparaître vide même
+//   avec des fichiers dedans, si ce dossier vit dans un Drive partagé plutôt
+//   que "Mon Drive". Ajout du support des Drive partagés au Picker
+//   (Feature.SUPPORT_DRIVES) — les fichiers devraient maintenant apparaître.
+const APP_VERSION='v211';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1031,6 +1036,11 @@ async function openDrivePicker(onPicked){
       .setOAuthToken(token.access_token)
       .setDeveloperKey(ACTIVE_API_KEY||DEFAULT_CFG.apiKey)
       .enableFeature(google.picker.Feature.MULTISELECT_ENABLED)
+      // Nécessaire pour que les dossiers/fichiers qui vivent dans un Drive
+      // partagé (pas juste "Mon Drive") apparaissent quand on scope une vue
+      // avec setParent() — sinon la vue peut sembler vide même si le dossier
+      // contient des fichiers.
+      .enableFeature(google.picker.Feature.SUPPORT_DRIVES)
       .setCallback(data=>{
         if(data.action===google.picker.Action.PICKED){
           const files=(data.docs||[]).map(d=>({id:d.id,name:d.name,mimeType:d.mimeType}));
