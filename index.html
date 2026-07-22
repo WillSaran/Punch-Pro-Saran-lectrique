@@ -544,7 +544,15 @@ button{font-family:var(--font-body)}
 //   n'est plus un onglet séparé — c'est maintenant une section repliable au
 //   bas de l'onglet Dashboard (le badge de messages non lus est affiché sur
 //   l'onglet Dashboard). 3) Les onglets "Banque" et "Appels" sont retirés.
-const APP_VERSION='v206';
+// v207 (2026-07-22): Nouveau — "Factures manquantes" dans le Dashboard
+//   équipe, sous l'onglet "Par job" (3e sous-vue). Lit directement le Sheet
+//   externe "Suivi Travaux" (celui avec l'Apps Script qui envoie le rapport
+//   par courriel) et affiche les mêmes deux sections: Factures manquantes
+//   (aucun appel de service) et En traitement (appel fait, facture à venir),
+//   groupées par contracteur, avec un bouton Actualiser. Première étape vers
+//   la synchronisation OT/AP décrite par l'utilisateur — l'écriture
+//   automatique vers ce Sheet suivra dans une prochaine version.
+const APP_VERSION='v207';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -680,6 +688,14 @@ const DEFAULT_CFG={
   calendarIds:'saranelectrique@gmail.com,info@saranelectrique.com',
   driveFolders:'PAD SERVICE À TRAITER:1CI-OuXIuiSKUksL7BUyGAN__tRPxbklB,PLAN & SPECS:1OJwBNab0A1QV61sWg5DWJtsO3hnQ_L183,PLAN ENCASTRÉS:16j5rHYEwV4mY8qnS4c2lBrxt_bXhQH4p,COMPTEUR HQ:1ExENIjWTO2IOR2VyW-b047HZsY9wPWsz,PHOTOS & VIDÉOS:1Xtp0JA_8Livc2RcyK7qNN_SM9mWPIAqn,REF FACTURE:1KhCz_ouobsvzzSxezMdBtBdCCCpWIeAT,REF OT:1z7SN2qUHHtily5LiyE5QWwKtIdlCDbEI'
 };
+
+// ── SUIVI TRAVAUX (2e Google Sheet, séparé — géré par un Apps Script externe) ──
+// Un onglet par contracteur (routage par préfixe dans le titre, même logique
+// que JOB_PREFIXES) + un onglet "Particuliers" par défaut. Colonnes fixes:
+// A=Date, B=Projet/Titre, C=Adresse, D=Description, K=Appel de service,
+// L=Ordre de travail, M=Facture, N=Event ID (même ID que Google Calendar).
+const SUIVI_TRAVAUX_SID='1uHgs4eiD0t25hYHp69q27tESsuVB4HraCud3c04vLwY';
+const SUIVI_TRAVAUX_SHEETS=['ASC','CRS','PAY','JOY','SAR','GGP','Préparations','BOM','5PIL','RROY','GOU','Particuliers'];
 
 function getWeek(d){
   const dt=new Date(d);dt.setHours(0,0,0,0);dt.setDate(dt.getDate()+3-(dt.getDay()+6)%7);
@@ -1449,6 +1465,44 @@ async function addHeuresBanque(sid,nom,semaine,heures){
 }
 async function updateBanqueStatus(sid,row,statut){
   await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'HeuresEnBanque!D'+row,valueInputOption:'RAW',resource:{values:[[statut]]}});
+}
+
+// ── SUIVI TRAVAUX — factures manquantes (2e spreadsheet externe) ──────────────
+// Réplique la logique de l'Apps Script _rapport_getTravausSansFacture_() :
+// pour chaque onglet contracteur, une ligne est "en suivi" si le projet
+// (colonne B) est rempli, la facture (colonne M) est vide ou "0", et la date
+// (colonne A, format dd/MM/yyyy) est dans le passé. Statut "manquante" si
+// l'appel de service (colonne K) est aussi vide, sinon "en-traitement".
+async function getFacturesManquantes(){
+  const out=[];
+  const today=new Date();today.setHours(0,0,0,0);
+  for(const feuille of SUIVI_TRAVAUX_SHEETS){
+    let res;
+    try{
+      res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({
+        spreadsheetId:SUIVI_TRAVAUX_SID,
+        range:"'"+feuille+"'!A3:N"
+      }));
+    }catch(e){continue;} // onglet inexistant/inaccessible — on saute
+    const rows=res.result.values||[];
+    rows.forEach(r=>{
+      const dateStr=(r[0]||'').toString().trim();
+      const projet=(r[1]||'').toString().trim();
+      const appel=(r[10]||'').toString().trim();
+      const ot=(r[11]||'').toString().trim();
+      const facture=(r[12]||'').toString().trim();
+      const eventId=(r[13]||'').toString().trim();
+      if(!projet)return;
+      if(facture!==''&&facture!=='0')return;
+      const parts=dateStr.split('/');
+      if(parts.length!==3)return;
+      const d=new Date(parseInt(parts[2]),parseInt(parts[1])-1,parseInt(parts[0]));
+      if(isNaN(d.getTime())||d>=today)return;
+      out.push({feuille,date:dateStr,dateObj:d,projet,appel,ot,eventId,statut:appel?'en-traitement':'manquante'});
+    });
+  }
+  out.sort((a,b)=>a.dateObj-b.dateObj);
+  return out;
 }
 async function addMessage(sid,de,action,details){
   await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'Messages!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',resource:{values:[[de,action,details,new Date().toISOString(),'non']]}});
@@ -6605,7 +6659,9 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
   const [expandedEmpWeek,setExpandedEmpWeek]=useState(null); // nom de l'employé dont le détail hebdo est ouvert
   const [selEmp,setSelEmp]=useState('');
   const [histTab,setHistTab]=useState('semaine');
-  const [parJobView,setParJobView]=useState('parjob'); // 'parjob' | 'historique' — sous-vues fusionnées de l'onglet "Par job"
+  const [parJobView,setParJobView]=useState('parjob'); // 'parjob' | 'historique' | 'factures' — sous-vues fusionnées de l'onglet "Par job"
+  const [facturesManquantes,setFacturesManquantes]=useState(null); // null = pas encore chargé
+  const [loadingFactures,setLoadingFactures]=useState(false);
   const [showMessages,setShowMessages]=useState(false); // Messages déplacés dans Dashboard comme option repliable
   const [selectedJobForAppel,setSelectedJobForAppel]=useState(null); // job sélectionnée pour appel de service
 
@@ -6832,9 +6888,15 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
 
       {tab==='jobs-stats'&&(
         <div>
-          <div style={{display:'flex',gap:6,marginBottom:'0.75rem'}}>
-            {[['parjob','📍 Par job'],['historique','📋 Historique']].map(([k,l])=>(
-              <button key={k} onClick={()=>setParJobView(k)} className="btn-s" style={{
+          <div style={{display:'flex',gap:6,marginBottom:'0.75rem',flexWrap:'wrap'}}>
+            {[['parjob','📍 Par job'],['historique','📋 Historique'],['factures','🧾 Factures manquantes']].map(([k,l])=>(
+              <button key={k} onClick={()=>{
+                setParJobView(k);
+                if(k==='factures'&&facturesManquantes===null){
+                  setLoadingFactures(true);
+                  getFacturesManquantes().then(f=>{setFacturesManquantes(f);setLoadingFactures(false);});
+                }
+              }} className="btn-s" style={{
                 fontSize:11,padding:'0.3rem 0.7rem',
                 background:parJobView===k?'var(--accent)':'var(--bg3)',
                 color:parJobView===k?'#fff':'var(--text)',fontWeight:parJobView===k?700:500
@@ -6954,6 +7016,60 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {parJobView==='factures'&&(
+            <div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.75rem'}}>
+                <div style={{fontSize:11,color:'var(--muted)',flex:1}}>
+                  Depuis le Sheet "Suivi Travaux" — jobs passées sans facture enregistrée.
+                </div>
+                <button className="btn-s" style={{fontSize:11}} onClick={()=>{
+                  setLoadingFactures(true);
+                  getFacturesManquantes().then(f=>{setFacturesManquantes(f);setLoadingFactures(false);});
+                }}>↻ Actualiser</button>
+              </div>
+              {loadingFactures?(
+                <div style={{textAlign:'center',color:'var(--muted)',padding:'2rem',fontSize:13}}>⏳ Chargement...</div>
+              ):(()=>{
+                const liste=facturesManquantes||[];
+                const manquantes=liste.filter(t=>t.statut==='manquante');
+                const enTraitement=liste.filter(t=>t.statut==='en-traitement');
+                if(liste.length===0)return(
+                  <div className="card"><div style={{textAlign:'center',color:'var(--muted)',padding:'1rem'}}>Aucune donnée — clique "Actualiser".</div></div>
+                );
+                const bloc=(titre,items,couleur)=>(
+                  <div className="card" style={{marginBottom:'0.75rem'}}>
+                    <div className="card-title" style={{color:couleur}}>{titre} <span style={{fontWeight:400,fontSize:11,color:'var(--muted)'}}>({items.length})</span></div>
+                    {items.length===0?(
+                      <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0'}}>Aucune — tout est à jour.</div>
+                    ):(
+                      <div style={{overflowX:'auto'}}>
+                        <table className="htable" style={{minWidth:500}}>
+                          <thead><tr><th>Contracteur</th><th>Date</th><th>Projet</th><th>Appel de service</th></tr></thead>
+                          <tbody>
+                            {items.map((t,i)=>(
+                              <tr key={i}>
+                                <td style={{fontSize:11,fontWeight:600}}>{t.feuille}</td>
+                                <td style={{fontSize:11,whiteSpace:'nowrap'}}>{t.date}</td>
+                                <td style={{fontSize:12}}>{t.projet}</td>
+                                <td style={{fontSize:11}}>{t.appel||<span style={{color:'var(--muted)',fontStyle:'italic'}}>Aucun appel</span>}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+                return(
+                  <div>
+                    {bloc('🔴 Factures manquantes — aucun appel de service',manquantes,'var(--danger)')}
+                    {bloc('🟠 En traitement — appel de service fait, facture à venir',enTraitement,'var(--warning)')}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>
