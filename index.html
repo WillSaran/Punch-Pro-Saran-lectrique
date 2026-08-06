@@ -26,6 +26,16 @@
   --font-head:'Syne',sans-serif;--font-body:'DM Sans',sans-serif;
   --topbar-h:50px;
 }
+/* Mode clair — mêmes variables, palette inversée. Activé via
+   document.documentElement.setAttribute('data-theme','light') (voir
+   useTheme()/setThemePref() dans le script). */
+[data-theme="light"]{
+  --bg:#f4f5f7;--bg2:#ffffff;--bg3:#eceef2;--bg4:#e3e6ec;
+  --border:rgba(0,0,0,0.08);--border2:rgba(0,0,0,0.14);
+  --text:#1a1f26;--muted:#5b6472;
+  --accent:#ff7a1a;--accent2:#ff4d1a;--accent-rgb:255,122,26;
+  --success:#1a7f37;--warning:#9a6700;--danger:#cf222e;
+}
 body{background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;line-height:1.5;min-height:100vh;-webkit-font-smoothing:antialiased}
 #root{min-height:100vh}
 button{font-family:var(--font-body)}
@@ -583,7 +593,19 @@ button{font-family:var(--font-body)}
 //   avec des fichiers dedans, si ce dossier vit dans un Drive partagé plutôt
 //   que "Mon Drive". Ajout du support des Drive partagés au Picker
 //   (Feature.SUPPORT_DRIVES) — les fichiers devraient maintenant apparaître.
-const APP_VERSION='v211';
+// v212 (2026-07-22): Quatre correctifs/ajouts. 1) Fix important — la
+//   détection "cette job est à moi" (agenda, dashboard) comparait les mots du
+//   nom complet séparément n'importe où dans le titre+description, ce qui
+//   pouvait faussement assigner une job à un employé qui n'y était pour rien
+//   (ex: un prénom mentionné ailleurs + un nom de famille coïncident dans le
+//   titre d'une autre job). Le nom complet doit maintenant apparaître comme
+//   une phrase exacte et contiguë. 2) Agenda — vue Semaine: retrait de
+//   samedi/dimanche (Lundi-Vendredi seulement). 3) "Mon dashboard" revient
+//   maintenant toujours sur l'onglet "Mes heures" en le réouvrant (au lieu de
+//   garder le dernier onglet visité). 4) Nouveau bouton dans le menu:
+//   ☀️/🌙 Mode clair / Mode sombre — thème clair ajouté en plus du thème
+//   sombre existant.
+const APP_VERSION='v212';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -802,11 +824,19 @@ function colorDist(c1,c2){
 // pas par simple sous-chaîne (ex: le code "MA" ne doit pas matcher "camion").
 function mentionsEmployee(txt,emp){
   if(!txt||!emp)return false;
-  const tokens=(txt.toLowerCase().match(/[a-z0-9à-ÿ]+/gi)||[]);
+  // Texte normalisé, espaces simples, entouré d'espaces — permet un test de
+  // "mot entier"/"phrase entière" par simple inclusion de sous-chaîne.
+  const norm=' '+txt.toLowerCase().replace(/[^a-z0-9à-ÿ]+/gi,' ').replace(/\s+/g,' ').trim()+' ';
   const code=(emp.code||'').toLowerCase().trim();
-  if(code&&tokens.includes(code))return true;
-  const nomWords=(emp.nom||'').toLowerCase().trim().split(/\s+/).filter(Boolean);
-  if(nomWords.length&&nomWords.every(w=>tokens.includes(w)))return true;
+  if(code&&norm.includes(' '+code+' '))return true;
+  // IMPORTANT — le nom complet doit apparaître comme une PHRASE CONTIGUË
+  // (ex: "adèle jean"), pas juste chaque mot présent n'importe où dans le
+  // titre+description concaténés. L'ancienne logique "bag of words" pouvait
+  // faussement assigner une job à un employé si son prénom apparaissait dans
+  // un champ et un mot qui ressemble à son nom de famille dans un autre
+  // (ex: description mentionnant "Adèle" + titre "Service-Bailler-Jean").
+  const nom=(emp.nom||'').toLowerCase().trim().replace(/\s+/g,' ');
+  if(nom&&norm.includes(' '+nom+' '))return true;
   return false;
 }
 // Préfixes de contracteurs connus dans les titres de job (même convention que
@@ -908,6 +938,29 @@ function useDesktopMode(){
     const onChange=()=>setV(isDesktopMode());
     window.addEventListener('punchpro-desktop-change',onChange);
     return()=>window.removeEventListener('punchpro-desktop-change',onChange);
+  },[]);
+  return v;
+}
+// Thème clair/sombre — même pattern que useDesktopMode() (localStorage +
+// événement custom pour que tous les composants réagissent sans prop-
+// drilling). Le thème est appliqué via un attribut data-theme sur <html>,
+// lu par les variables CSS dans [data-theme="light"].
+function isLightTheme(){return localStorage.getItem('punchpro_theme')==='light';}
+function applyThemeToDOM(light){
+  document.documentElement.setAttribute('data-theme',light?'light':'dark');
+}
+function setThemePref(light){
+  localStorage.setItem('punchpro_theme',light?'light':'dark');
+  applyThemeToDOM(light);
+  window.dispatchEvent(new Event('punchpro-theme-change'));
+}
+function useTheme(){
+  const [v,setV]=useState(isLightTheme);
+  useEffect(()=>{
+    applyThemeToDOM(isLightTheme());
+    const onChange=()=>setV(isLightTheme());
+    window.addEventListener('punchpro-theme-change',onChange);
+    return()=>window.removeEventListener('punchpro-theme-change',onChange);
   },[]);
   return v;
 }
@@ -4642,13 +4695,14 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
   function prevWeek(){shiftSelDate(-7);}
   function nextWeek(){shiftSelDate(7);}
 
-  // Les 7 jours (Lun→Dim) de la semaine contenant selDate
+  // Les 5 jours ouvrables (Lun→Ven) de la semaine contenant selDate — pas de
+  // samedi/dimanche dans la vue Semaine.
   const weekDays=useMemo(()=>{
     const d=new Date(selDate+'T12:00:00');
     const dow=(d.getDay()+6)%7; // 0=Lun...6=Dim
     const monday=new Date(d);monday.setDate(d.getDate()-dow);
     const out=[];
-    for(let i=0;i<7;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);out.push(dd);}
+    for(let i=0;i<5;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);out.push(dd);}
     return out;
   },[selDate]);
 
@@ -4869,13 +4923,13 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
             <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={prevWeek}>◀</button>
             <div style={{display:'flex',alignItems:'center',gap:8}}>
               <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:13,textTransform:'capitalize'}}>
-                {weekDays[0].toLocaleDateString('fr-CA',{day:'numeric',month:'short'})} – {weekDays[6].toLocaleDateString('fr-CA',{day:'numeric',month:'short'})}
+                {weekDays[0].toLocaleDateString('fr-CA',{day:'numeric',month:'short'})} – {weekDays[weekDays.length-1].toLocaleDateString('fr-CA',{day:'numeric',month:'short'})}
               </div>
               <button className="btn-s" style={{fontSize:10,padding:'0.2rem 0.5rem'}} onClick={goToday}>Aujourd'hui</button>
             </div>
             <button className="btn-s" style={{fontSize:13,padding:'0.3rem 0.65rem'}} onClick={nextWeek}>▶</button>
           </div>
-          <div style={{display:'grid',gridTemplateColumns:desktopMode?'repeat(7,1fr)':'1fr',gap:'0.6rem'}}>
+          <div style={{display:'grid',gridTemplateColumns:desktopMode?'repeat(5,1fr)':'1fr',gap:'0.6rem'}}>
             {weekDays.map((d,wi)=>{
               const dStr=localDateStr(d);
               const isToday=dStr===today;
@@ -6339,7 +6393,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         <span className={'badge '+(empStatut==='in'?'badge-in':'badge-out')} style={{marginLeft:'auto'}}>{empStatut==='in'?'En cours':'Absent'}</span>
       </div>
       <div className="mode-wrap">
-        <div className="mode-btn" onClick={()=>{refreshCalJobs();setStep('mon-dashboard');}}>
+        <div className="mode-btn" onClick={()=>{refreshCalJobs();setMonDashTab('heures');setStep('mon-dashboard');}}>
           <div className="mode-icon">📈</div>
           <div><div className="mode-title">Mon dashboard</div><div className="mode-desc">Mes heures et mes projets</div></div>
         </div>
@@ -7265,6 +7319,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
 }
 function App(){
   const desktopMode=useDesktopMode();
+  const lightTheme=useTheme();
   const [cfg,setCfg]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem('pp_cfg')||'null');
@@ -7467,6 +7522,11 @@ function App(){
               background:desktopMode?'var(--accent)':'var(--bg3)',color:desktopMode?'#fff':'var(--text)'}}
               onClick={()=>setDesktopModePref(!desktopMode)}>
               {desktopMode?'🖥️ Mode bureau: ON':'🖥️ Mode bureau: OFF'}
+            </button>
+            <button className="btn-s" style={{width:'100%',marginBottom:'0.5rem',touchAction:'manipulation',
+              background:lightTheme?'var(--accent)':'var(--bg3)',color:lightTheme?'#fff':'var(--text)'}}
+              onClick={()=>setThemePref(!lightTheme)}>
+              {lightTheme?'☀️ Mode clair':'🌙 Mode sombre'}
             </button>
             <button className="btn-s" style={{width:'100%',marginTop:'auto',color:'var(--danger)',borderColor:'var(--danger)',touchAction:'manipulation'}} onClick={()=>{handleReset();setShowSidebar(false);}}>↩ Déconnexion</button>
           </>
