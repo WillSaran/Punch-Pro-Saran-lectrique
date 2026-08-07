@@ -630,7 +630,21 @@ button{font-family:var(--font-body)}
 //   assignations. 2) Commander/camions: les boutons +10/+50 arrondissent
 //   maintenant au multiple de 10 (ex: 1 +10 → 10, pas 11) au lieu d'ajouter
 //   platement le delta — seuls les boutons +1/−1 (unités) restent exacts.
-const APP_VERSION='v214';
+// v215 (2026-08-06): Cinq ajouts/correctifs. 1) Fix Daniel — sa couleur
+//   (flamant rose) apparaissait sur une job dans "Autres équipes" au lieu de
+//   "ses jobs", car cette job n'avait pas son code dans le texte (créée
+//   directement dans Google Agenda). Le matching "à qui est cette job" est
+//   maintenant standardisé partout (Agenda, Dashboard, Factures manquantes,
+//   Par job, Sélecteur de job) : code d'abord, puis repli sur la couleur la
+//   plus proche parmi tous les employés si aucun code ne matche. 2) Agenda
+//   — "Toute l'équipe" affiche maintenant TES jobs en premier, suivies du
+//   reste de l'équipe, au lieu de masquer complètement tes jobs. 3) Page
+//   d'accueil employé — la liste "Cette semaine" est maintenant divisée par
+//   jour (Lundi à Vendredi) avec un petit repère visuel entre chaque jour.
+//   4) Commander/camions — les boutons +10/+50 arrondissent maintenant au
+//   multiple de 10. 5) Bandeau "Nouvelle version disponible" + affichage en
+//   plage de dates dans Mes heures (v213/v214, voir plus haut).
+const APP_VERSION='v215';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -887,10 +901,10 @@ function mentionsEmployee(txt,emp){
   // IMPORTANT — on ne matche QUE sur le code/initiales de l'employé, pas sur
   // son nom complet (les titres "Service-X" contiennent souvent des noms de
   // CLIENTS qui peuvent coïncider avec le prénom/nom d'un employé). Le code
-  // est le seul signal fiable car c'est la convention que l'app elle-même
-  // utilise pour assigner une job (buildJobEventFields l'ajoute au titre/
-  // description) — voir aussi JobSelector, où le matching par couleur n'est
-  // déjà qu'un signal secondaire/mou, jamais un filtre dur.
+  // est le seul signal FIABLE ici car c'est la convention que l'app utilise
+  // pour assigner une job (buildJobEventFields l'ajoute au titre/description).
+  // Le repli sur la couleur (pour les jobs créées directement dans Google
+  // Agenda, sans code) est géré séparément par jobAssignees() ci-dessous.
   //
   // MAIS : la comparaison doit être SENSIBLE À LA CASSE (majuscules), pas
   // insensible. Le champ "code" est TOUJOURS saisi en majuscules (imposé par
@@ -906,6 +920,37 @@ function mentionsEmployee(txt,emp){
   const escaped=code.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
   const re=new RegExp('(^|[^A-Za-zÀ-ÿ0-9])'+escaped+'($|[^A-Za-zÀ-ÿ0-9])');
   return re.test(String(txt));
+}
+// Point de vérité UNIQUE pour "à qui appartient cette job" — utilisé partout
+// dans l'app (Agenda, Dashboard, Factures manquantes, Par job, Sélecteur de
+// job) pour que le comportement soit standard, pas réinventé à chaque écran.
+// 1) D'abord par mention textuelle explicite (code dans le titre/description
+//    — le signal le plus fiable, voir mentionsEmployee).
+// 2) Sinon, repli sur la couleur de l'événement Google Agenda : utile pour
+//    les jobs créées directement dans Google Agenda (pas via "Créer un job"
+//    dans l'app), qui n'ont donc pas de code dans le texte, mais ont quand
+//    même la bonne couleur d'employé. On ne matche QUE si c'est la couleur
+//    la PLUS PROCHE parmi tous les employés (pas juste "assez proche"), sous
+//    un seuil de tolérance — évite qu'une job matche par couleur DEUX
+//    employés dont les couleurs se ressemblent.
+function jobAssignees(job,allEmps){
+  if(!job||!allEmps||!allEmps.length)return[];
+  const txt=job.title+' '+(job.description||'');
+  let found=allEmps.filter(e=>mentionsEmployee(txt,e));
+  if(found.length===0&&job.gcalColor){
+    let best=null,bestDist=40;
+    allEmps.forEach(e=>{
+      if(!e.couleur)return;
+      const d=colorDist(job.gcalColor,e.couleur);
+      if(d<bestDist){bestDist=d;best=e;}
+    });
+    if(best)found=[best];
+  }
+  return found;
+}
+function isJobForEmployee(job,emp,allEmps){
+  if(!job||!emp)return false;
+  return jobAssignees(job,(allEmps&&allEmps.length)?allEmps:[emp]).some(e=>e.nom===emp.nom);
 }
 // Préfixes de contracteurs connus dans les titres de job (même convention que
 // l'onglet Projets) — utilisé pour regrouper "Par job" par contracteur.
@@ -3449,7 +3494,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode,allEmps,sid}){
   const today=localDateStr();
 
   function matches(job){
-    return mentionsEmployee(job.title+' '+(job.description||''),emp);
+    return isJobForEmployee(job,emp,allEmps);
   }
   function colorMatch(job){return colorDist(job.gcalColor,emp.couleur)<90;}
 
@@ -4752,10 +4797,11 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
     if(onJobsRefresh)onJobsRefresh();
   }
 
-  // Vérifier si une job est assignée à l'employé connecté (même logique que AdminView.getAssignees)
+  // Vérifier si une job est assignée à l'employé connecté — même logique
+  // partagée (texte + repli couleur) que partout ailleurs dans l'app.
   function isAssignedToMe(job){
     if(!emp||!emp.nom)return true;
-    return mentionsEmployee(job.title+' '+(job.description||''),emp);
+    return isJobForEmployee(job,emp,allEmps);
   }
 
   // Indexer chaque job sur TOUS les jours qu'il couvre (utile pour les événements
@@ -4896,7 +4942,10 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
   // Bloc "détail du jour" (utilisé en vue mois et semaine) : titre, +Créer, liste des jobs
   function dayDetailBlock(dStr,showCreateBtn){
     const info=parDate[dStr]||{mine:[],other:[]};
-    const vm=scope!=='team'?info.mine:[];
+    // "Mes jobs" restent toujours visibles, même en scope "Toute l'équipe" —
+    // elles apparaissent en PREMIER (priorité), suivies du reste de l'équipe.
+    // Seul le scope "mine" masque le reste de l'équipe.
+    const vm=info.mine;
     const vo=scope!=='mine'?info.other:[];
     const dObj=new Date(dStr+'T12:00:00');
     return(
@@ -4919,9 +4968,10 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
         {vm.length===0&&vo.length===0?(
           <div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem 0 1rem'}}>
             {(info.mine.length+info.other.length)>0?(
-              scope==='team'
-                ?"Il y a bien "+(info.mine.length+info.other.length)+" job(s) ce jour-là, mais assignée(s) à toi seulement — rien pour \"toute l'équipe\"."
-                :"Il y a bien "+(info.mine.length+info.other.length)+" job(s) ce jour-là, mais assignée(s) à d'autres — rien pour \"mes jobs\"."
+              // "Mes jobs" sont toujours incluses (voir vm ci-dessus) — ce
+              // message ne peut donc plus survenir qu'en scope "mine" avec
+              // des jobs assignées uniquement à d'autres ce jour-là.
+              "Il y a bien "+(info.mine.length+info.other.length)+" job(s) ce jour-là, mais assignée(s) à d'autres — rien pour \"mes jobs\"."
             ):"Aucun événement ce jour-là."}
           </div>
         ):(
@@ -4963,7 +5013,7 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
           if(!d)return <div key={i}/>;
           const dStr=localDateStr(d);
           const info=parDate[dStr];
-          const hasMine=scope!=='team'&&info&&info.mine.length>0;
+          const hasMine=info&&info.mine.length>0;
           const hasOther=scope!=='mine'&&info&&info.other.length>0;
           const isToday=dStr===today;
           const isSelected=dStr===selDate;
@@ -5775,21 +5825,39 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
   const today=localDateStr();
   const tomorrow=localDateStr(new Date(Date.now()+86400000));
 
-  // Bornes de la semaine courante (lundi → dimanche)
+  // Bornes de la semaine courante (lundi → vendredi seulement — même
+  // convention que la vue Semaine de l'Agenda, pas de samedi/dimanche)
   const weekDates=useMemo(()=>{
     const d=new Date();d.setHours(0,0,0,0);
     const dow=d.getDay(); // 0=dim..6=sam
     const diffToMonday=(dow+6)%7;
     const monday=new Date(d);monday.setDate(d.getDate()-diffToMonday);
     const arr=[];
-    for(let i=0;i<7;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);arr.push(localDateStr(dd));}
+    for(let i=0;i<5;i++){const dd=new Date(monday);dd.setDate(monday.getDate()+i);arr.push(localDateStr(dd));}
     return arr;
   },[]);
+  const JOURS_FR_LONG=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  function dayGroupLabel(dateStr){
+    const d=new Date(dateStr+'T12:00:00');
+    return JOURS_FR_LONG[d.getDay()]+' '+d.getDate();
+  }
+  // Petit séparateur "barre + jour" en petite écriture, utilisé pour diviser
+  // la liste "Cette semaine" par jour (Lundi, Mardi, ...) — sert juste de
+  // repère visuel léger, pas une vraie section pliable.
+  function DayDivider({label}){
+    return(
+      <div style={{display:'flex',alignItems:'center',gap:6,margin:'0.55rem 0 0.3rem'}}>
+        <div style={{fontSize:9,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:700,whiteSpace:'nowrap'}}>{label}</div>
+        <div style={{flex:1,height:1,background:'var(--border)'}}></div>
+      </div>
+    );
+  }
 
-  // Vérifier si une job est assignée à l'employé connecté (même logique que AdminView.getAssignees)
+  // Vérifier si une job est assignée à l'employé connecté — même logique
+  // partagée (texte + repli couleur) que partout ailleurs dans l'app.
   function isAssignedToMe(job){
     if(!emp||!emp.nom)return true; // si pas d'employé, ne pas filtrer
-    return mentionsEmployee(job.title+' '+(job.description||''),emp);
+    return isJobForEmployee(job,emp,allEmps);
   }
 
   const myJobs=jobs.filter(isAssignedToMe);
@@ -5826,6 +5894,51 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
     </div>
   );
 
+  // Carte d'une job "à moi" — extrait en fonction pour être réutilisable
+  // telle quelle (liste plate pour Aujourd'hui/Demain, ou groupée par jour
+  // pour Cette semaine).
+  function MineCard({j,i}){
+    return(
+      <div key={'mine'+i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',
+        borderLeft:'3px solid '+(emp?.couleur||j.gcalColor||'var(--accent)'),
+        display:'flex',alignItems:'center',gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            {emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
+            <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
+          </div>
+          {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📍 {j.location}</div>}
+          <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>
+            {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+            {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+          </div>
+        </div>
+        <button onClick={()=>setCommandeJob(j)}
+          style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
+            color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
+            cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+          📦 Commander
+        </button>
+      </div>
+    );
+  }
+  function OtherCard({j,i}){
+    return(
+      <div key={'other'+i} style={{background:'var(--bg2)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',
+        borderLeft:'3px solid '+(j.gcalColor||'var(--muted)'),opacity:0.85,
+        display:'flex',alignItems:'center',gap:8}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
+          {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📍 {j.location}</div>}
+          <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>
+            {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+            {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return(
     <div style={{width:'100%',marginTop:'0.75rem'}}>
       <div className="tabs" style={{marginBottom:'0.5rem',flexWrap:'wrap'}}>
@@ -5855,49 +5968,33 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
               Aucune job pour toi {dayLabel}.
             </div>
           )}
-          {shownMine.map((j,i)=>(
-            <div key={'mine'+i} style={{background:'var(--bg3)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',
-              borderLeft:'3px solid '+(emp?.couleur||j.gcalColor||'var(--accent)'),
-              display:'flex',alignItems:'center',gap:8}}>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:'flex',alignItems:'center',gap:6}}>
-                  {emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
-                  <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
-                </div>
-                {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📍 {j.location}</div>}
-                <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>
-                  {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                  {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                </div>
-              </div>
-              <button onClick={()=>setCommandeJob(j)}
-                style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
-                  color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
-                  cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
-                📦 Commander
-              </button>
-            </div>
-          ))}
-          {shownOther.length>0&&(
+          {dayTab==='week'?(
             <>
-              <div style={{display:'flex',alignItems:'center',gap:8,margin:'0.7rem 0 0.4rem'}}>
-                <div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Autres équipes</div>
-                <div style={{flex:1,height:1,background:'var(--border)'}}></div>
-              </div>
-              {shownOther.map((j,i)=>(
-                <div key={'other'+i} style={{background:'var(--bg2)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',
-                  borderLeft:'3px solid '+(j.gcalColor||'var(--muted)'),opacity:0.85,
-                  display:'flex',alignItems:'center',gap:8}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
-                    {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📍 {j.location}</div>}
-                    <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>
-                      {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                      {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
-                    </div>
+              {weekDates.map(dStr=>{
+                const dMine=shownMine.filter(j=>jobCouvreDate(j,dStr));
+                const dOther=shownOther.filter(j=>jobCouvreDate(j,dStr));
+                if(dMine.length===0&&dOther.length===0)return null;
+                return(
+                  <div key={dStr}>
+                    <DayDivider label={dayGroupLabel(dStr)}/>
+                    {dMine.map((j,i)=><MineCard key={'mine'+dStr+i} j={j} i={i}/>)}
+                    {dOther.map((j,i)=><OtherCard key={'other'+dStr+i} j={j} i={i}/>)}
                   </div>
-                </div>
-              ))}
+                );
+              })}
+            </>
+          ):(
+            <>
+              {shownMine.map((j,i)=><MineCard key={'mine'+i} j={j} i={i}/>)}
+              {shownOther.length>0&&(
+                <>
+                  <div style={{display:'flex',alignItems:'center',gap:8,margin:'0.7rem 0 0.4rem'}}>
+                    <div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',fontWeight:600}}>Autres équipes</div>
+                    <div style={{flex:1,height:1,background:'var(--border)'}}></div>
+                  </div>
+                  {shownOther.map((j,i)=><OtherCard key={'other'+i} j={j} i={i}/>)}
+                </>
+              )}
             </>
           )}
         </div>
@@ -6885,24 +6982,9 @@ function FacturesManquantesView({emps,jobsForLookup,meEmp}){
     if(!id)return null;
     return (jobsForLookup||[]).find(j=>j.id===id)||null;
   }
-  // Assignés d'une job : d'abord par mention textuelle (code/nom dans le titre),
-  // sinon par repli sur la couleur de l'événement (utile pour les jobs créées
-  // avant la convention de titre codée, ou directement dans Google Agenda) —
-  // couleur la plus proche parmi les employés, sous un seuil de tolérance.
+  // Assignés d'une job — logique partagée (jobAssignees), standard partout.
   function getAssignees(job){
-    if(!job)return[];
-    const txt=job.title+' '+(job.description||'');
-    let found=(emps||[]).filter(e=>mentionsEmployee(txt,e));
-    if(found.length===0&&job.gcalColor){
-      let best=null,bestDist=40;
-      (emps||[]).forEach(e=>{
-        if(!e.couleur)return;
-        const d=colorDist(job.gcalColor,e.couleur);
-        if(d<bestDist){bestDist=d;best=e;}
-      });
-      if(best)found=[best];
-    }
-    return found;
+    return jobAssignees(job,emps||[]);
   }
 
   let liste=(facturesManquantes||[]).map(t=>{
@@ -7113,9 +7195,9 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
     return Object.values(map).map(x=>({...x,heures:Math.round(x.heures*10)/10,prefix:getJobPrefix(x.job)})).sort((a,b)=>new Date(b.lastDate||0)-new Date(a.lastDate||0));
   }
 
+  // Assignés d'une job — logique partagée (jobAssignees), standard partout.
   function getAssignees(job){
-    const txt=job.title+' '+(job.description||'');
-    return emps.filter(e=>mentionsEmployee(txt,e));
+    return jobAssignees(job,emps||[]);
   }
 
   if(loading)return <div style={{textAlign:'center',color:'var(--muted)',padding:'3rem',fontSize:13}}>⏳ Chargement...</div>;
