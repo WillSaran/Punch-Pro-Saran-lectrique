@@ -725,7 +725,15 @@ button{font-family:var(--font-body)}
 //   "Projet" est maintenant en HAUT du formulaire, avant "Contracteur" :
 //   tape le nom d'un projet ou une adresse et les suggestions apparaissent;
 //   en choisir une remplit automatiquement le contracteur et l'adresse.
-const APP_VERSION='v224';
+// v225 (2026-08-06): Deux ajouts. 1) Message vocal — sous le champ Note,
+//   en Confirmant une job ou en Punch OUT, un bouton "🎤 Message vocal"
+//   permet d'enregistrer un mémo audio directement (appuyer pour démarrer,
+//   ré-appuyer pour arrêter). Il s'uploade sur Drive et rejoint la liste de
+//   fichiers de la job, comme une photo. 2) Créer un job — choisir un
+//   Projet essaie maintenant aussi de retrouver le type de travail habituel
+//   sur ce projet (ex: Rough) et l'info de la job à partir de son dernier
+//   titre, et les pré-remplit (toujours modifiable avant de créer).
+const APP_VERSION='v225';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -1952,6 +1960,91 @@ function Notif({msg,type,onClose}){
   return <div className={'notif '+type} onClick={onClose}>{msg}</div>;
 }
 
+// Enregistreur de message vocal — appuyer pour démarrer, ré-appuyer pour
+// arrêter, upload automatique sur Drive (même pipeline que DriveUploader,
+// uploadToDrive) et attache le fichier au bon événement Google Agenda si
+// possible. Le résultat rejoint la même liste fichiersURL que les photos/
+// documents — juste préfixé "VOCAL_" pour être reconnu dans l'affichage.
+function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded,notify}){
+  const [recording,setRecording]=useState(false);
+  const [uploading,setUploading]=useState(false);
+  const [seconds,setSeconds]=useState(0);
+  const mediaRecorderRef=useRef(null);
+  const chunksRef=useRef([]);
+  const timerRef=useRef(null);
+  const streamRef=useRef(null);
+
+  useEffect(()=>()=>{
+    if(timerRef.current)clearInterval(timerRef.current);
+    if(streamRef.current)streamRef.current.getTracks().forEach(t=>t.stop());
+  },[]);
+
+  function fmtTime(s){const m=Math.floor(s/60);const ss=s%60;return m+':'+String(ss).padStart(2,'0');}
+
+  async function startRecording(){
+    if(recording||uploading)return;
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||typeof MediaRecorder==='undefined'){
+      notify('Enregistrement vocal non supporté sur ce navigateur','err');return;
+    }
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      streamRef.current=stream;
+      const candidates=['audio/webm;codecs=opus','audio/webm','audio/mp4'];
+      const mimeType=candidates.find(t=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||'';
+      const mr=mimeType?new MediaRecorder(stream,{mimeType}):new MediaRecorder(stream);
+      chunksRef.current=[];
+      mr.ondataavailable=e=>{if(e.data&&e.data.size>0)chunksRef.current.push(e.data);};
+      mr.onstop=async()=>{
+        clearInterval(timerRef.current);
+        stream.getTracks().forEach(t=>t.stop());
+        const blob=new Blob(chunksRef.current,{type:mr.mimeType||'audio/webm'});
+        if(blob.size<500){notify('Enregistrement trop court — réessaie','warn');setRecording(false);setSeconds(0);return;}
+        setUploading(true);
+        const ext=(mr.mimeType||'').includes('mp4')?'m4a':'webm';
+        const fname='VOCAL_'+(empName||'employe').replace(/\s+/g,'-')+'_'+Date.now()+'.'+ext;
+        const file=new File([blob],fname,{type:blob.type});
+        const result=await uploadToDrive(file,empName,jobName||'punch',null);
+        setUploading(false);setRecording(false);setSeconds(0);
+        if(!result.url||!result.id){notify('Erreur envoi vocal: '+(result.error||'Vérifiez permissions Drive'),'err');return;}
+        if(calEventTitle&&calendarIds){
+          try{
+            const evtRef=await findCalendarEventByTitle(calendarIds,calEventTitle);
+            if(evtRef)await attachFileToCalendarEvent(evtRef.calendarId,evtRef.eventId,result.id,fname,file.type);
+          }catch(e){/* pas grave si l'attache calendrier échoue — le fichier est quand même sauvegardé */}
+        }
+        onUploaded(result.url+'|'+fname);
+        notify('🎤 Message vocal ajouté','success');
+      };
+      mediaRecorderRef.current=mr;
+      mr.start();
+      setRecording(true);setSeconds(0);
+      timerRef.current=setInterval(()=>setSeconds(s=>s+1),1000);
+    }catch(e){
+      console.error(e);
+      notify('Micro inaccessible — vérifie les permissions','err');
+    }
+  }
+  function stopRecording(){
+    if(mediaRecorderRef.current&&recording)mediaRecorderRef.current.stop();
+  }
+
+  if(uploading)return(
+    <div style={{fontSize:12,color:'var(--muted)',marginBottom:'0.5rem'}}>⏳ Envoi du message vocal...</div>
+  );
+  if(recording)return(
+    <button type="button" onClick={stopRecording} style={{display:'flex',alignItems:'center',gap:8,
+      background:'rgba(248,81,73,0.15)',border:'1px solid var(--danger)',color:'var(--danger)',borderRadius:8,
+      padding:'0.4rem 0.7rem',fontSize:12,fontWeight:700,cursor:'pointer',touchAction:'manipulation',marginBottom:'0.5rem'}}>
+      <span style={{width:8,height:8,borderRadius:'50%',background:'var(--danger)',animation:'pulse 1s infinite'}}/>
+      ⏹ Arrêter — {fmtTime(seconds)}
+    </button>
+  );
+  return(
+    <button type="button" onClick={startRecording} className="btn-s" style={{fontSize:12,padding:'0.4rem 0.7rem',marginBottom:'0.5rem'}}>
+      🎤 Message vocal
+    </button>
+  );
+}
 function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,folders,onUploaded,notify}){
   // mode = 'AP' | 'OT' | {folder} | null
   const [mode,setMode]=useState(null);
@@ -2374,7 +2467,8 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
       </div>
       {coeqEmps.length>0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}><div className="csec">Heures coéquipiers</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'grid',gridTemplateColumns:'28px 64px 28px',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',color:'var(--accent)',textAlign:'center'}}>{hToQuart(val)}</div><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
       <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: travail terminé..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
-      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:'📎 '+nom;return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
+      <VoiceNoteRecorder empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
+      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:nom.startsWith('VOCAL_')?'🎤 Message vocal':'📎 '+nom;return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} jobLocation={selJobData&&selJobData.location||''} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
       <button className="btn-p" style={{marginTop:'0.65rem'}} onClick={confirm}>{'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')}</button>
     </div>
@@ -2490,7 +2584,8 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
         </div>
       )}
       <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: matériel manquant..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
-      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:'📎 '+nom;return(<div key={i} className="file-item"><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
+      <VoiceNoteRecorder empName={emp.nom} jobName={jobName||'punch'} calendarIds={calendarIds} calEventTitle={jobName||null} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
+      {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:nom.startsWith('VOCAL_')?'🎤 Message vocal':'📎 '+nom;return(<div key={i} className="file-item"><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={jobName||'punch'} jobLocation={jobLocation||''} calendarIds={calendarIds} calEventTitle={jobName||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
       {/* ── HEURES DE BANQUE ── */}
       <div className="dur-section">
@@ -3467,6 +3562,19 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
     // ..." → CRS) — sinon on laisse PARTICULIER tel quel.
     const prefix=getJobPrefix(k.titre);
     if(prefix&&JOB_PREFIXES.includes(prefix))setNewJobContractor(prefix);
+    // Essaie aussi de retrouver le TYPE DE TRAVAIL et l'INFO DE LA JOB à
+    // partir du titre curé du projet (ex: "CRS - ROUGH - 123RUE - Sous-sol"
+    // → type Rough, info "Sous-sol") — juste un pré-remplissage pratique,
+    // l'employé peut toujours changer avant de créer.
+    const parts=k.titre.split(' - ').map(s=>s.trim()).filter(Boolean);
+    const labelToKey=Object.fromEntries(JOB_PHASES.map(ph=>[JOB_PHASE_LABELS[ph].toUpperCase(),ph]));
+    const foundPhase=labelToKey[(parts[1]||'').toUpperCase()];
+    if(foundPhase){
+      setNewJobPhases([foundPhase]);
+      // Le segment après la rue (s'il existe et n'est pas juste un code
+      // employé de 1-3 lettres) est probablement "l'info de la job".
+      if(parts[3]&&!/^[A-Z]{1,3}$/.test(parts[3]))setNewJobRest(parts[3]);
+    }
   }
 
   return(
