@@ -738,7 +738,11 @@ button{font-family:var(--font-body)}
 //   employés identifiés comme gestionnaires. Il montre toute l'équipe en
 //   temps réel : qui est punché IN/OUT en ce moment, et la ou les job(s)
 //   sur lesquelles chacun travaille aujourd'hui.
-const APP_VERSION='v226';
+// v227 (2026-08-07): Onglet Équipe (gestionnaires) — quand un employé a
+//   plusieurs jobs aujourd'hui, un petit point vert apparaît maintenant à
+//   côté de la job précise sur laquelle il est présentement punché IN,
+//   pour distinguer laquelle il fait vraiment en ce moment.
+const APP_VERSION='v227';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -6171,6 +6175,31 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
     return src.filter(j=>jobCouvreDate(j,today));
   },[allJobs,jobs,today]);
   const isGestionnaire=!!(emp&&emp.permissions&&emp.permissions.some(p=>p!=='config'));
+  // Pointages de TOUTE l'équipe — chargés paresseusement seulement quand un
+  // gestionnaire ouvre l'onglet Équipe, pour savoir sur quelle job précise
+  // chacun est punché IN en ce moment (pas juste "présent").
+  const [teamPts,setTeamPts]=useState(null);
+  useEffect(()=>{
+    if(dayTab==='team'&&sid&&teamPts===null){
+      getPointages(sid,{}).then(setTeamPts).catch(e=>{console.error(e);setTeamPts([]);});
+    }
+  },[dayTab,sid]);
+  // Retourne le titre de la job sur laquelle un employé est actuellement
+  // punché IN (même fenêtre de 24h et même logique d'appariement in/out
+  // que PunchOutScreen), ou null s'il n'a aucun punch IN ouvert.
+  function currentPunchedJobTitle(empNom){
+    if(!teamPts)return null;
+    const now=new Date();
+    const ins=teamPts.filter(p=>p.nom===empNom&&p.type==='in');
+    const outs=teamPts.filter(p=>p.nom===empNom&&p.type==='out');
+    const open=ins.filter(pin=>{
+      const inDt=new Date(pin.datetime);
+      if(now-inDt>86400000)return false;
+      const hasOut=outs.some(po=>(po.job||'')===(pin.job||'')&&new Date(po.datetime)>inDt);
+      return !hasOut;
+    }).sort((a,b)=>new Date(b.datetime)-new Date(a.datetime));
+    return open.length>0?(open[0].job||null):null;
+  }
 
   const todayJobs=todayJobsMine; // pour le compteur dans l'onglet
   const tomorrowJobs=tomorrowJobsMine;
@@ -6261,6 +6290,7 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
   function TeamStatusRow({teamEmp}){
     const jobsToday=todayAllJobs.filter(j=>isJobForEmployee(j,teamEmp,allEmps));
     const present=teamEmp.statut==='in';
+    const curJobTitle=present?currentPunchedJobTitle(teamEmp.nom):null;
     return(
       <div style={{background:'var(--bg3)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',display:'flex',alignItems:'flex-start',gap:8}}>
         <div style={{width:8,height:8,borderRadius:'50%',marginTop:4,background:present?teamEmp.couleur:'var(--muted)',boxShadow:present?'0 0 4px '+teamEmp.couleur:'none',flexShrink:0}}></div>
@@ -6272,12 +6302,18 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
           </div>
           {jobsToday.length>0?(
             <div style={{marginTop:3}}>
-              {jobsToday.map((j,i)=>(
-                <div key={i} style={{fontSize:11,color:'var(--muted)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                  📋 {j.title}
-                  {j.location&&<> · <a href={mapsUrl(j.location)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{color:'var(--accent)',textDecoration:'none'}}>📍 {j.location}</a></>}
-                </div>
-              ))}
+              {jobsToday.map((j,i)=>{
+                const isCurrent=curJobTitle&&j.title===curJobTitle;
+                return(
+                  <div key={i} style={{fontSize:11,color:'var(--muted)',display:'flex',alignItems:'center',gap:4}}>
+                    {isCurrent&&<span title="Punché sur cette job en ce moment" style={{width:7,height:7,borderRadius:'50%',background:'var(--success)',boxShadow:'0 0 4px var(--success)',flexShrink:0}}></span>}
+                    <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                      📋 {j.title}
+                      {j.location&&<> · <a href={mapsUrl(j.location)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{color:'var(--accent)',textDecoration:'none'}}>📍 {j.location}</a></>}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           ):(
             <div style={{fontSize:11,color:'var(--muted)',marginTop:2,fontStyle:'italic'}}>Aucune job aujourd'hui</div>
