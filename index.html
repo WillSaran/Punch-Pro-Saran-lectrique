@@ -674,7 +674,16 @@ button{font-family:var(--font-body)}
 //   la plus proche qui a tranché. Ça permet de voir directement si le
 //   problème de Daniel/Brandon vient d'un code qui matche par erreur dans
 //   le texte d'une autre job, ou d'autre chose.
-const APP_VERSION='v218';
+// v219 (2026-08-06): Résolu le mystère Daniel/Brandon — ce n'était pas un
+//   bug de couleur : la job est taguée par TEXTE à l'apprenti (son code est
+//   celui mis à la fin du titre), pas au mentor, même si la couleur de la
+//   job ressemble à celle du mentor. Nouveau champ "Partenaire (mentor /
+//   apprenti)" par employé dans Configuration : une job assignée à l'un
+//   des deux compte maintenant AUSSI pour l'autre automatiquement, peu
+//   importe lequel des deux dossiers a le champ rempli. Il faut aller dans
+//   Configuration → modifier Daniel et Brandon → choisir leur apprenti
+//   respectif comme partenaire pour que ça s'applique.
+const APP_VERSION='v219';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -999,6 +1008,25 @@ function jobAssignees(job,allEmps){
       if(d<bestDist){bestDist=d;best=e;}
     });
     if(best)found=[best];
+  }
+  // Lien mentor/apprenti (champ "partenaire") — si la job est assignée à
+  // l'un des deux (par texte OU couleur ci-dessus), elle compte AUSSI pour
+  // l'autre. Marche dans les deux sens même si un seul des deux dossiers a
+  // le champ rempli (ex: seul l'apprenti a "partenaire: Daniel" — Daniel
+  // voit quand même les jobs de son apprenti, pas besoin de le configurer
+  // des deux côtés).
+  if(found.length>0){
+    const names=new Set(found.map(e=>e.nom));
+    found.forEach(e=>{
+      if(e.partenaire){
+        const p=allEmps.find(x=>x.nom===e.partenaire);
+        if(p)names.add(p.nom);
+      }
+    });
+    allEmps.forEach(e=>{
+      if(e.partenaire&&names.has(e.partenaire))names.add(e.nom);
+    });
+    if(names.size>found.length)found=allEmps.filter(e=>names.has(e.nom));
   }
   return found;
 }
@@ -1622,24 +1650,27 @@ function parsePermissions(raw){
 }
 async function getEmployees(sid){
   try{
-    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:I'}));
+    const res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Employés!A2:J'}));
     return (res.result.values||[]).map((r,i)=>({
       nom:r[0]||'',pin:r[1]||'',statut:r[2]||'out',heuresBanque:safeFloat(r[3]),
       couleur:r[4]||EMP_COLORS[i%EMP_COLORS.length],code:r[5]||(r[0]||'??').substring(0,2).toUpperCase(),
-      email:r[6]||'',telephone:r[7]||'',permissions:parsePermissions(r[8]),row:i+2
+      email:r[6]||'',telephone:r[7]||'',permissions:parsePermissions(r[8]),
+      // Partenaire (mentor/apprenti) — un job assignée à l'un compte aussi
+      // pour l'autre (voir jobAssignees). Colonne J, optionnelle.
+      partenaire:r[9]||'',row:i+2
     }));
   }catch{return[];}
 }
 async function saveEmployee(sid,emp){
   await gapi.client.sheets.spreadsheets.values.append({
     spreadsheetId:sid,range:'Employés!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
-    resource:{values:[[emp.nom,emp.pin,'out',emp.heuresBanque||0,emp.couleur,emp.code,emp.email||'',emp.telephone||'',(emp.permissions||[]).join(',')]]}
+    resource:{values:[[emp.nom,emp.pin,'out',emp.heuresBanque||0,emp.couleur,emp.code,emp.email||'',emp.telephone||'',(emp.permissions||[]).join(','),emp.partenaire||'']]}
   });
 }
 async function updateEmployee(sid,row,emp){
   await gapi.client.sheets.spreadsheets.values.update({
-    spreadsheetId:sid,range:'Employés!A'+row+':I'+row,valueInputOption:'RAW',
-    resource:{values:[[emp.nom,emp.pin,emp.statut,emp.heuresBanque,emp.couleur,emp.code,emp.email||'',emp.telephone||'',(emp.permissions||[]).join(',')]]}
+    spreadsheetId:sid,range:'Employés!A'+row+':J'+row,valueInputOption:'RAW',
+    resource:{values:[[emp.nom,emp.pin,emp.statut,emp.heuresBanque,emp.couleur,emp.code,emp.email||'',emp.telephone||'',(emp.permissions||[]).join(','),emp.partenaire||'']]}
   });
 }
 async function deleteEmployee(sid,row){
@@ -6910,7 +6941,7 @@ const ADMIN_PERM_OPTIONS=[
   ['ot-admin','🔧 OT','Ordres de travail & appels de service'],
 ];
 
-function EmpForm({data,setData,onSave,onCancel,isEdit}){
+function EmpForm({data,setData,onSave,onCancel,isEdit,allEmps}){
   function togglePerm(key){
     setData(p=>{
       const cur=p.permissions||[];
@@ -6941,6 +6972,15 @@ function EmpForm({data,setData,onSave,onCancel,isEdit}){
       <div style={{marginBottom:'0.55rem'}}>
         <span className="fl">Couleur</span>
         <div className="color-row">{EMP_COLORS.map(c=><div key={c} className="cswatch" title={EMP_COLOR_NAMES[c]||''} style={{background:c,border:'2px solid '+(data.couleur===c?'#fff':'transparent')}} onClick={()=>setData(p=>({...p,couleur:c}))}/>)}</div>
+      </div>
+      <div style={{marginBottom:'0.55rem'}}>
+        <span className="fl">Partenaire (mentor / apprenti)</span>
+        <select value={data.partenaire||''} onChange={e=>{const v=e.target.value;setData(p=>({...p,partenaire:v}));}}
+          style={{width:'100%',background:'var(--bg3)',border:'1px solid var(--border)',borderRadius:6,padding:'0.4rem 0.55rem',color:'var(--text)',fontSize:12}}>
+          <option value="">Aucun</option>
+          {(allEmps||[]).filter(e=>e.nom!==data.nom).map(e=><option key={e.nom} value={e.nom}>{e.nom}</option>)}
+        </select>
+        <div style={{fontSize:9,color:'var(--muted)',marginTop:2}}>Une job assignée à l'un des deux compte aussi pour l'autre (ex: un apprenti et son mentor sur la même job).</div>
       </div>
       <div style={{marginBottom:'0.55rem'}}>
         <span className="fl">Permissions avancées (dashboard admin restreint)</span>
@@ -6976,7 +7016,7 @@ function EmployeesManager({sid,notify,onRefresh}){
   const [loadingEmps,setLoadingEmps]=useState(true);
   const [showAdd,setShowAdd]=useState(false);
   const [editEmp,setEditEmp]=useState(null);
-  const [newEmp,setNewEmp]=useState({nom:'',pin:'',code:'',couleur:EMP_COLORS[0],email:'',telephone:'',heuresBanque:0,permissions:[]});
+  const [newEmp,setNewEmp]=useState({nom:'',pin:'',code:'',couleur:EMP_COLORS[0],email:'',telephone:'',heuresBanque:0,permissions:[],partenaire:''});
 
   useEffect(()=>{
     setLoadingEmps(true);
@@ -6994,7 +7034,7 @@ function EmployeesManager({sid,notify,onRefresh}){
       notify('⏳ Sauvegarde...','warn');
       await saveEmployee(sid,emp);
       const updated=await reloadEmps();
-      setNewEmp({nom:'',pin:'',code:'',couleur:EMP_COLORS[updated.length%EMP_COLORS.length],email:'',telephone:'',heuresBanque:0,permissions:[]});
+      setNewEmp({nom:'',pin:'',code:'',couleur:EMP_COLORS[updated.length%EMP_COLORS.length],email:'',telephone:'',heuresBanque:0,permissions:[],partenaire:''});
       setShowAdd(false);notify('✅ '+emp.nom+' ajouté!','success');onRefresh();
     }catch(e){notify('Erreur: '+e.message,'err');}
   }
@@ -7022,8 +7062,8 @@ function EmployeesManager({sid,notify,onRefresh}){
         <div className="card-title" style={{marginBottom:0}}>Employés ({emps.length})</div>
         <button className="btn-s" onClick={()=>{setShowAdd(!showAdd);setEditEmp(null);}}>+ Ajouter</button>
       </div>
-      {showAdd&&!editEmp&&<EmpForm data={newEmp} setData={setNewEmp} onSave={handleAdd} isEdit={false}/>}
-      {editEmp&&<EmpForm data={editEmp} setData={setEditEmp} onSave={handleUpdateEmp} onCancel={()=>setEditEmp(null)} isEdit={true}/>}
+      {showAdd&&!editEmp&&<EmpForm data={newEmp} setData={setNewEmp} onSave={handleAdd} isEdit={false} allEmps={emps}/>}
+      {editEmp&&<EmpForm data={editEmp} setData={setEditEmp} onSave={handleUpdateEmp} onCancel={()=>setEditEmp(null)} isEdit={true} allEmps={emps}/>}
       <div style={{marginTop:'0.7rem'}}>
         {emps.map(emp=>(
           <div key={emp.nom} className="emp-row">
