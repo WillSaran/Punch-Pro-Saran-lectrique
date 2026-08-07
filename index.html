@@ -605,7 +605,22 @@ button{font-family:var(--font-body)}
 //   garder le dernier onglet visité). 4) Nouveau bouton dans le menu:
 //   ☀️/🌙 Mode clair / Mode sombre — thème clair ajouté en plus du thème
 //   sombre existant.
-const APP_VERSION='v212';
+// v213 (2026-08-06): Trois correctifs/ajouts. 1) Fix important — la job
+//   n'apparaît plus "à moi" en se basant sur le nom complet de l'employé,
+//   SEULEMENT sur son code/initiales dans le titre (le nom complet, même en
+//   phrase exacte, pouvait coïncider avec un nom de CLIENT dans un titre
+//   "Service-X" et faussement assigner la job — ex: Adèle/Daniel). 2) Fix —
+//   les jobs d'une seule journée créées comme événement "toute la journée"
+//   pouvaient apparaître sur DEUX jours dans l'Agenda (ex: CRS Roth-Sarao
+//   affiché le jeudi ET le vendredi alors qu'il n'est que le vendredi) à
+//   cause d'un décalage d'une journée dans le parsing de la date (UTC vs
+//   heure locale) — corrigé à la source. 3) Nouveau: bandeau "Nouvelle
+//   version disponible" qui apparaît automatiquement quand l'app détecte
+//   qu'une mise à jour a été déployée (vérifie toutes les 5 min + au retour
+//   sur l'onglet), avec un bouton Actualiser. 4) "Mes heures": le sélecteur
+//   de semaine affiche maintenant la plage de dates (ex: "S2 · 9 – 15 août")
+//   au lieu du numéro de semaine ISO brut ("2026-S32").
+const APP_VERSION='v213';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -756,12 +771,35 @@ function getWeek(d){
   return dt.getFullYear()+'-S'+String(1+Math.round(((dt-w1)/86400000-3+(w1.getDay()+6)%7)/7)).padStart(2,'0');
 }
 function getMois(d){const dt=new Date(d);return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0');}
+// Transforme un label ISO "2026-S32" en affichage lisible : plage de dates
+// (ex: "9 – 15 août") + numéro de semaine DANS le mois (S1..S4/5), plus
+// utile pour les employés que le numéro de semaine ISO brut de l'année.
+function weekRangeLabel(weekLabel){
+  try{
+    const[yr,sw]=String(weekLabel).split('-S');
+    const year=parseInt(yr),week=parseInt(sw);
+    const jan1=new Date(year,0,1);
+    const dayOfWeek=jan1.getDay()||7;
+    const monday=new Date(jan1);
+    monday.setDate(jan1.getDate()+(week-1)*7-(dayOfWeek-1));
+    const sunday=new Date(monday);sunday.setDate(monday.getDate()+6);
+    const moisAbr=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+    const wOfMonth=Math.ceil(monday.getDate()/7);
+    let range;
+    if(monday.getMonth()===sunday.getMonth()){
+      range=monday.getDate()+' – '+sunday.getDate()+' '+moisAbr[monday.getMonth()];
+    }else{
+      range=monday.getDate()+' '+moisAbr[monday.getMonth()]+' – '+sunday.getDate()+' '+moisAbr[sunday.getMonth()];
+    }
+    return {range,label:'S'+wOfMonth+' · '+range};
+  }catch(e){return {range:String(weekLabel),label:String(weekLabel)};}
+}
 function localDateStr(d){const dt=d||new Date();return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
 function jobCouvreDate(job,dateStr){
   if(!job||!job.start)return false;
   const startStr=localDateStr(new Date(job.start));
   if(!job.end)return startStr===dateStr;
-  const isAllDay=!String(job.start).includes('T');
+  const isAllDay=job.allDay!==undefined?job.allDay:!String(job.start).includes('T');
   let endD=new Date(job.end);
   if(isAllDay)endD=new Date(endD.getTime()-1); // Google donne une date de fin EXCLUSIVE pour les événements "toute la journée"
   const endStr=localDateStr(endD);
@@ -825,18 +863,19 @@ function colorDist(c1,c2){
 function mentionsEmployee(txt,emp){
   if(!txt||!emp)return false;
   // Texte normalisé, espaces simples, entouré d'espaces — permet un test de
-  // "mot entier"/"phrase entière" par simple inclusion de sous-chaîne.
+  // "mot entier" par simple inclusion de sous-chaîne.
   const norm=' '+txt.toLowerCase().replace(/[^a-z0-9à-ÿ]+/gi,' ').replace(/\s+/g,' ').trim()+' ';
+  // IMPORTANT — on ne matche QUE sur le code/initiales de l'employé, pas sur
+  // son nom complet. Les titres de job "Service-X" contiennent souvent des
+  // noms de CLIENTS qui peuvent coïncider avec le prénom/nom d'un employé
+  // (ex: client "Bailler-Jean" faussement matché à l'employée "Adèle Jean"),
+  // même avec un test de phrase contiguë. Le code est le seul signal fiable
+  // car c'est la convention que l'app elle-même utilise pour assigner une
+  // job à un employé (buildJobEventFields ajoute le code au titre) — voir
+  // aussi JobSelector, où le matching par couleur n'est déjà qu'un signal
+  // secondaire/mou, jamais un filtre dur, pour la même raison de fiabilité.
   const code=(emp.code||'').toLowerCase().trim();
   if(code&&norm.includes(' '+code+' '))return true;
-  // IMPORTANT — le nom complet doit apparaître comme une PHRASE CONTIGUË
-  // (ex: "adèle jean"), pas juste chaque mot présent n'importe où dans le
-  // titre+description concaténés. L'ancienne logique "bag of words" pouvait
-  // faussement assigner une job à un employé si son prénom apparaissait dans
-  // un champ et un mot qui ressemble à son nom de famille dans un autre
-  // (ex: description mentionnant "Adèle" + titre "Service-Bailler-Jean").
-  const nom=(emp.nom||'').toLowerCase().trim().replace(/\s+/g,' ');
-  if(nom&&norm.includes(' '+nom+' '))return true;
   return false;
 }
 // Préfixes de contracteurs connus dans les titres de job (même convention que
@@ -964,6 +1003,33 @@ function useTheme(){
   },[]);
   return v;
 }
+// Vérifie périodiquement (et quand l'onglet redevient visible) si une
+// nouvelle version de l'app a été déployée, en comparant APP_VERSION à un
+// petit fichier version.json chargé sans cache. Comme le service worker ne
+// met rien en cache, un simple rechargement de page suffit toujours à avoir
+// la dernière version — ce hook sert juste à PRÉVENIR l'employé qu'une
+// mise à jour existe, plutôt que de le laisser utiliser une version ouverte
+// depuis des heures sans le savoir.
+function useUpdateAvailable(){
+  const [available,setAvailable]=useState(false);
+  useEffect(()=>{
+    let stopped=false;
+    async function check(){
+      try{
+        const res=await fetch('version.json?t='+Date.now(),{cache:'no-store'});
+        if(!res.ok)return;
+        const data=await res.json();
+        if(!stopped&&data&&data.version&&data.version!==APP_VERSION)setAvailable(true);
+      }catch(e){/* pas grave — on réessaiera au prochain intervalle */}
+    }
+    check();
+    const interval=setInterval(check,5*60*1000); // toutes les 5 minutes
+    const onVisible=()=>{if(document.visibilityState==='visible')check();};
+    document.addEventListener('visibilitychange',onVisible);
+    return()=>{stopped=true;clearInterval(interval);document.removeEventListener('visibilitychange',onVisible);};
+  },[]);
+  return available;
+}
 // Arrondit une heure "HH:MM" au quart d'heure le plus proche (00/15/30/45).
 // Point de départ des punch IN/OUT — l'employé peut ensuite ajuster par
 // pas de 15 min avec le TimePicker.
@@ -997,8 +1063,31 @@ async function fetchCalEventsPaged(calId,timeMin,timeMax){
   }while(pageToken&&guard<40);
   return items;
 }
+// Les événements "toute la journée" de Google Calendar donnent une date SEULE
+// (ex: "2026-08-14", sans heure). `new Date("2026-08-14")` est interprétée
+// par JS comme minuit UTC, pas minuit LOCAL — ce qui, dans un fuseau à
+// l'ouest de l'UTC (ex: Québec, UTC-4/-5), recule silencieusement la date
+// d'UNE JOURNÉE une fois reconvertie en date locale (ex: getFullYear/Month/
+// Date). C'était la cause du bug où une job d'une seule journée (ex: "CRS
+// Roth-Sarao" du vendredi) semblait couvrir DEUX jours dans l'Agenda : la
+// date de début calculée localement tombait un jour trop tôt, alors que la
+// date de fin (exclusive, corrigée par ailleurs) restait correcte — d'où
+// l'expansion sur les deux jours. Fix : on ajoute une heure locale explicite
+// aux dates seules ici, à la SOURCE (mapCalEvent), pour que tout le reste du
+// code (tri, affichage, expansion multi-jours) reste correct sans devoir
+// corriger chaque site d'utilisation individuellement.
+function normalizeGCalDateStr(v){
+  if(!v)return v;
+  return /^\d{4}-\d{2}-\d{2}$/.test(v)?v+'T00:00:00':v;
+}
 function mapCalEvent(e){
-  return{id:e.id,title:e.summary||'Sans titre',start:e.start.dateTime||e.start.date,end:e.end.dateTime||e.end.date,location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#ff7a1a',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
+  return{id:e.id,title:e.summary||'Sans titre',start:normalizeGCalDateStr(e.start.dateTime||e.start.date),end:normalizeGCalDateStr(e.end.dateTime||e.end.date),
+    // Drapeau explicite "toute la journée" — calculé AVANT normalisation
+    // (qui ajoute 'T00:00:00' à toute date seule), donc fiable même après.
+    // Ne plus déduire "toute la journée" en testant si j.start contient 'T',
+    // puisque la normalisation en ajoute maintenant un dans tous les cas.
+    allDay:!e.start.dateTime,
+    location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#ff7a1a',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
 }
 async function getCalendarJobs(calendarIds){
   const now=new Date();
@@ -3364,7 +3453,7 @@ function JobSelector({jobs,emp,onSelect,onCreateJob,onSkip,mode,allEmps,sid}){
       const startStr=localDateStr(new Date(j.start));
       let endStr=startStr;
       if(j.end){
-        const isAllDay=!String(j.start).includes('T');
+        const isAllDay=j.allDay!==undefined?j.allDay:!String(j.start).includes('T');
         let endD=new Date(j.end);
         if(isAllDay)endD=new Date(endD.getTime()-1);
         endStr=localDateStr(endD);
@@ -4236,7 +4325,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
             ← Préc.
           </button>
           <div style={{textAlign:'center'}}>
-            <div style={{fontSize:12,fontWeight:700,color:'var(--text)'}}>{selectedWeek}</div>
+            <div style={{fontSize:12,fontWeight:700,color:'var(--text)'}}>{weekRangeLabel(selectedWeek).label}</div>
             {selectedWeek===curWeek&&<div style={{fontSize:9,color:'var(--accent)'}}>Semaine en cours</div>}
           </div>
           <button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:hasNextWeek?'var(--text)':'var(--muted)',padding:'0.2rem 0.6rem',fontSize:13,touchAction:'manipulation'}}
@@ -4649,7 +4738,7 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
       const startStr=localDateStr(new Date(j.start));
       let endStr=startStr;
       if(j.end){
-        const isAllDay=!String(j.start).includes('T');
+        const isAllDay=j.allDay!==undefined?j.allDay:!String(j.start).includes('T');
         let endD=new Date(j.end);
         if(isAllDay)endD=new Date(endD.getTime()-1);
         endStr=localDateStr(endD);
@@ -7320,6 +7409,7 @@ function AdminView({sid,calendarIds,refreshKey,notify,onRefresh,allowedTabs}){
 function App(){
   const desktopMode=useDesktopMode();
   const lightTheme=useTheme();
+  const updateAvailable=useUpdateAvailable();
   const [cfg,setCfg]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem('pp_cfg')||'null');
@@ -7500,6 +7590,14 @@ function App(){
 
   return(
     <div className="app-wrap">
+      {updateAvailable&&(
+        <div style={{flexShrink:0,zIndex:9998,background:'var(--accent)',color:'#fff',padding:'0.5rem 0.9rem',display:'flex',alignItems:'center',justifyContent:'center',gap:10,fontSize:12,fontWeight:600}}>
+          <span>🔄 Une nouvelle version de PunchPro est disponible</span>
+          <button style={{background:'#fff',color:'var(--accent)',border:'none',borderRadius:6,padding:'0.25rem 0.7rem',fontSize:12,fontWeight:700,cursor:'pointer',touchAction:'manipulation'}} onClick={()=>window.location.reload()}>
+            Actualiser
+          </button>
+        </div>
+      )}
       {showCfg&&<ConfigScreen cfg={cfg||DEFAULT_CFG} sid={(cfg||DEFAULT_CFG).spreadsheetId} notify={notify} onRefresh={onRefresh} onClose={()=>setShowCfg(false)}/>}
       {notif&&<Notif key={notif.id} msg={notif.msg} type={notif.type} onClose={()=>setNotif(null)}/>}
 
