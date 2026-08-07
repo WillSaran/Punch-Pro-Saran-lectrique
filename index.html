@@ -665,7 +665,16 @@ button{font-family:var(--font-body)}
 //   employé la couleur de l'événement ressemble le plus, pour voir en un
 //   coup d'œil pourquoi une job est/n'est pas classée "à moi" (utile pour
 //   continuer à diagnostiquer le cas de Daniel).
-const APP_VERSION='v217';
+// v218 (2026-08-06): Amélioration du repère de diagnostic (v217) — il
+//   montrait seulement la couleur la plus proche, indépendamment du texte,
+//   ce qui pouvait induire en erreur si un match TEXTE (qui a priorité sur
+//   la couleur) faisait déjà gagner un autre employé en coulisse. Il montre
+//   maintenant le vrai résultat utilisé par l'app : "📝CODE" si un match
+//   texte a été trouvé (et pour qui), sinon "🎨≈CODE" si c'est la couleur
+//   la plus proche qui a tranché. Ça permet de voir directement si le
+//   problème de Daniel/Brandon vient d'un code qui matche par erreur dans
+//   le texte d'une autre job, ou d'autre chose.
+const APP_VERSION='v218';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -4930,14 +4939,21 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
     const key=dStr+'_'+keyPrefix+'_'+(j.id||i);
     const isOpen=expandedJobs.has(key);
     // Repère de diagnostic (discret) sur les jobs "autres équipes" : montre
-    // à quel employé la couleur de cet événement ressemble le plus,
-    // indépendamment du texte — utile pour voir en un coup d'œil pourquoi
-    // une job est (ou n'est pas) classée "à moi" sans avoir à fouiller le
-    // code. N'affecte rien, purement visuel.
-    let closestByColor=null;
-    if(!isMine&&j.gcalColor&&allEmps&&allEmps.length){
-      let bestDist=Infinity;
-      allEmps.forEach(e=>{if(!e.couleur)return;const d=colorDist(j.gcalColor,e.couleur);if(d<bestDist){bestDist=d;closestByColor=e;}});
+    // le résultat RÉEL de jobAssignees() (pas juste la couleur seule), avec
+    // la source (texte ou couleur) — pour voir directement si un match
+    // texte "vole" la job à un autre employé avant même que le repli
+    // couleur ait la chance de s'appliquer. N'affecte rien, purement visuel.
+    let debugTag=null;
+    if(!isMine&&allEmps&&allEmps.length){
+      const txt=j.title+' '+(j.description||'');
+      const textMatches=allEmps.filter(e=>mentionsEmployee(txt,e));
+      if(textMatches.length>0){
+        debugTag='📝'+textMatches.map(e=>e.code).join(',');
+      }else if(j.gcalColor){
+        let best=null,bestDist=Infinity;
+        allEmps.forEach(e=>{if(!e.couleur)return;const d=colorDist(j.gcalColor,e.couleur);if(d<bestDist){bestDist=d;best=e;}});
+        if(best)debugTag='🎨≈'+best.code;
+      }
     }
     return(
       <div key={keyPrefix+i} style={{background:isMine?'var(--bg3)':'var(--bg2)',borderRadius:9,
@@ -4948,7 +4964,7 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
           <div style={{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
             {isMine&&emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
             <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
-            {closestByColor&&<span style={{fontSize:8,color:'var(--muted)',opacity:0.7}}>🎨≈{closestByColor.code}</span>}
+            {debugTag&&<span style={{fontSize:8,color:'var(--muted)',opacity:0.7}} title="Qui l'algorithme pense être assigné, et pourquoi (📝=texte, 🎨=couleur)">{debugTag}</span>}
             <span style={{fontSize:9,color:'var(--muted)'}}>{isOpen?'▾':'▸'}</span>
           </div>
           <div style={{display:'flex',gap:4,flexShrink:0}} onClick={e=>e.stopPropagation()}>
@@ -5979,13 +5995,20 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
     );
   }
   function OtherCard({j,i}){
-    // Même repère de diagnostic que l'Agenda — montre à quel employé la
-    // couleur de cette job ressemble le plus, même quand elle n'est pas
-    // classée "à moi" par le texte.
-    let closestByColor=null;
-    if(j.gcalColor&&allEmps&&allEmps.length){
-      let bestDist=Infinity;
-      allEmps.forEach(e=>{if(!e.couleur)return;const d=colorDist(j.gcalColor,e.couleur);if(d<bestDist){bestDist=d;closestByColor=e;}});
+    // Même repère de diagnostic que l'Agenda — montre le résultat RÉEL de
+    // jobAssignees() et sa source (texte ou couleur), pour voir si un match
+    // texte "vole" la job à un autre employé avant le repli couleur.
+    let debugTag=null;
+    if(allEmps&&allEmps.length){
+      const txt=j.title+' '+(j.description||'');
+      const textMatches=allEmps.filter(e=>mentionsEmployee(txt,e));
+      if(textMatches.length>0){
+        debugTag='📝'+textMatches.map(e=>e.code).join(',');
+      }else if(j.gcalColor){
+        let best=null,bestDist=Infinity;
+        allEmps.forEach(e=>{if(!e.couleur)return;const d=colorDist(j.gcalColor,e.couleur);if(d<bestDist){bestDist=d;best=e;}});
+        if(best)debugTag='🎨≈'+best.code;
+      }
     }
     return(
       <div key={'other'+i} style={{background:'var(--bg2)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',
@@ -5994,7 +6017,7 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',alignItems:'center',gap:5}}>
             <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
-            {closestByColor&&<span style={{fontSize:8,color:'var(--muted)',opacity:0.7,flexShrink:0}}>🎨≈{closestByColor.code}</span>}
+            {debugTag&&<span style={{fontSize:8,color:'var(--muted)',opacity:0.7,flexShrink:0}} title="Qui l'algorithme pense être assigné (📝=texte, 🎨=couleur)">{debugTag}</span>}
           </div>
           {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📍 {j.location}</div>}
           <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>
