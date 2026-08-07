@@ -742,7 +742,13 @@ button{font-family:var(--font-body)}
 //   plusieurs jobs aujourd'hui, un petit point vert apparaît maintenant à
 //   côté de la job précise sur laquelle il est présentement punché IN,
 //   pour distinguer laquelle il fait vraiment en ce moment.
-const APP_VERSION='v227';
+// v228 (2026-08-07): Fix message vocal — le fichier envoyé sur Drive avait
+//   un type MIME contenant un paramètre de codec (ex: "audio/webm;codecs=
+//   opus"), ce que Drive n'aime pas comme métadonnée de fichier : ça
+//   empêchait l'aperçu/lecture ("fichier non compatible") même si
+//   l'enregistrement était valide. Le fichier envoyé garde maintenant
+//   seulement le type de base (audio/webm, audio/mp4, etc.).
+const APP_VERSION='v228';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -2006,12 +2012,18 @@ function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded
       mr.onstop=async()=>{
         clearInterval(timerRef.current);
         stream.getTracks().forEach(t=>t.stop());
-        const blob=new Blob(chunksRef.current,{type:mr.mimeType||'audio/webm'});
+        // Drive n'accepte pas bien un mimeType avec un paramètre de codec
+        // (ex: "audio/webm;codecs=opus") — envoyé tel quel comme métadonnée
+        // à l'API Drive, ça cassait l'aperçu/lecture dans Drive (fichier
+        // "non compatible" même si l'enregistrement était valide). On ne
+        // garde que le type de base pour le Blob/fichier uploadé.
+        const baseMime=(mr.mimeType||'audio/webm').split(';')[0].trim()||'audio/webm';
+        const blob=new Blob(chunksRef.current,{type:baseMime});
         if(blob.size<500){notify('Enregistrement trop court — réessaie','warn');setRecording(false);setSeconds(0);return;}
         setUploading(true);
-        const ext=(mr.mimeType||'').includes('mp4')?'m4a':'webm';
+        const ext=baseMime==='audio/mp4'?'m4a':baseMime==='audio/ogg'?'ogg':'webm';
         const fname='VOCAL_'+(empName||'employe').replace(/\s+/g,'-')+'_'+Date.now()+'.'+ext;
-        const file=new File([blob],fname,{type:blob.type});
+        const file=new File([blob],fname,{type:baseMime});
         const result=await uploadToDrive(file,empName,jobName||'punch',null);
         setUploading(false);setRecording(false);setSeconds(0);
         if(!result.url||!result.id){notify('Erreur envoi vocal: '+(result.error||'Vérifiez permissions Drive'),'err');return;}
