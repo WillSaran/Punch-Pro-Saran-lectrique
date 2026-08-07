@@ -653,13 +653,38 @@ button{font-family:var(--font-body)}
 //   toujours la plus proche SANS seuil. Le repli fait maintenant pareil —
 //   toujours la plus proche, sans plafond — pour être le vrai miroir de
 //   cette logique.
-const APP_VERSION='v216';
+// v217 (2026-08-06): Trois ajouts. 1) Punch OUT — nouveau bouton "↩
+//   Retourner à la job" toujours disponible (pas juste quand rien n'est
+//   détecté), qui ouvre le VRAI agenda (mois/semaine, recherche complète)
+//   au lieu d'une liste plate limitée à quelques jours — pour retrouver
+//   n'importe quelle job et punch out dessus, au lieu de tomber sur "Autre
+//   / Sans job" par défaut. 2) Configuration — survoler une pastille de
+//   couleur d'employé (en mode bureau) affiche maintenant son nom en
+//   infobulle, sans avoir à cliquer. 3) Repère de diagnostic "🎨≈CODE" sur
+//   les jobs "Autres équipes" (Agenda + page d'accueil) — montre à quel
+//   employé la couleur de l'événement ressemble le plus, pour voir en un
+//   coup d'œil pourquoi une job est/n'est pas classée "à moi" (utile pour
+//   continuer à diagnostiquer le cas de Daniel).
+const APP_VERSION='v217';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
 const EMP_COLORS=['#ff7a1a','#ff4d1a','#3fb950','#d29922','#f85149','#0ea5e9','#ec4899','#a855f7','#22c55e','#f97316',
   // Couleurs Google Agenda officielles
   '#7986cb','#33b679','#8e24aa','#e67c73','#f6c026','#f5511d','#039be5','#616161','#3f51b5','#0b8043','#d50000'];
+// Noms affichés au survol (title=) des pastilles de couleur en Configuration
+// — les 11 dernières sont les vraies couleurs d'ÉVÉNEMENT Google Agenda
+// (celles utilisables via colorId sur un événement ; le palette de 24
+// couleurs existe seulement pour la couleur d'un AGENDA au complet, pas
+// pour un événement individuel — non utilisable ici).
+const EMP_COLOR_NAMES={
+  '#ff7a1a':'Orange (Saran)','#ff4d1a':'Rouge-orangé','#3fb950':'Vert','#d29922':'Jaune doré',
+  '#f85149':'Rouge corail','#0ea5e9':'Bleu ciel','#ec4899':'Rose','#a855f7':'Violet',
+  '#22c55e':'Vert clair','#f97316':'Orange vif',
+  '#7986cb':'Lavande (Google)','#33b679':'Sauge (Google)','#8e24aa':'Raisin (Google)','#e67c73':'Flamant (Google)',
+  '#f6c026':'Banane (Google)','#f5511d':'Mandarine (Google)','#039be5':'Paon (Google)','#616161':'Graphite (Google)',
+  '#3f51b5':'Myrtille (Google)','#0b8043':'Basilic (Google)','#d50000':'Tomate (Google)'
+};
 const GCAL_COLORS={'1':'#7986cb','2':'#33b679','3':'#8e24aa','4':'#e67c73','5':'#f6c026','6':'#f5511d','7':'#039be5','8':'#616161','9':'#3f51b5','10':'#0b8043','11':'#d50000','':'#ff7a1a'};
 const BOSS_EMAILS=['info@saranelectrique.com','saranelectrique@gmail.com'];
 const STOCK_SHEET_ID='1SoCciTEXkvCu61oFg3UbyParAkoNJfu-GulAdJnB0d0';
@@ -2135,7 +2160,7 @@ function PunchInScreen({emp,allEmps,selJob,selJobColor,selJobData,onConfirm}){
   );
 }
 
-function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,folders,calendarIds,calJobs}){
+function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,folders,calendarIds,calJobs,allJobs}){
   const [selJobData,setSelJobData]=useState(null);
   const [timeOut,setTimeOut]=useState(roundToQuarterStr(nowTimeStr()));
   const [diner,setDiner]=useState(false);
@@ -2188,43 +2213,43 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
       <div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'0.95rem',marginBottom:'0.85rem'}}>Sur quel job tu termines?</div>
       {pts.length>0&&openJobs.length>0&&<div style={{fontSize:10,color:'var(--muted)',marginBottom:'0.5rem'}}>{openJobs.length} job(s) ouverte(s)</div>}
       {jobOptions.length===0&&!showCalJobs&&(
-        <div>
-          <div style={{color:'var(--muted)',fontSize:13,marginBottom:'0.5rem',background:'var(--bg3)',borderRadius:8,padding:'0.75rem'}}>
-            Aucun punch IN ouvert.
-          </div>
-          <button className="btn-s" style={{width:'100%',marginBottom:'0.4rem',fontSize:12,borderColor:'var(--warning)',color:'var(--warning)'}} onClick={()=>setShowCalJobs(true)}>
-            📅 Choisir depuis l'agenda (failsafe)
-          </button>
+        <div style={{color:'var(--muted)',fontSize:13,marginBottom:'0.5rem',background:'var(--bg3)',borderRadius:8,padding:'0.75rem'}}>
+          Aucun punch IN ouvert.
         </div>
+      )}
+      {/* La job que tu cherches n'est pas dans la liste ci-dessous (ou pas de
+          punch IN détecté)? Retourne directement dans TON agenda (mois/
+          semaine, pas juste une fenêtre étroite) pour la retrouver — plus
+          fiable que de tomber sur "Autre / Sans job" par défaut. */}
+      {!showCalJobs&&(
+        <button className="btn-s" style={{width:'100%',marginBottom:'0.6rem',fontSize:12,borderColor:'var(--warning)',color:'var(--warning)'}} onClick={()=>setShowCalJobs(true)}>
+          ↩ Retourner à la job — chercher dans l'agenda
+        </button>
       )}
       {showCalJobs&&(
         <div style={{marginBottom:'0.65rem'}}>
-          <div style={{fontSize:11,color:'var(--warning)',marginBottom:'0.4rem'}}>⚠️ Mode failsafe — choisir le job dans l'agenda</div>
-          {(calJobs||[]).length===0&&<div style={{color:'var(--muted)',fontSize:12,padding:'0.5rem'}}>Aucun événement dans l'agenda</div>}
-          {(calJobs||[]).map((j,i)=>{
-            // Try to find a matching punch IN for this job
-            const matchIn=pts.find(p=>p.type==='in'&&p.job&&p.job.toLowerCase()===j.title.toLowerCase());
-            return(
-              <div key={i} className="job-btn" style={{borderLeftWidth:4,borderLeftColor:j.gcalColor||'var(--accent)',marginBottom:'0.3rem'}}
-                onClick={()=>setSelJobData({
+          <div style={{fontSize:11,color:'var(--warning)',marginBottom:'0.4rem'}}>⚠️ Trouve la job dans ton agenda (mois/semaine) et clique dessus pour punch out.</div>
+          <div style={{background:'var(--bg2)',borderRadius:10,padding:'0.6rem',marginBottom:'0.4rem',border:'1px solid var(--border)'}}>
+            <AgendaEmp jobs={allJobs&&allJobs.length>0?allJobs:(calJobs||[])} emp={emp} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={allEmps}
+              onPickJob={j=>{
+                // Si un punch IN existe pour cette job (même titre), on récupère
+                // son heure/coéquipiers ; sinon on part d'une heure IN vide
+                // (l'employé pourra l'ajuster) — même logique que l'ancien mode
+                // failsafe, mais avec le vrai agenda (mois/semaine) en dessous.
+                const matchIn=pts.find(p=>p.type==='in'&&p.job&&p.job.toLowerCase()===j.title.toLowerCase());
+                setSelJobData({
                   job:j.title,
-                  jobColor:j.gcalColor||'#ff7a1a',
+                  jobColor:j.gcalColor||emp?.couleur||'#ff7a1a',
                   heure:matchIn?matchIn.heure:'',
                   datetime:matchIn?matchIn.datetime:new Date().toISOString(),
                   date:matchIn?matchIn.date:localDateStr(),
                   coequipiers:matchIn?matchIn.coequipiers||[]:[],
                   fromFailsafe:!matchIn
-                })}>
-                <div style={{width:9,height:9,borderRadius:'50%',background:j.gcalColor||'var(--accent)',flexShrink:0}}></div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,fontWeight:600}}>{j.title}</div>
-                  <div style={{fontSize:11,color:'var(--muted)'}}>{j.start?localDateStr(new Date(j.start)):''}{j.location?' · '+j.location:''}</div>
-                  {matchIn&&<div style={{fontSize:10,color:'var(--success)'}}>✓ Punch IN trouvé à {matchIn.heure}</div>}
-                </div>
-              </div>
-            );
-          })}
-          <button className="btn-s" style={{fontSize:11,marginTop:'0.3rem'}} onClick={()=>setShowCalJobs(false)}>← Retour</button>
+                });
+                setShowCalJobs(false);
+              }}/>
+          </div>
+          <button className="btn-s" style={{fontSize:11}} onClick={()=>setShowCalJobs(false)}>← Retour</button>
         </div>
       )}
       {jobOptions.map((j,i)=>{
@@ -4904,6 +4929,16 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
   function jobCard(j,i,keyPrefix,isMine,dStr){
     const key=dStr+'_'+keyPrefix+'_'+(j.id||i);
     const isOpen=expandedJobs.has(key);
+    // Repère de diagnostic (discret) sur les jobs "autres équipes" : montre
+    // à quel employé la couleur de cet événement ressemble le plus,
+    // indépendamment du texte — utile pour voir en un coup d'œil pourquoi
+    // une job est (ou n'est pas) classée "à moi" sans avoir à fouiller le
+    // code. N'affecte rien, purement visuel.
+    let closestByColor=null;
+    if(!isMine&&j.gcalColor&&allEmps&&allEmps.length){
+      let bestDist=Infinity;
+      allEmps.forEach(e=>{if(!e.couleur)return;const d=colorDist(j.gcalColor,e.couleur);if(d<bestDist){bestDist=d;closestByColor=e;}});
+    }
     return(
       <div key={keyPrefix+i} style={{background:isMine?'var(--bg3)':'var(--bg2)',borderRadius:9,
         marginBottom:'0.35rem',borderLeft:'3px solid '+(isMine?(emp?.couleur||j.gcalColor||'var(--accent)'):(j.gcalColor||'var(--muted)')),
@@ -4913,6 +4948,7 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
           <div style={{flex:1,minWidth:0,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
             {isMine&&emp&&<span style={{fontSize:9,fontWeight:700,color:'white',background:emp.couleur,borderRadius:4,padding:'1px 5px',flexShrink:0}}>{emp.code}</span>}
             <div style={{fontWeight:600,fontSize:12,color:'var(--text)'}}>{j.title}</div>
+            {closestByColor&&<span style={{fontSize:8,color:'var(--muted)',opacity:0.7}}>🎨≈{closestByColor.code}</span>}
             <span style={{fontSize:9,color:'var(--muted)'}}>{isOpen?'▾':'▸'}</span>
           </div>
           <div style={{display:'flex',gap:4,flexShrink:0}} onClick={e=>e.stopPropagation()}>
@@ -5943,12 +5979,23 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
     );
   }
   function OtherCard({j,i}){
+    // Même repère de diagnostic que l'Agenda — montre à quel employé la
+    // couleur de cette job ressemble le plus, même quand elle n'est pas
+    // classée "à moi" par le texte.
+    let closestByColor=null;
+    if(j.gcalColor&&allEmps&&allEmps.length){
+      let bestDist=Infinity;
+      allEmps.forEach(e=>{if(!e.couleur)return;const d=colorDist(j.gcalColor,e.couleur);if(d<bestDist){bestDist=d;closestByColor=e;}});
+    }
     return(
       <div key={'other'+i} style={{background:'var(--bg2)',borderRadius:9,padding:'0.5rem 0.65rem',marginBottom:'0.4rem',
         borderLeft:'3px solid '+(j.gcalColor||'var(--muted)'),opacity:0.85,
         display:'flex',alignItems:'center',gap:8}}>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
+          <div style={{display:'flex',alignItems:'center',gap:5}}>
+            <div style={{fontWeight:600,fontSize:12,color:'var(--text)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{j.title}</div>
+            {closestByColor&&<span style={{fontSize:8,color:'var(--muted)',opacity:0.7,flexShrink:0}}>🎨≈{closestByColor.code}</span>}
+          </div>
           {j.location&&<div style={{fontSize:10,color:'var(--muted)',marginTop:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>📍 {j.location}</div>}
           <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>
             {new Date(j.start).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
@@ -6464,7 +6511,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
       <TimeHeader/>
       <PunchOutScreen emp={selEmp} allEmps={emps} pts={ptsForOut} sid={sid}
         onConfirm={d=>{punchDataRef.current=d;setSelJob(d.job||'');setSelJobColor(d.jobColor||'');handlePunch(selEmp.pin,'out');}}
-        onBack={goBack} notify={notify} folders={folders} calendarIds={calendarIds} calJobs={jobs}/>
+        onBack={goBack} notify={notify} folders={folders} calendarIds={calendarIds} calJobs={jobs} allJobs={allJobs.length>0?allJobs:jobs}/>
     </div>
 
   // ── CONFIRM JOB ──
@@ -6870,7 +6917,7 @@ function EmpForm({data,setData,onSave,onCancel,isEdit}){
       )}
       <div style={{marginBottom:'0.55rem'}}>
         <span className="fl">Couleur</span>
-        <div className="color-row">{EMP_COLORS.map(c=><div key={c} className="cswatch" style={{background:c,border:'2px solid '+(data.couleur===c?'#fff':'transparent')}} onClick={()=>setData(p=>({...p,couleur:c}))}/>)}</div>
+        <div className="color-row">{EMP_COLORS.map(c=><div key={c} className="cswatch" title={EMP_COLOR_NAMES[c]||''} style={{background:c,border:'2px solid '+(data.couleur===c?'#fff':'transparent')}} onClick={()=>setData(p=>({...p,couleur:c}))}/>)}</div>
       </div>
       <div style={{marginBottom:'0.55rem'}}>
         <span className="fl">Permissions avancées (dashboard admin restreint)</span>
