@@ -644,7 +644,16 @@ button{font-family:var(--font-body)}
 //   4) Commander/camions — les boutons +10/+50 arrondissent maintenant au
 //   multiple de 10. 5) Bandeau "Nouvelle version disponible" + affichage en
 //   plage de dates dans Mes heures (v213/v214, voir plus haut).
-const APP_VERSION='v215';
+// v216 (2026-08-06): Fix Daniel (suite) — le repli sur la couleur (v215)
+//   avait un seuil de tolérance de 40 hérité de l'ancien code, mais la
+//   couleur Google "Flamingo" (colorId 4, #e67c73) est à une distance
+//   d'environ 65 du rose employé (#ec4899) — donc le repli ne se
+//   déclenchait jamais pour lui. Or Google n'offre que 11 couleurs fixes :
+//   hexToGcalColorId() (utilisée à la création d'une job) choisit déjà
+//   toujours la plus proche SANS seuil. Le repli fait maintenant pareil —
+//   toujours la plus proche, sans plafond — pour être le vrai miroir de
+//   cette logique.
+const APP_VERSION='v216';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -938,7 +947,18 @@ function jobAssignees(job,allEmps){
   const txt=job.title+' '+(job.description||'');
   let found=allEmps.filter(e=>mentionsEmployee(txt,e));
   if(found.length===0&&job.gcalColor){
-    let best=null,bestDist=40;
+    // PAS de seuil ici — on prend TOUJOURS l'employé dont la couleur est la
+    // plus proche, sans plafond de distance. C'est le miroir exact de
+    // hexToGcalColorId() (utilisée à la CRÉATION de la job), qui elle aussi
+    // choisit toujours le meilleur match parmi les 11 couleurs Google, sans
+    // seuil. Un seuil ici cassait le "aller-retour" : la couleur employé
+    // d'un employé peut être assez loin de son plus proche équivalent
+    // Google (ex: rose "#ec4899" → colorId 4 "Flamingo" #e67c73, distance
+    // ~65) simplement parce que Google n'offre que 11 couleurs fixes — ça
+    // ne veut pas dire que le match est incertain, juste que la palette est
+    // limitée. Avec seulement 11 couleurs Google, il y a toujours UN seul
+    // "plus proche" — pas besoin de seuil pour départager.
+    let best=null,bestDist=Infinity;
     allEmps.forEach(e=>{
       if(!e.couleur)return;
       const d=colorDist(job.gcalColor,e.couleur);
