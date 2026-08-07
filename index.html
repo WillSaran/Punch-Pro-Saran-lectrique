@@ -716,7 +716,16 @@ button{font-family:var(--font-body)}
 //   lieu d'un menu déroulant natif — plus facile à parcourir au doigt,
 //   déjà filtrée par le contracteur choisi. 3) L'adresse (📍) affichée sur
 //   une job est maintenant cliquable — ouvre directement Google Maps.
-const APP_VERSION='v223';
+// v224 (2026-08-06): Deux correctifs/ajouts. 1) Fix — basculer entre
+//   "Cette semaine" et "📅 Agenda" sur la page d'accueil restait parfois
+//   coincé sur le même mode (semaine ou mois) peu importe l'onglet cliqué.
+//   Causé par React qui réutilisait la même instance du composant Agenda
+//   entre les deux onglets au lieu d'en recréer une neuve — corrigé en leur
+//   donnant chacun leur propre identité. 2) Créer un job — la section
+//   "Projet" est maintenant en HAUT du formulaire, avant "Contracteur" :
+//   tape le nom d'un projet ou une adresse et les suggestions apparaissent;
+//   en choisir une remplit automatiquement le contracteur et l'adresse.
+const APP_VERSION='v224';
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -3370,6 +3379,8 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
   const [newJobStreet,setNewJobStreet]=useState('');
   const [newJobRest,setNewJobRest]=useState('');
   const [newJobKnownAddr,setNewJobKnownAddr]=useState('');
+  const [newJobProjectQuery,setNewJobProjectQuery]=useState(''); // recherche texte du sélecteur Projet (en haut du formulaire)
+  const [showProjectSuggestions,setShowProjectSuggestions]=useState(false);
   const [newJobDate,setNewJobDate]=useState(initialDate||new Date().toISOString().split('T')[0]);
   const [newJobAddress,setNewJobAddress]=useState('');
   const [newJobDriveFiles,setNewJobDriveFiles]=useState([]); // fichiers Drive déjà existants à attacher
@@ -3420,9 +3431,10 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
   const newJobTitle=previewTitles[0]||''; // utilisé pour le bouton disabled + rétrocompatibilité
 
   // Projets déjà connus — seulement les vrais "projets" (adresse qui revient
-  // sur PLUSIEURS jobs), filtrés sur le contracteur choisi ci-dessus, avec
-  // le VRAI titre curé (Projets sheet) plutôt que le titre brut du dernier
-  // événement calendrier.
+  // sur PLUSIEURS jobs), avec le VRAI titre curé (Projets sheet) plutôt que
+  // le titre brut du dernier événement calendrier. Plus filtré par
+  // contracteur ici — la recherche texte (en haut du formulaire) sert de
+  // filtre, et choisir un projet remplit ensuite le contracteur tout seul.
   const knownProjects=useMemo(()=>{
     const map={};
     (jobs||[]).forEach(j=>{
@@ -3435,12 +3447,58 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
     });
     return Object.values(map)
       .map(k=>({...k,titre:(projData[k.adresse.toLowerCase()]&&projData[k.adresse.toLowerCase()].titre)||k.titre}))
-      .filter(k=>k.count>1&&getJobPrefix(k.titre)===newJobContractor)
+      .filter(k=>k.count>1)
       .sort((a,b)=>b.count-a.count);
-  },[jobs,newJobContractor,projData]);
+  },[jobs,projData]);
+  // Suggestions filtrées par ce qui est tapé (titre OU adresse) — vide tant
+  // qu'on n'a rien écrit, pour ne pas montrer toute la liste d'un coup.
+  const projectSuggestions=useMemo(()=>{
+    const q=newJobProjectQuery.trim().toLowerCase();
+    if(!q)return[];
+    return knownProjects.filter(k=>k.titre.toLowerCase().includes(q)||k.adresse.toLowerCase().includes(q)).slice(0,8);
+  },[knownProjects,newJobProjectQuery]);
+  function pickProject(k){
+    setNewJobProjectQuery(k.titre);
+    setNewJobKnownAddr(k.adresse);
+    setNewJobAddress(k.adresse);
+    setNewJobStreet(parseCivicStreet(k.adresse));
+    setShowProjectSuggestions(false);
+    // Déduit le contracteur à partir du titre curé du projet (ex: "CRS -
+    // ..." → CRS) — sinon on laisse PARTICULIER tel quel.
+    const prefix=getJobPrefix(k.titre);
+    if(prefix&&JOB_PREFIXES.includes(prefix))setNewJobContractor(prefix);
+  }
 
   return(
     <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.65rem',border:'1px solid var(--border2)'}}>
+      {knownProjects.length>0&&(
+        <div className="fg" style={{marginBottom:'0.55rem',position:'relative'}}>
+          <label>Projet (tape pour chercher)</label>
+          <input value={newJobProjectQuery}
+            onChange={e=>{setNewJobProjectQuery(e.target.value);setShowProjectSuggestions(true);if(!e.target.value.trim())setNewJobKnownAddr('');}}
+            onFocus={()=>setShowProjectSuggestions(true)}
+            onBlur={()=>setTimeout(()=>setShowProjectSuggestions(false),150)}
+            placeholder="Nom du projet ou adresse..."/>
+          {showProjectSuggestions&&projectSuggestions.length>0&&(
+            <div style={{position:'absolute',zIndex:20,left:0,right:0,top:'100%',marginTop:2,
+              background:'var(--bg2)',border:'1px solid var(--border)',borderRadius:8,
+              maxHeight:220,overflowY:'auto',boxShadow:'0 4px 12px rgba(0,0,0,0.3)'}}>
+              {projectSuggestions.map(k=>(
+                <div key={k.adresse} onMouseDown={()=>pickProject(k)}
+                  style={{padding:'0.4rem 0.6rem',cursor:'pointer',touchAction:'manipulation',borderBottom:'1px solid var(--border)'}}>
+                  <div style={{fontSize:12,fontWeight:600,color:'var(--text)'}}>{k.titre}</div>
+                  <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{k.adresse}</div>
+                </div>
+              ))}
+            </div>
+          )}
+          {newJobKnownAddr&&(
+            <div style={{fontSize:10,color:'var(--accent)',marginTop:3}}>
+              ✓ Projet lié — contracteur et adresse pré-remplis ci-dessous.
+            </div>
+          )}
+        </div>
+      )}
       <div className="fg" style={{marginBottom:'0.55rem'}}>
         <label style={{color:'var(--accent)'}}>Contracteur</label>
         <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:'0.4rem'}}>
@@ -3546,36 +3604,6 @@ function CreateJobForm({jobs,allEmps,sid,onCreateJob,initialDate}){
             );})}
           </div>
           <div style={{fontSize:10,color:'var(--muted)'}}>Ex: un compagnon avec un apprenti — l'initiale s'ajoute à la fin du titre, sans changer la couleur.</div>
-        </div>
-      )}
-      {knownProjects.length>0&&(
-        <div className="fg" style={{marginBottom:'0.5rem'}}>
-          <label>Projet</label>
-          {/* Liste de cartes cliquables au lieu d'un <select> natif — plus
-              facile à parcourir au doigt (le select natif force à défiler
-              une longue liste peu lisible, surtout sur mobile). Déjà
-              filtrée par le contracteur choisi plus haut. */}
-          <div style={{display:'flex',flexDirection:'column',gap:5,maxHeight:220,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8,padding:5,background:'var(--bg2)'}}>
-            <div onClick={()=>{setNewJobKnownAddr('');}}
-              style={{padding:'0.4rem 0.6rem',borderRadius:7,cursor:'pointer',touchAction:'manipulation',
-                background:!newJobKnownAddr?'rgba(255,122,26,0.15)':'transparent',
-                border:'1px solid '+(!newJobKnownAddr?'var(--accent)':'transparent'),
-                fontSize:12,fontWeight:!newJobKnownAddr?700:500,color:!newJobKnownAddr?'var(--accent)':'var(--muted)'}}>
-              — Nouveau projet —
-            </div>
-            {knownProjects.map(k=>{const sel=newJobKnownAddr===k.adresse;return(
-              <div key={k.adresse} onClick={()=>{
-                  setNewJobKnownAddr(k.adresse);
-                  setNewJobAddress(k.adresse);setNewJobStreet(parseCivicStreet(k.adresse));
-                }}
-                style={{padding:'0.4rem 0.6rem',borderRadius:7,cursor:'pointer',touchAction:'manipulation',
-                  background:sel?'rgba(255,122,26,0.15)':'transparent',
-                  border:'1px solid '+(sel?'var(--accent)':'transparent')}}>
-                <div style={{fontSize:12,fontWeight:sel?700:600,color:sel?'var(--accent)':'var(--text)'}}>{k.titre}</div>
-                <div style={{fontSize:10,color:'var(--muted)',marginTop:1}}>{k.adresse}</div>
-              </div>
-            );})}
-          </div>
         </div>
       )}
       <div className="fg" style={{marginBottom:'0.4rem'}}><label>Adresse (optionnel)</label><AddressInput value={newJobAddress} onChange={setNewJobAddress} placeholder="Ex: 123 rue Principale, Montréal"/></div>
@@ -6125,12 +6153,12 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
         // filtre mes jobs/toute l'équipe). La vue Semaine est maintenant
         // couverte par l'onglet "Cette semaine" ci-dessous — plus besoin du
         // sélecteur Mois/Semaine ici.
-        <AgendaEmp jobs={allJobs&&allJobs.length>0?allJobs:jobs} emp={emp} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={allEmps} onJobsRefresh={onJobsRefresh} onBack={()=>setDayTab('today')} initialViewMode="mois" lockViewMode={true}/>
+        <AgendaEmp key="agenda-tab" jobs={allJobs&&allJobs.length>0?allJobs:jobs} emp={emp} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={allEmps} onJobsRefresh={onJobsRefresh} onBack={()=>setDayTab('today')} initialViewMode="mois" lockViewMode={true}/>
       ):dayTab==='week'?(
         // Même affichage que la vue Semaine de l'Agenda (même style, mêmes
         // cartes) — scope "team" verrouillé dessus car il montre déjà mes
         // jobs en premier, suivies du reste de l'équipe, dans le même bloc.
-        <AgendaEmp jobs={allJobs&&allJobs.length>0?allJobs:jobs} emp={emp} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={allEmps} onJobsRefresh={onJobsRefresh} initialViewMode="semaine" lockViewMode={true} initialScope="team"/>
+        <AgendaEmp key="week-tab" jobs={allJobs&&allJobs.length>0?allJobs:jobs} emp={emp} notify={notify} calendarIds={calendarIds} sid={sid} allEmps={allEmps} onJobsRefresh={onJobsRefresh} initialViewMode="semaine" lockViewMode={true} initialScope="team"/>
       ):shownMine.length===0&&shownOther.length===0?(
         <div style={{color:'var(--muted)',fontSize:12,textAlign:'center',padding:'0.75rem'}}>
           Aucune job {dayLabel}.
