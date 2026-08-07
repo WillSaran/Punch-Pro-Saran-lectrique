@@ -748,7 +748,13 @@ button{font-family:var(--font-body)}
 //   empêchait l'aperçu/lecture ("fichier non compatible") même si
 //   l'enregistrement était valide. Le fichier envoyé garde maintenant
 //   seulement le type de base (audio/webm, audio/mp4, etc.).
-const APP_VERSION='v228';
+// v229 (2026-08-07): Affichage de la version — au lieu du numéro de build
+//   brut (ex: "v228"), l'app affiche maintenant "v2.28" (dérivé
+//   automatiquement du numéro de build, premier chiffre = majeur, le reste
+//   = mineur). Le numéro de build interne (APP_VERSION) ne change pas de
+//   format — il continue de servir à la détection de mise à jour.
+const APP_VERSION='v229';
+const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
 
@@ -8144,7 +8150,7 @@ function App(){
             <button className="btn-s" style={{width:'100%',marginTop:'auto',color:'var(--danger)',borderColor:'var(--danger)',touchAction:'manipulation'}} onClick={()=>{handleReset();setShowSidebar(false);}}>↩ Déconnexion</button>
           </>
         )}
-        <div style={{fontSize:9,color:'var(--muted)',fontFamily:'monospace',marginTop:'auto',paddingTop:'0.5rem'}}>{APP_VERSION}</div>
+        <div style={{fontSize:9,color:'var(--muted)',fontFamily:'monospace',marginTop:'auto',paddingTop:'0.5rem'}}>{APP_VERSION_DISPLAY}</div>
       </div>
 
       {/* Écran de chargement complet pendant le redirect OAuth */}
@@ -8171,7 +8177,7 @@ function App(){
             :<div style={{display:'flex',alignItems:'center',gap:6,minWidth:0}}>
               <img src="logo.png" alt="" style={{width:30,height:30,objectFit:'contain',flexShrink:0,borderRadius:8,background:'#000',padding:2}} onError={e=>e.target.style.display='none'}/>
               <div className="logo">Saran Électrique</div>
-              <span style={{fontSize:8,color:'var(--muted)',fontFamily:'monospace',flexShrink:0}}>{APP_VERSION}</span>
+              <span style={{fontSize:8,color:'var(--muted)',fontFamily:'monospace',flexShrink:0}}>{APP_VERSION_DISPLAY}</span>
             </div>
           }
         </div>
