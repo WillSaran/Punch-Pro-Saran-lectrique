@@ -753,7 +753,14 @@ button{font-family:var(--font-body)}
 //   automatiquement du numéro de build, premier chiffre = majeur, le reste
 //   = mineur). Le numéro de build interne (APP_VERSION) ne change pas de
 //   format — il continue de servir à la détection de mise à jour.
-const APP_VERSION='v229';
+// v230 (2026-08-07): Fix navigation semaine dans Mes heures — "Précédent"
+//   se bloquait dès que la semaine affichée était la plus ancienne à
+//   avoir des pointages enregistrés (au lieu de simplement reculer d'une
+//   semaine calendrier), et "Suivant" pouvait sauter loin en arrière dans
+//   l'année pour la même raison. La navigation utilise maintenant les
+//   vraies semaines calendrier une à la fois (précédent toujours
+//   disponible, suivant bloqué seulement rendu à la semaine en cours).
+const APP_VERSION='v230';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -4537,11 +4544,16 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
     }catch(e){return weekLabel;}
   }
 
-  // Toutes les semaines disponibles dans les pointages (triées)
-  const allWeeks=[...new Set(pts.map(p=>p.semaine).filter(Boolean))].sort();
-  const selectedWeekIdx=allWeeks.indexOf(selectedWeek);
-  const hasPrevWeek=selectedWeekIdx>0;
-  const hasNextWeek=selectedWeekIdx<allWeeks.length-1;
+  // Navigation chronologique — AVANT ça se basait sur la liste des semaines
+  // qui ont déjà des pointages (triée comme du texte), donc "Précédent"
+  // se bloquait dès que la semaine affichée était la plus ancienne AVEC
+  // des données, et "Suivant" pouvait sauter n'importe où (tri texte:
+  // "S9" > "S10"). Maintenant on navigue simplement semaine calendrier
+  // par semaine calendrier via offsetWeek, peu importe s'il y a des
+  // pointages ou non. On ne bloque jamais "Précédent"; "Suivant" est
+  // bloqué seulement une fois rendu à la semaine en cours (pas de futur).
+  const hasPrevWeek=true;
+  const hasNextWeek=selectedWeek!==curWeek;
 
   useEffect(()=>{load();},[]);
   // Jobs de l'agenda — pour pouvoir CHOISIR une job existante plutôt que de
@@ -4697,7 +4709,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
       {tab==='semaine'&&(
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.6rem'}}>
           <button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:hasPrevWeek?'var(--text)':'var(--muted)',padding:'0.2rem 0.6rem',fontSize:13,touchAction:'manipulation'}}
-            disabled={!hasPrevWeek} onClick={()=>setSelectedWeek(allWeeks[selectedWeekIdx-1])}>
+            disabled={!hasPrevWeek} onClick={()=>setSelectedWeek(offsetWeek(selectedWeek,-1))}>
             ← Préc.
           </button>
           <div style={{textAlign:'center'}}>
@@ -4705,7 +4717,7 @@ function EmployeeHistory({emp,sid,notify,folders,calendarIds}){
             {selectedWeek===curWeek&&<div style={{fontSize:9,color:'var(--accent)'}}>Semaine en cours</div>}
           </div>
           <button className="btn-sm" style={{background:'var(--bg2)',border:'1px solid var(--border)',color:hasNextWeek?'var(--text)':'var(--muted)',padding:'0.2rem 0.6rem',fontSize:13,touchAction:'manipulation'}}
-            disabled={!hasNextWeek} onClick={()=>setSelectedWeek(allWeeks[selectedWeekIdx+1])}>
+            disabled={!hasNextWeek} onClick={()=>setSelectedWeek(offsetWeek(selectedWeek,1))}>
             Suiv. →
           </button>
         </div>
