@@ -775,7 +775,7 @@ button{font-family:var(--font-body)}
 //   Myrtille = Brandon), comme Google Agenda l'affiche. Avant, elle tombait
 //   en orange (#ff7a1a), ce qui l'associait à tort à Adèle (la couleur
 //   d'employé la plus proche de l'orange). Même règle que le CRM (v107).
-// v234 (2026-10-13): Règle de William — dans l'agenda The Crew, une job sans
+// v234 (2026-10-13): Règle de William — une job SANS couleur à elle n'est à personne (« à attitrer ») : plus de couleur devinée d'après l'agenda (avant : la couleur de l'agenda, qui l'attitrait au mauvais employé). Les initiales dans le titre (MC, PB…) attitrent encore la job.
 //   couleur à elle est une job de BRANDON (Myrtille). Avant, PunchPro prenait
 //   la couleur de l'agenda dans le compte connecté, qui n'est pas forcément
 //   Myrtille. Même règle que le CRM (v109).
@@ -1351,13 +1351,10 @@ function couleurIdPlusProche(hex){
 }
 // Couleur par défaut d'un agenda, décidée par William (ne dépend pas du compte connecté) :
 // The Crew sans couleur = Brandon (Myrtille, colorId 9).
-const COULEUR_DEFAUT_AGENDA={'saranelectrique@gmail.com':'9'};
-// Couleur d'une job : la sienne (colorId), sinon celle prévue pour l'agenda, sinon celle de l'agenda, sinon l'orange de l'app.
 function couleurJob(e,calColor,calId){
+  // Couleur choisie sur l'événement = l'employé. Pas de couleur = à attitrer (null) : rien n'est deviné.
   if(e.colorId&&GCAL_COLORS[e.colorId])return GCAL_COLORS[e.colorId];
-  if(calId&&COULEUR_DEFAUT_AGENDA[calId])return GCAL_COLORS[COULEUR_DEFAUT_AGENDA[calId]];
-  const id=couleurIdPlusProche(calColor);
-  return (id&&GCAL_COLORS[id])||'#ff7a1a';
+  return null;
 }
 function mapCalEvent(e,calColor,calId){
   return{id:e.id,title:e.summary||'Sans titre',start:normalizeGCalDateStr(e.start.dateTime||e.start.date),end:normalizeGCalDateStr(e.end.dateTime||e.end.date),
