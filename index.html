@@ -770,7 +770,12 @@ button{font-family:var(--font-body)}
 //   vieille copie v174) avait écrasé toutes les versions v176→v231 sur
 //   GitHub Pages. Le code v231 est rétabli; la « Commande rapide » du
 //   Stock des camions (ajoutée dans ce push v175) est conservée.
-const APP_VERSION='v232';
+// v233 (2026-10-13): Couleurs comme dans Google Agenda — une job SANS couleur
+//   à elle prend maintenant la couleur de son agenda (ex. The Crew en
+//   Myrtille = Brandon), comme Google Agenda l'affiche. Avant, elle tombait
+//   en orange (#ff7a1a), ce qui l'associait à tort à Adèle (la couleur
+//   d'employé la plus proche de l'orange). Même règle que le CRM (v107).
+const APP_VERSION='v233';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1320,25 +1325,52 @@ function normalizeGCalDateStr(v){
   if(!v)return v;
   return /^\d{4}-\d{2}-\d{2}$/.test(v)?v+'T00:00:00':v;
 }
-function mapCalEvent(e){
+// Couleur de chaque agenda (liste d'agendas du compte), lue une fois.
+let CAL_COULEURS=null;
+async function couleursAgendas(){
+  if(CAL_COULEURS)return CAL_COULEURS;
+  try{
+    const r=await gapi.client.calendar.calendarList.list({maxResults:250});
+    const m={};(r.result.items||[]).forEach(c=>{m[c.id]=c.backgroundColor||'';if(c.primary)m.primary=c.backgroundColor||'';});
+    CAL_COULEURS=m;
+  }catch(e){return {};}
+  return CAL_COULEURS;
+}
+// colorId (1-11) le plus proche d'une couleur — compare à la palette actuelle de
+// Google Agenda ET à l'ancienne (encore renvoyée par l'API pour les agendas).
+const GCAL_COLORS_ANCIENNE={'1':'#a4bdfc','2':'#7ae7bf','3':'#dbadff','4':'#ff887c','5':'#fbd75b','6':'#ffb878','7':'#46d6db','8':'#e1e1e1','9':'#5484ed','10':'#51b749','11':'#dc2127'};
+function couleurIdPlusProche(hex){
+  if(!/^#[0-9a-f]{6}$/i.test(hex||''))return '';
+  let best='',bestD=Infinity;
+  [GCAL_COLORS,GCAL_COLORS_ANCIENNE].forEach(pal=>Object.entries(pal).forEach(([id,c])=>{if(!id)return;const d=colorDist(hex.toLowerCase(),c);if(d<bestD){bestD=d;best=id;}}));
+  return best;
+}
+// Couleur d'une job : la sienne (colorId), sinon celle de son agenda, sinon l'orange de l'app.
+function couleurJob(e,calColor){
+  if(e.colorId&&GCAL_COLORS[e.colorId])return GCAL_COLORS[e.colorId];
+  const id=couleurIdPlusProche(calColor);
+  return (id&&GCAL_COLORS[id])||'#ff7a1a';
+}
+function mapCalEvent(e,calColor){
   return{id:e.id,title:e.summary||'Sans titre',start:normalizeGCalDateStr(e.start.dateTime||e.start.date),end:normalizeGCalDateStr(e.end.dateTime||e.end.date),
     // Drapeau explicite "toute la journée" — calculé AVANT normalisation
     // (qui ajoute 'T00:00:00' à toute date seule), donc fiable même après.
     // Ne plus déduire "toute la journée" en testant si j.start contient 'T',
     // puisque la normalisation en ajoute maintenant un dans tous les cas.
     allDay:!e.start.dateTime,
-    location:e.location||'',description:e.description||'',gcalColor:GCAL_COLORS[e.colorId||'']||'#ff7a1a',attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
+    location:e.location||'',description:e.description||'',gcalColor:couleurJob(e,calColor),attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
 }
 async function getCalendarJobs(calendarIds){
   const now=new Date();
   const start=new Date(now);start.setDate(start.getDate()-3); // punch: 3 jours passés
   const end=new Date(now);end.setDate(end.getDate()+14);
   const all=[];
+  const cc=await couleursAgendas();
   for(const calId of (calendarIds||['primary'])){
     try{
       const items=await fetchCalEventsPaged(calId,start.toISOString(),end.toISOString());
       items.forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e));
+        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e,cc[calId]));
       });
     }catch(e){console.error(e);}
   }
@@ -1351,11 +1383,12 @@ async function getAllCalendarJobs(calendarIds){
   const start=new Date(now);start.setDate(start.getDate()-180);
   const end=new Date(now);end.setDate(end.getDate()+90);
   const all=[];
+  const cc=await couleursAgendas();
   for(const calId of (calendarIds||['primary'])){
     try{
       const items=await fetchCalEventsPaged(calId,start.toISOString(),end.toISOString());
       items.forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e));
+        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e,cc[calId]));
       });
     }catch(e){console.error(e);}
   }
