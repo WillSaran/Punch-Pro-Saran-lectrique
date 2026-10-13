@@ -775,7 +775,11 @@ button{font-family:var(--font-body)}
 //   Myrtille = Brandon), comme Google Agenda l'affiche. Avant, elle tombait
 //   en orange (#ff7a1a), ce qui l'associait à tort à Adèle (la couleur
 //   d'employé la plus proche de l'orange). Même règle que le CRM (v107).
-const APP_VERSION='v233';
+// v234 (2026-10-13): Règle de William — dans l'agenda The Crew, une job sans
+//   couleur à elle est une job de BRANDON (Myrtille). Avant, PunchPro prenait
+//   la couleur de l'agenda dans le compte connecté, qui n'est pas forcément
+//   Myrtille. Même règle que le CRM (v109).
+const APP_VERSION='v234';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1345,20 +1349,24 @@ function couleurIdPlusProche(hex){
   [GCAL_COLORS,GCAL_COLORS_ANCIENNE].forEach(pal=>Object.entries(pal).forEach(([id,c])=>{if(!id)return;const d=colorDist(hex.toLowerCase(),c);if(d<bestD){bestD=d;best=id;}}));
   return best;
 }
-// Couleur d'une job : la sienne (colorId), sinon celle de son agenda, sinon l'orange de l'app.
-function couleurJob(e,calColor){
+// Couleur par défaut d'un agenda, décidée par William (ne dépend pas du compte connecté) :
+// The Crew sans couleur = Brandon (Myrtille, colorId 9).
+const COULEUR_DEFAUT_AGENDA={'saranelectrique@gmail.com':'9'};
+// Couleur d'une job : la sienne (colorId), sinon celle prévue pour l'agenda, sinon celle de l'agenda, sinon l'orange de l'app.
+function couleurJob(e,calColor,calId){
   if(e.colorId&&GCAL_COLORS[e.colorId])return GCAL_COLORS[e.colorId];
+  if(calId&&COULEUR_DEFAUT_AGENDA[calId])return GCAL_COLORS[COULEUR_DEFAUT_AGENDA[calId]];
   const id=couleurIdPlusProche(calColor);
   return (id&&GCAL_COLORS[id])||'#ff7a1a';
 }
-function mapCalEvent(e,calColor){
+function mapCalEvent(e,calColor,calId){
   return{id:e.id,title:e.summary||'Sans titre',start:normalizeGCalDateStr(e.start.dateTime||e.start.date),end:normalizeGCalDateStr(e.end.dateTime||e.end.date),
     // Drapeau explicite "toute la journée" — calculé AVANT normalisation
     // (qui ajoute 'T00:00:00' à toute date seule), donc fiable même après.
     // Ne plus déduire "toute la journée" en testant si j.start contient 'T',
     // puisque la normalisation en ajoute maintenant un dans tous les cas.
     allDay:!e.start.dateTime,
-    location:e.location||'',description:e.description||'',gcalColor:couleurJob(e,calColor),attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
+    location:e.location||'',description:e.description||'',gcalColor:couleurJob(e,calColor,calId),attachments:(e.attachments||[]).map(a=>({url:a.fileUrl,title:a.title||'Fichier',mimeType:a.mimeType||''}))};
 }
 async function getCalendarJobs(calendarIds){
   const now=new Date();
@@ -1370,7 +1378,7 @@ async function getCalendarJobs(calendarIds){
     try{
       const items=await fetchCalEventsPaged(calId,start.toISOString(),end.toISOString());
       items.forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e,cc[calId]));
+        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e,cc[calId],calId));
       });
     }catch(e){console.error(e);}
   }
@@ -1388,7 +1396,7 @@ async function getAllCalendarJobs(calendarIds){
     try{
       const items=await fetchCalEventsPaged(calId,start.toISOString(),end.toISOString());
       items.forEach(e=>{
-        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e,cc[calId]));
+        if(!all.find(x=>x.id===e.id))all.push(mapCalEvent(e,cc[calId],calId));
       });
     }catch(e){console.error(e);}
   }
