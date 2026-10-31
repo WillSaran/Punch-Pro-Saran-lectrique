@@ -775,7 +775,10 @@ button{font-family:var(--font-body)}
 //   Myrtille = Brandon), comme Google Agenda l'affiche. Avant, elle tombait
 //   en orange (#ff7a1a), ce qui l'associait à tort à Adèle (la couleur
 //   d'employé la plus proche de l'orange). Même règle que le CRM (v107).
-const APP_VERSION='v233';
+// v234 (2026-10-30): Blocages — bouton « ⚠️ Blocage » sur les jobs de l'employé (Agenda et
+//   Aujourd'hui) : cause, explication, mémo vocal, photos. Onglet « Blocages » de la feuille
+//   PunchPro ; fichiers dans PHOTOS & VIDÉOS › BLOCAGES. Le CRM affiche le « ! » dans Projets.
+const APP_VERSION='v234';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2036,7 +2039,7 @@ function Notif({msg,type,onClose}){
 // uploadToDrive) et attache le fichier au bon événement Google Agenda si
 // possible. Le résultat rejoint la même liste fichiersURL que les photos/
 // documents — juste préfixé "VOCAL_" pour être reconnu dans l'affichage.
-function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded,notify}){
+function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded,notify,folderId}){
   const [recording,setRecording]=useState(false);
   const [uploading,setUploading]=useState(false);
   const [seconds,setSeconds]=useState(0);
@@ -2080,7 +2083,7 @@ function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded
         const ext=baseMime==='audio/mp4'?'m4a':baseMime==='audio/ogg'?'ogg':'webm';
         const fname='VOCAL_'+(empName||'employe').replace(/\s+/g,'-')+'_'+Date.now()+'.'+ext;
         const file=new File([blob],fname,{type:baseMime});
-        const result=await uploadToDrive(file,empName,jobName||'punch',null);
+        const result=await uploadToDrive(file,empName,jobName||'punch',folderId||null);
         setUploading(false);setRecording(false);setSeconds(0);
         if(!result.url||!result.id){notify('Erreur envoi vocal: '+(result.error||'Vérifiez permissions Drive'),'err');return;}
         if(calEventTitle&&calendarIds){
@@ -5131,6 +5134,7 @@ function AddressInput({value,onChange,placeholder,style}){
 // ── AGENDA EMPLOYÉ ───────────────────────────────────────────────────────────
 function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh,onPickJob,initialViewMode,lockViewMode,initialScope}){
   const [commandeJob,setCommandeJob]=useState(null);
+  const [blocageJob,setBlocageJob]=useState(null);   // v234
   const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();d.setDate(1);d.setHours(0,0,0,0);return d;});
   const [selDate,setSelDate]=useState(localDateStr());
   const [scope,setScope]=useState(initialScope||'mine'); // 'mine' | 'team' — "team" montre aussi mes jobs en premier (voir dayDetailBlock)
@@ -5242,6 +5246,11 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
         onClose={()=>setCommandeJob(null)}/>
     </div>
   );
+  if(blocageJob)return(
+    <div style={{width:'100%'}}>
+      <BlocageForm sid={sid} job={blocageJob} emp={emp} notify={notify} calendarIds={calendarIds} onClose={()=>setBlocageJob(null)}/>
+    </div>
+  );
 
   // Carte d'une job — repliée, on ne voit que le titre; cliquer dessus déplie
   // l'adresse, l'heure, la description complète et tous les fichiers attachés.
@@ -5292,6 +5301,14 @@ function AgendaEmp({jobs,emp,notify,onBack,calendarIds,sid,allEmps,onJobsRefresh
                   color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
                   cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
                 📦 Commander
+              </button>
+            )}
+            {isMine&&emp&&!onPickJob&&sid&&(
+              <button onClick={()=>setBlocageJob(j)} title="Signaler un blocage au bureau"
+                style={{background:'rgba(210,153,34,0.12)',border:'1px solid rgba(210,153,34,0.4)',
+                  color:'#d29922',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
+                  cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+                ⚠️ Blocage
               </button>
             )}
           </div>
@@ -6090,6 +6107,96 @@ function ReferencesRapides(){
   );
 }
 
+// v234 — Signaler un blocage sur une job (cause, explication, mémo vocal, photos).
+// Enregistré dans l'onglet « Blocages » de la feuille PunchPro ; les fichiers vont dans
+// le dossier partagé PHOTOS & VIDÉOS › BLOCAGES (jamais dans le Drive perso du gars).
+// Le CRM lit cet onglet : le « ! » apparaît dans Projets et une alerte au tableau de bord.
+const BLOCAGE_CAUSES=['SERV supplémentaire demandée','Matériel manquant','Retour au chantier','Problème d\'accès','Problème découvert pendant les travaux','Autre'];
+const BLOCAGES_ENTETE=['Id','Créé le','Employé','Event ID','Calendrier','Job','Date du passage','Cause','Description','Pièces jointes','Statut','Réglé le','Réglé par'];
+const PHOTOS_VIDEOS_ID='1Xtp0JA_8Livc2RcyK7qNN_SM9mWPIAqn';
+let BLOCAGES_DOSSIER=null;
+async function dossierBlocages(){
+  if(BLOCAGES_DOSSIER)return BLOCAGES_DOSSIER;
+  try{
+    const token=gapi.client.getToken();if(!token||!token.access_token)return PHOTOS_VIDEOS_ID;
+    const h={'Authorization':'Bearer '+token.access_token};
+    const q=encodeURIComponent("name='BLOCAGES' and mimeType='application/vnd.google-apps.folder' and '"+PHOTOS_VIDEOS_ID+"' in parents and trashed=false");
+    const r=await fetch('https://www.googleapis.com/drive/v3/files?q='+q+'&fields=files(id)&supportsAllDrives=true&includeItemsFromAllDrives=true',{headers:h});
+    const d=await r.json();
+    if(d.files&&d.files.length){BLOCAGES_DOSSIER=d.files[0].id;return BLOCAGES_DOSSIER;}
+    const c=await fetch('https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true',{method:'POST',headers:{...h,'Content-Type':'application/json'},
+      body:JSON.stringify({name:'BLOCAGES',mimeType:'application/vnd.google-apps.folder',parents:[PHOTOS_VIDEOS_ID]})});
+    const cd=await c.json();
+    BLOCAGES_DOSSIER=cd.id||PHOTOS_VIDEOS_ID;return BLOCAGES_DOSSIER;
+  }catch(e){console.warn('dossierBlocages:',e);return PHOTOS_VIDEOS_ID;}
+}
+async function ensureBlocagesSheet(sid){
+  const res=await gapi.client.sheets.spreadsheets.get({spreadsheetId:sid});
+  if(res.result.sheets.some(x=>x.properties.title==='Blocages'))return;
+  await gapi.client.sheets.spreadsheets.batchUpdate({spreadsheetId:sid,resource:{requests:[{addSheet:{properties:{title:'Blocages'}}}]}});
+  await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'Blocages!A1',valueInputOption:'RAW',resource:{values:[BLOCAGES_ENTETE]}});
+}
+function BlocageForm({sid,job,emp,notify,onClose,calendarIds}){
+  const [cause,setCause]=useState(BLOCAGE_CAUSES[0]);
+  const [autre,setAutre]=useState('');
+  const [desc,setDesc]=useState('');
+  const [pj,setPj]=useState([]);           // [{k:'fichier',nom,id,mime}]
+  const [envoi,setEnvoi]=useState('');
+  const [dossier,setDossier]=useState(null);
+  useEffect(()=>{let ok=true;dossierBlocages().then(d=>{if(ok)setDossier(d);});return()=>{ok=false;};},[]);
+  const dateJob=String(job.start||'').slice(0,10);
+  async function ajouterPhotos(files){
+    if(!files.length)return;
+    setEnvoi('Envoi des photos…');
+    const d=dossier||await dossierBlocages();
+    for(const f of files){
+      const nom='BLOCAGE_'+(job.title||'job').replace(/[\\/|]/g,'-')+'_'+Date.now()+'_'+(f.name||'photo');
+      const r=await uploadToDrive(new File([f],nom,{type:f.type||'application/octet-stream'}),emp.nom,job.title,d);
+      if(r.id)setPj(prev=>[...prev,{k:'fichier',nom:f.name||nom,id:r.id,mime:f.type||''}]);
+      else notify('Photo non envoyée : '+(r.error||'vérifie les permissions Drive'),'err');
+    }
+    setEnvoi('');
+  }
+  async function envoyer(){
+    const c=cause==='Autre'?(autre.trim()||'Autre'):cause;
+    if(!desc.trim()){notify('Écris une explication','warn');return;}
+    setEnvoi('Enregistrement…');
+    try{
+      await ensureBlocagesSheet(sid);
+      const now=new Date();
+      const cree=now.toLocaleDateString('en-CA')+' '+now.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'});
+      await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'Blocages!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
+        resource:{values:[[String(Date.now()),cree,emp.nom,job.id||'','',job.title||'',dateJob,c,desc.trim(),JSON.stringify(pj),'Ouvert','','']]}});
+      notify('⚠️ Blocage envoyé au bureau','success');
+      onClose();
+    }catch(e){console.error(e);notify('Erreur : blocage non enregistré','err');setEnvoi('');}
+  }
+  const champ={width:'100%',padding:'0.5rem',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg3)',color:'var(--text)',fontSize:14,boxSizing:'border-box'};
+  return(
+    <div className="card" style={{border:'1px solid rgba(210,153,34,0.5)'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.5rem'}}>
+        <div style={{fontWeight:700,color:'#d29922'}}>⚠️ Signaler un blocage</div>
+        <button onClick={onClose} style={{background:'none',border:'none',color:'var(--muted)',fontSize:18,cursor:'pointer'}}>✕</button>
+      </div>
+      <div style={{fontSize:12,color:'var(--muted)',marginBottom:'0.6rem'}}>{job.title}{dateJob?' · '+dateJob:''}</div>
+      <label style={{fontSize:12,fontWeight:600}}>Cause</label>
+      <select value={cause} onChange={e=>setCause(e.target.value)} style={{...champ,marginBottom:'0.5rem'}}>{BLOCAGE_CAUSES.map(x=><option key={x}>{x}</option>)}</select>
+      {cause==='Autre'&&<input value={autre} onChange={e=>setAutre(e.target.value)} placeholder="Quel problème ?" style={{...champ,marginBottom:'0.5rem'}}/>}
+      <label style={{fontSize:12,fontWeight:600}}>Explication</label>
+      <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={4} placeholder="Ce qui bloque, ce qu'il faut faire, ce qui manque…" style={{...champ,marginBottom:'0.5rem',resize:'vertical'}}/>
+      <VoiceNoteRecorder empName={emp.nom} jobName={job.title} calendarIds={calendarIds} calEventTitle={job.title||null} folderId={dossier}
+        onUploaded={raw=>{const [u,nom]=raw.split('|');const m=u.match(/\/d\/([^/]+)/);setPj(prev=>[...prev,m?{k:'fichier',nom:nom||'Mémo vocal',id:m[1],mime:'audio/webm'}:{k:'lien',url:u,nom:nom||'Mémo vocal'}]);}} notify={notify}/>
+      <label style={{display:'inline-block',padding:'0.45rem 0.8rem',borderRadius:8,border:'1px solid var(--border)',fontSize:13,cursor:'pointer',marginBottom:'0.5rem'}}>
+        📷 Ajouter des photos<input type="file" accept="image/*,video/*" multiple capture="environment" style={{display:'none'}} onChange={e=>{const l=[...e.target.files];e.target.value='';ajouterPhotos(l);}}/>
+      </label>
+      {pj.length>0&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:'0.5rem'}}>{pj.map((x,i)=><div key={i}>{/^audio/.test(x.mime||'')?'🎤':'📷'} {x.nom} <span style={{cursor:'pointer',color:'var(--danger)'}} onClick={()=>setPj(pj.filter((y,k)=>k!==i))}>✕</span></div>)}</div>}
+      <button onClick={envoyer} disabled={!!envoi} style={{width:'100%',padding:'0.7rem',borderRadius:10,border:'none',background:'#d29922',color:'#1b1300',fontWeight:700,fontSize:15,cursor:'pointer',opacity:envoi?0.6:1}}>
+        {envoi||'Envoyer le blocage au bureau'}
+      </button>
+    </div>
+  );
+}
+
 function CommandeRapide({job,adresse,emp,notify,onClose,jobId,calendarIds}){
   const [materiaux,setMateriaux]=useState({});
   const [remarques,setRemarques]=useState('');
@@ -6283,6 +6390,7 @@ function CommandeRapide({job,adresse,emp,notify,onClose,jobId,calendarIds}){
 function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefresh}){
   const [dayTab,setDayTab]=useState('today');
   const [commandeJob,setCommandeJob]=useState(null);
+  const [blocageJob,setBlocageJob]=useState(null);   // v234
   const today=localDateStr();
   const tomorrow=localDateStr(new Date(Date.now()+86400000));
 
@@ -6371,6 +6479,11 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
         onClose={()=>setCommandeJob(null)}/>
     </div>
   );
+  if(blocageJob)return(
+    <div style={{width:'100%',marginTop:'0.75rem'}}>
+      <BlocageForm sid={sid} job={blocageJob} emp={emp} notify={notify} calendarIds={calendarIds} onClose={()=>setBlocageJob(null)}/>
+    </div>
+  );
 
   // Carte d'une job "à moi" — extrait en fonction pour être réutilisable
   // telle quelle (liste plate pour Aujourd'hui/Demain, ou groupée par jour
@@ -6392,12 +6505,20 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
             {j.end&&' → '+new Date(j.end).toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'})}
           </div>
         </div>
+        <div style={{display:'flex',flexDirection:'column',gap:4,flexShrink:0}}>
         <button onClick={()=>setCommandeJob(j)}
           style={{flexShrink:0,background:'rgba(230,81,0,0.12)',border:'1px solid rgba(230,81,0,0.3)',
             color:'#f57c00',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
             cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
           📦 Commander
         </button>
+        {sid&&<button onClick={()=>setBlocageJob(j)} title="Signaler un blocage au bureau"
+          style={{flexShrink:0,background:'rgba(210,153,34,0.12)',border:'1px solid rgba(210,153,34,0.4)',
+            color:'#d29922',borderRadius:8,padding:'0.3rem 0.55rem',fontSize:11,fontWeight:600,
+            cursor:'pointer',touchAction:'manipulation',whiteSpace:'nowrap'}}>
+          ⚠️ Blocage
+        </button>}
+        </div>
       </div>
     );
   }
