@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v237';
+const APP_VERSION='v238';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2720,6 +2720,9 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
   const [fichiersURL,setFichiersURL]=useState([]);
   const [coeqHeures,setCoeqHeures]=useState({});
   const [showCalJobs,setShowCalJobs]=useState(false);
+  const [note10,setNote10]=useState(0); // bilan de la job: 1 à 10
+  const [blocage,setBlocage]=useState({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0});
+  const [envoiBloc,setEnvoiBloc]=useState(false);
   const pts=ptsProp||[];
   const travelOpts=[0,15,30,45,60,90];
 
@@ -2757,7 +2760,19 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
   const coeqs=origPuncher&&!baseCoeqs.includes(origPuncher)?[...baseCoeqs,origPuncher]:baseCoeqs;
   const coeqEmps=(allEmps||[]).filter(e=>coeqs.includes(e.nom));
 
-  function confirm(){onConfirm({customTime:timeOut,job:selJobData?selJobData.job:'',jobColor:selJobData?selJobData.jobColor:'',heures:totalH,deplacement,note,fichiersURL,coequipiers:coeqs,coeqHeures:Object.fromEntries(coeqEmps.map(e=>[e.nom,coeqHeures[e.nom]!==undefined?coeqHeures[e.nom]:totalH]))});}
+  async function confirm(){
+    if(envoiBloc)return;
+    if(blocage.ouvert){
+      if(!blocage.desc.trim()){notify('Écris une explication pour le blocage (ou retire-le)','warn');return;}
+      if(!sid){notify('Blocage non envoyé : feuille introuvable','err');return;}
+      setEnvoiBloc(true);
+      try{await enregistrerBlocage(sid,emp,{title:(selJobData&&selJobData.job)||''},blocage,(selJobData&&selJobData.date)||localDateStr());notify('⚠️ Blocage envoyé au bureau','success');}
+      catch(e){console.error(e);setEnvoiBloc(false);notify('Erreur : blocage non enregistré — réessaie','err');return;}
+    }
+    const noteFinale=((note10>0?'Bilan de la job : '+note10+'/10. ':'')+(note||'')).trim();
+    doConfirm(noteFinale);
+  }
+  function doConfirm(note){onConfirm({customTime:timeOut,job:selJobData?selJobData.job:'',jobColor:selJobData?selJobData.jobColor:'',heures:totalH,deplacement,note,fichiersURL,coequipiers:coeqs,coeqHeures:Object.fromEntries(coeqEmps.map(e=>[e.nom,coeqHeures[e.nom]!==undefined?coeqHeures[e.nom]:totalH]))});}
 
   if(!selJobData)return(
     <div style={{maxWidth:420,width:'100%',textAlign:'left'}}>
@@ -2849,11 +2864,28 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
         <div className="travel-opts">{travelOpts.map(v=>(<div key={v} className={'travel-opt'+(deplacement===v?' sel':'')} onClick={()=>setDeplacement(v)}><div className="tv">{v}</div><div className="tl">min</div></div>))}</div>
       </div>
       {coeqEmps.length>0&&(<div style={{background:'var(--bg3)',borderRadius:10,padding:'0.75rem',marginBottom:'0.6rem'}}><div className="csec">Heures coéquipiers</div>{coeqEmps.map(t=>{const val=coeqHeures[t.nom]!==undefined?coeqHeures[t.nom]:totalH;return(<div key={t.nom} style={{display:'flex',alignItems:'center',gap:8,marginBottom:'0.4rem'}}><div className="emp-av" style={{background:t.couleur}}>{t.code}</div><div style={{flex:1,fontSize:12,fontWeight:500}}>{t.nom}</div><div style={{display:'grid',gridTemplateColumns:'28px 64px 28px',alignItems:'center',gap:5}}><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.max(0,Math.round((val-0.25)*100)/100)}))}>−</button><div style={{fontFamily:'var(--font-head)',fontWeight:700,fontSize:'1rem',color:'var(--accent)',textAlign:'center'}}>{hToQuart(val)}</div><button className="dur-btn" style={{width:28,height:28,fontSize:14}} onClick={()=>setCoeqHeures(p=>({...p,[t.nom]:Math.round((val+0.25)*100)/100}))}>+</button></div></div>);})}</div>)}
-      <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: travail terminé..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
-      <VoiceNoteRecorder empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
+      <div style={{background:'var(--bg3)',border:'1px solid var(--accent)',borderRadius:10,padding:'0.65rem 0.75rem',marginBottom:'0.6rem'}}>
+        <div style={{fontWeight:800,fontSize:13,marginBottom:'0.35rem'}}>✅ Bilan de la job — dis-le en vocal ou écris-le</div>
+        <div style={{fontSize:13,lineHeight:1.55,marginBottom:'0.5rem'}}>
+          <div>• <strong>Résumé</strong> : comment la job a été, de <strong>1 à 10</strong>.</div>
+          <div>• <strong>Ton feeling</strong> de la job.</div>
+          <div>• <strong>Imprévus</strong> : ce qui n'était pas prévu.</div>
+        </div>
+        <VoiceNoteRecorder empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
+        <div className="csec">Comment la job a été? (1 à 10)</div>
+        <div style={{display:'flex',gap:'0.25rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
+          {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+            <div key={n} onClick={()=>setNote10(note10===n?0:n)} style={{width:32,height:34,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,cursor:'pointer',touchAction:'manipulation',
+              fontWeight:note10===n?800:500,background:note10===n?'var(--accent)':'var(--bg2)',color:note10===n?'#fff':'var(--text)',border:'1px solid '+(note10===n?'var(--accent)':'var(--border)')}}>{n}</div>
+          ))}
+        </div>
+        <div className="csec">Note écrite (optionnel)</div>
+        <textarea className="note-input" rows={3} placeholder={"Résumé de la job (1 à 10)...\nTon feeling de la job...\nImprévus..."} value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/>
+      </div>
+      <BlocageSection value={blocage} onChange={setBlocage} emp={emp} jobName={(selJobData&&selJobData.job)||''} calendarIds={calendarIds} notify={notify}/>
       {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:nom.startsWith('VOCAL_')?'🎤 Message vocal':'📎 '+nom;return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} jobLocation={selJobData&&selJobData.location||''} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
-      <button className="btn-p" style={{marginTop:'0.65rem'}} onClick={confirm}>{'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')}</button>
+      <button className="btn-p" style={{marginTop:'0.65rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')+(blocage.ouvert?' + blocage':'')}</button>
     </div>
   );
 }
