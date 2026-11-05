@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v236';
+const APP_VERSION='v237';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2350,7 +2350,10 @@ async function envoyerDepotCourriel(data,token){
     +(data.adresse?'Adresse : '+data.adresse+'\n':'')
     +(data.numero?'Numéro : '+data.numero+'\n':'')
     +'\nFICHIERS (dossier PAD SERVICE À TRAITER) :\n'+(lignes.length?lignes.join('\n'):'  (aucun fichier)')+'\n\n'
+    +(data.note10>0?'APPRÉCIATION DE LA JOB : '+data.note10+' / 10\n\n':'')
     +(data.note?'NOTE :\n'+data.note+'\n\n':'')
+    +(data.blocage?'⚠️ BLOCAGE (aussi enregistré dans l\'onglet Blocages) :\n  Cause : '+data.blocage.cause+'\n  '+data.blocage.desc+(data.blocage.perdu>0?'\n  Temps perdu estimé : '+fmtMinutesPerdues(data.blocage.perdu):'')+'\n\n':'')
+    +(data.heures>0?'HEURES PRÉ-MARQUÉES PAR L\'EMPLOYÉ : '+data.heures+' h (aucun punch trouvé aujourd\'hui — à valider)\n\n':'')
     +'Date : '+localDateStr()+'\n\nEnvoyé depuis PunchPro — Saran Électrique';
   const to='info@saranelectrique.com';
   const subjectTxt='['+data.type+'] '+(data.job||'Dépôt rapide')+' — '+data.employe;
@@ -2371,7 +2374,7 @@ async function envoyerDepotCourriel(data,token){
   return res.ok;
 }
 
-function DepotRapide({emps,emp:empProp,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
+function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
   const [emp,setEmp]=useState(empProp||null);
   const [type,setType]=useState(null); // 'AP' | 'OT'
   const [job,setJob]=useState(null); // {title,location}
@@ -2384,11 +2387,22 @@ function DepotRapide({emps,emp:empProp,jobs,allJobs,calendarIds,notify,onClose,o
   const [numero,setNumero]=useState('');
   const [note,setNote]=useState('');
   const [fichiers,setFichiers]=useState([]); // 'url|nom'
+  const [note10,setNote10]=useState(0); // appréciation de la job, 1 à 10
+  const [heures,setHeures]=useState(0); // heures pré-marquées (si rien de punché aujourd'hui)
+  const [dejaPunche,setDejaPunche]=useState(null); // null = on vérifie
+  const [blocage,setBlocage]=useState({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0});
   const [uploading,setUploading]=useState(false);
   const [sending,setSending]=useState(false);
   const fileRef=useRef();const camRef=useRef();
 
   const today=localDateStr();
+  // Les heures ne sont proposées que si l'employé n'a encore rien punché aujourd'hui
+  useEffect(()=>{
+    if(!emp||!sid){setDejaPunche(true);return;}
+    let ok=true;
+    getPointages(sid,{nom:emp.nom,date:today}).then(p=>{if(ok)setDejaPunche((p||[]).length>0);}).catch(()=>{if(ok)setDejaPunche(true);});
+    return()=>{ok=false;};
+  },[emp&&emp.nom]);
   const jobsAujourdhui=(jobs||[]).filter(j=>j.start&&localDateStr(new Date(j.start))===today);
   const agendaFiltre=(allJobs||[]).filter(j=>!agendaQ.trim()||(j.title||'').toLowerCase().includes(agendaQ.trim().toLowerCase())||(j.location||'').toLowerCase().includes(agendaQ.trim().toLowerCase())).slice(0,40);
 
@@ -2402,7 +2416,7 @@ function DepotRapide({emps,emp:empProp,jobs,allJobs,calendarIds,notify,onClose,o
       const calId=(calendarIds&&calendarIds[0])||'primary';
       const evt=await createCalendarEvent(calId,titre,today,emp&&emp.couleur,newAdresse.trim(),'Créée via Dépôt rapide par '+(emp?emp.nom:''));
       if(!evt){notify('Erreur création de la job dans l\'agenda','err');setCreating(false);return;}
-      setJob({title:titre,location:newAdresse.trim()});
+      setJob({title:titre,location:newAdresse.trim(),id:evt.id});
       setShowNew(false);
       notify('✅ Job créée dans l\'agenda','success');
       if(onJobCreated)onJobCreated();
@@ -2435,12 +2449,21 @@ function DepotRapide({emps,emp:empProp,jobs,allJobs,calendarIds,notify,onClose,o
   }
 
   async function terminer(){
-    if(fichiers.length===0&&!note.trim()){notify('Ajoute au moins une photo, un vocal ou une note','warn');return;}
+    if(fichiers.length===0&&!note.trim()&&!blocage.ouvert){notify('Ajoute au moins une photo, un vocal ou une note','warn');return;}
+    if(blocage.ouvert&&!blocage.desc.trim()){notify('Écris une explication pour le blocage (ou retire-le)','warn');return;}
     setSending(true);
     try{
+      let blocOk=true;
+      if(blocage.ouvert){
+        if(!sid){notify('Blocage non envoyé : feuille introuvable','err');setSending(false);return;}
+        try{await enregistrerBlocage(sid,emp,{id:job.id,title:job.title},blocage,today);}
+        catch(e){console.error(e);blocOk=false;notify('Erreur : blocage non enregistré — réessaie','err');setSending(false);return;}
+      }
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
       let ok=false;
-      if(token)ok=await envoyerDepotCourriel({employe:emp.nom,type,job:job.title,adresse:job.location,numero:numero.trim(),note:note.trim(),fichiers},token);
+      if(token)ok=await envoyerDepotCourriel({employe:emp.nom,type,job:job.title,adresse:job.location,numero:numero.trim(),note:note.trim(),fichiers,
+        note10,heures:(dejaPunche===false&&heures>0)?heures:0,
+        blocage:blocage.ouvert?{cause:blocage.cause==='Autre'?(blocage.autre||'Autre'):blocage.cause,desc:blocage.desc.trim(),perdu:blocage.perdu||0}:null},token);
       notify(ok?'✅ '+type+' déposé — courriel envoyé':'✅ '+type+' déposé (courriel non envoyé)',ok?'success':'warn');
       onClose();
     }catch(e){notify('Erreur: '+e.message,'err');}
@@ -2477,6 +2500,10 @@ function DepotRapide({emps,emp:empProp,jobs,allJobs,calendarIds,notify,onClose,o
         </div>
       </div>
 
+      <div style={{background:'rgba(210,153,34,0.12)',border:'1px solid rgba(210,153,34,0.5)',borderRadius:10,padding:'0.5rem 0.7rem',marginBottom:'0.8rem',fontSize:12,lineHeight:1.4}}>
+        ⚠️ <strong>Ce dépôt ne remplace pas ton punch.</strong> Continue de puncher IN / OUT comme d'habitude. Ceci sert seulement à déposer vite un AP ou un OT.
+      </div>
+
       {/* 1. Type */}
       <div className="csec">1. Type de dépôt</div>
       <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.8rem'}}>
@@ -2500,7 +2527,7 @@ function DepotRapide({emps,emp:empProp,jobs,allJobs,calendarIds,notify,onClose,o
             <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',marginBottom:'0.5rem'}}>
               <div style={{fontSize:10,color:'var(--muted)'}}>Jobs d'aujourd'hui</div>
               {jobsAujourdhui.map(j=>(
-                <div key={j.id||j.title} style={cardBtn(false)} onClick={()=>setJob({title:j.title,location:j.location||''})}>
+                <div key={j.id||j.title} style={cardBtn(false)} onClick={()=>setJob({title:j.title,location:j.location||'',id:j.id})}>
                   {j.title}{j.location&&<span style={{color:'var(--muted)',fontSize:10}}> — {j.location}</span>}
                 </div>
               ))}
@@ -2516,7 +2543,7 @@ function DepotRapide({emps,emp:empProp,jobs,allJobs,calendarIds,notify,onClose,o
               <div style={{maxHeight:220,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8}}>
                 {agendaFiltre.length===0&&<div style={{padding:'0.6rem',fontSize:11,color:'var(--muted)'}}>Aucune job trouvée</div>}
                 {agendaFiltre.map((j,i)=>(
-                  <div key={(j.id||'')+i} onClick={()=>{setJob({title:j.title,location:j.location||''});setShowAgenda(false);}}
+                  <div key={(j.id||'')+i} onClick={()=>{setJob({title:j.title,location:j.location||'',id:j.id});setShowAgenda(false);}}
                     style={{padding:'0.45rem 0.65rem',fontSize:12,borderTop:i?'1px solid var(--border)':'none',cursor:'pointer',touchAction:'manipulation'}}>
                     <div style={{fontWeight:600}}>{j.title}</div>
                     <div style={{fontSize:10,color:'var(--muted)'}}>{j.start?localDateStr(new Date(j.start)):''}{j.location?' · '+j.location:''}</div>
@@ -2562,14 +2589,45 @@ function DepotRapide({emps,emp:empProp,jobs,allJobs,calendarIds,notify,onClose,o
                 onChange={async e=>{const fs=Array.from(e.target.files||[]);e.target.value='';for(const f of fs)await uploadPhoto(f);}}/>
             </div>
           </div>
-          <VoiceNoteRecorder empName={emp.nom} jobName={job.title} calendarIds={calendarIds} calEventTitle={job.title}
-            folderId={PAD_SERVICE_ID} notify={notify} onUploaded={u=>setFichiers(prev=>[...prev,u])}/>
+          <div style={{background:'var(--bg3)',border:'1px solid var(--accent)',borderRadius:10,padding:'0.65rem 0.75rem',margin:'0.3rem 0 0.6rem'}}>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:'0.35rem'}}>🎤 Dis-le en message vocal (ou écris-le plus bas)</div>
+            <div style={{fontSize:13,lineHeight:1.55,marginBottom:'0.5rem'}}>
+              <div>• <strong>Résumé</strong> : comment la job a été, de <strong>1 à 10</strong>.</div>
+              <div>• <strong>Ton feeling</strong> de la job.</div>
+              <div>• <strong>Imprévus</strong> : ce qui n'était pas prévu.</div>
+            </div>
+            <VoiceNoteRecorder empName={emp.nom} jobName={job.title} calendarIds={calendarIds} calEventTitle={job.title}
+              folderId={PAD_SERVICE_ID} notify={notify} onUploaded={u=>setFichiers(prev=>[...prev,u])}/>
+          </div>
 
-          <div className="csec" style={{marginTop:'0.4rem'}}>Note (optionnel)</div>
-          <textarea className="note-input" rows={3} placeholder="Détails, problème, matériel requis..." value={note} onChange={e=>setNote(e.target.value)}/>
+          <div className="csec">Comment la job a été? (1 à 10)</div>
+          <div style={{display:'flex',gap:'0.25rem',flexWrap:'wrap',marginBottom:'0.6rem'}}>
+            {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+              <div key={n} onClick={()=>setNote10(note10===n?0:n)} style={{width:34,height:34,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,cursor:'pointer',touchAction:'manipulation',
+                fontWeight:note10===n?800:500,background:note10===n?'var(--accent)':'var(--bg3)',color:note10===n?'#fff':'var(--text)',border:'1px solid '+(note10===n?'var(--accent)':'var(--border)')}}>{n}</div>
+            ))}
+          </div>
+
+          <div className="csec">Note écrite (optionnel)</div>
+          <textarea className="note-input" rows={4} placeholder={"Résumé de la job (1 à 10)...\nTon feeling de la job...\nImprévus..."} value={note} onChange={e=>setNote(e.target.value)}/>
+
+          {dejaPunche===false&&(
+            <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',margin:'0.6rem 0'}}>
+              <div style={{fontWeight:700,fontSize:12,marginBottom:'0.2rem'}}>🕐 Pré-marquer tes heures</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.4rem'}}>Tu n'as encore rien punché aujourd'hui. Indique tes heures ici; le bureau les validera. Tu dois quand même puncher.</div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <button className="dur-btn" style={{width:36,height:36,fontSize:18}} onClick={()=>setHeures(h=>Math.max(0,Math.round((h-0.25)*4)/4))}>−</button>
+                <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem',minWidth:70,textAlign:'center',color:'var(--accent)'}}>{heures} h</div>
+                <button className="dur-btn" style={{width:36,height:36,fontSize:18}} onClick={()=>setHeures(h=>Math.round((h+0.25)*4)/4)}>+</button>
+                <button className="dur-btn" style={{width:44,height:36,fontSize:12,fontWeight:700}} onClick={()=>setHeures(h=>Math.round((h+1)*4)/4)}>+1h</button>
+              </div>
+            </div>
+          )}
+
+          <BlocageSection value={blocage} onChange={setBlocage} emp={emp} jobName={job.title} calendarIds={calendarIds} notify={notify}/>
 
           <button className="btn-p" style={{marginTop:'0.6rem'}} disabled={sending||uploading} onClick={terminer}>
-            {sending?'⏳ Envoi...':'✓ Terminer le dépôt '+type}
+            {sending?'⏳ Envoi...':'✓ Terminer le dépôt '+type+(blocage.ouvert?' + blocage':'')}
           </button>
         </>
       )}
@@ -2841,7 +2899,7 @@ function TimePicker({label,value,onChange,color}){
 
 
 function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,onConfirm,onBack,notify,folders,calendarIds,sid,jobEvent}){
-  const [blocage,setBlocage]=useState({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[]});   // v235
+  const [blocage,setBlocage]=useState({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0});   // v235
   const [envoiBloc,setEnvoiBloc]=useState(false);
   const [heureDebut,setHeureDebut]=useState('07:00');
   const [heureFin,setHeureFin]=useState('15:30');
@@ -6380,13 +6438,14 @@ async function ensureBlocagesSheet(sid){
   await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'Blocages!A1',valueInputOption:'RAW',resource:{values:[BLOCAGES_ENTETE]}});
 }
 // Enregistre le blocage dans l'onglet « Blocages » de la feuille PunchPro (v235 : appelé à la confirmation de la job)
+function fmtMinutesPerdues(m){const h=Math.floor(m/60),r=m%60;return h?(h+' h'+(r?' '+String(r).padStart(2,'0'):'')):(r+' min');}
 async function enregistrerBlocage(sid,emp,job,v,dateJob){
   await ensureBlocagesSheet(sid);
   const now=new Date();
   const cree=now.toLocaleDateString('en-CA')+' '+now.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'});
   const c=v.cause==='Autre'?((v.autre||'').trim()||'Autre'):v.cause;
   await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'Blocages!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
-    resource:{values:[[String(Date.now()),cree,emp.nom,(job&&job.id)||'','',(job&&job.title)||'',dateJob||'',c,(v.desc||'').trim(),JSON.stringify(v.pj||[]),'Ouvert','','']]}});
+    resource:{values:[[String(Date.now()),cree,emp.nom,(job&&job.id)||'','',(job&&job.title)||'',dateJob||'',c,((v.desc||'').trim()+(v.perdu>0?'\n⏱ Temps perdu estimé : '+fmtMinutesPerdues(v.perdu):'')),JSON.stringify(v.pj||[]),'Ouvert','','']]}});
 }
 // Section « Signaler un blocage » de l'écran Confirmer une job (v235) — le blocage part avec la confirmation.
 // Seul le bureau le règle, dans le CRM.
@@ -6419,11 +6478,25 @@ function BlocageSection({value,onChange,emp,jobName,calendarIds,notify}){
     <div className="dur-section" style={{border:'1px solid rgba(210,153,34,0.5)'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.4rem'}}>
         <div className="csec" style={{color:'#d29922',margin:0}}>⚠️ Blocage — envoyé au bureau avec la confirmation</div>
-        <button onClick={()=>onChange({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[]})} style={{background:'none',border:'none',color:'var(--muted)',fontSize:13,cursor:'pointer'}}>Retirer</button>
+        <button onClick={()=>onChange({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0})} style={{background:'none',border:'none',color:'var(--muted)',fontSize:13,cursor:'pointer'}}>Retirer</button>
+      </div>
+      <div style={{background:'rgba(210,153,34,0.08)',borderRadius:8,padding:'0.5rem 0.6rem',marginBottom:'0.5rem',fontSize:12,lineHeight:1.45,color:'var(--text)'}}>
+        <strong>C'est quoi un blocage?</strong> Tout ce qui a compliqué ou ralenti la job : accès impossible, client absent, matériel manquant, travail d'un autre corps de métier pas fini, problème découvert en cours de route, etc.
+        <div style={{marginTop:4,color:'var(--muted)'}}>Choisis la cause, explique ce qui s'est passé et estime le temps perdu à cause de ça.</div>
       </div>
       <select value={v.cause} onChange={e=>set({cause:e.target.value})} style={{...champ,marginBottom:'0.5rem'}}>{BLOCAGE_CAUSES.map(x=><option key={x}>{x}</option>)}</select>
       {v.cause==='Autre'&&<input value={v.autre} onChange={e=>set({autre:e.target.value})} placeholder="Quel problème ?" style={{...champ,marginBottom:'0.5rem'}}/>}
       <textarea value={v.desc} onChange={e=>set({desc:e.target.value})} rows={3} placeholder="Explication : ce qui bloque, ce qu'il faut faire, ce qui manque…" style={{...champ,marginBottom:'0.5rem',resize:'vertical'}}/>
+      <div style={{fontSize:12,fontWeight:700,marginBottom:'0.3rem'}}>⏱ Temps perdu estimé à cause du blocage</div>
+      <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
+        {[0,15,30,45,60,90,120,180,240].map(m=>(
+          <div key={m} onClick={()=>set({perdu:m})} style={{padding:'0.35rem 0.6rem',borderRadius:8,fontSize:12,cursor:'pointer',touchAction:'manipulation',
+            fontWeight:(v.perdu||0)===m?700:400,background:(v.perdu||0)===m?'rgba(210,153,34,0.2)':'var(--bg3)',
+            border:'1px solid '+((v.perdu||0)===m?'#d29922':'var(--border)'),color:(v.perdu||0)===m?'#d29922':'var(--muted)'}}>
+            {m===0?'Aucun':m===240?'4 h +':fmtMinutesPerdues(m)}
+          </div>
+        ))}
+      </div>
       <VoiceNoteRecorder empName={emp.nom} jobName={jobName} calendarIds={calendarIds} calEventTitle={jobName||null} folderId={dossier}
         onUploaded={raw=>{const [u,nom]=raw.split('|');const m=u.match(/\/d\/([^/]+)/);onChange({...v,pj:[...(v.pj||[]),m?{k:'fichier',nom:nom||'Mémo vocal',id:m[1],mime:'audio/webm'}:{k:'lien',url:u,nom:nom||'Mémo vocal'}]});}} notify={notify}/>
       <label style={{display:'inline-block',padding:'0.45rem 0.8rem',borderRadius:8,border:'1px solid var(--border)',fontSize:13,cursor:'pointer',marginBottom:'0.4rem'}}>
@@ -7495,7 +7568,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   // ── DÉPÔT RAPIDE AP / OT ──
   if(step==='depot-rapide')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
-      <DepotRapide emps={emps} emp={selEmp} jobs={jobs} allJobs={allJobs} calendarIds={calendarIds}
+      <DepotRapide emps={emps} emp={selEmp} sid={sid} jobs={jobs} allJobs={allJobs} calendarIds={calendarIds}
         notify={notify} onJobCreated={refreshCalJobs}
         onClose={()=>setStep(selEmp?'mode':'emps')}/>
     </div>
@@ -7540,9 +7613,10 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           <div className="mode-icon">✅</div>
           <div><div className="mode-title">Confirmer une job</div><div className="mode-desc">Heures, dépl., coéquipiers, fichiers</div></div>
         </div>
-        <div className="mode-btn" onClick={()=>{refreshCalJobs();setStep('depot-rapide');}}>
-          <div className="mode-icon">📋</div>
-          <div><div className="mode-title">Dépôt AP / OT rapide</div><div className="mode-desc">Appel de service ou ordre de travail — photos, vocal</div></div>
+        <div className="mode-btn" style={{borderColor:'var(--accent)',borderWidth:2,boxShadow:'0 0 0 1px var(--accent), 0 4px 14px rgba(255,122,26,0.25)',position:'relative'}} onClick={()=>{refreshCalJobs();setStep('depot-rapide');}}>
+          <span style={{position:'absolute',top:-9,right:12,background:'var(--accent)',color:'#fff',fontSize:10,fontWeight:800,letterSpacing:'0.08em',padding:'2px 9px',borderRadius:20}}>NOUVEAU</span>
+          <div className="mode-icon" style={{fontSize:'1.6rem'}}>📋</div>
+          <div><div className="mode-title" style={{fontSize:'1.05rem'}}>Dépôt AP / OT rapide</div><div className="mode-desc">Appel de service ou ordre de travail — photos, vocal. Ne remplace pas ton punch.</div></div>
         </div>
         {selEmp.permissions&&selEmp.permissions.some(p=>p!=='config')&&(
           <div className="mode-btn" onClick={()=>setStep('admin-team')}>
@@ -7597,9 +7671,18 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           </div>
           {/* Tableau de bord rapide — visible avant de sélectionner un profil */}
           <div style={{width:'100%',maxWidth:560,marginTop:'1rem'}}>
-            <button className="btn-p" style={{marginTop:0,marginBottom:'0.75rem',width:'100%',fontSize:13}}
-              onClick={()=>{refreshCalJobs();setSelEmp(null);setStep('depot-rapide');}}>
-              📋 Dépôt AP / OT rapide
+            <button onClick={()=>{refreshCalJobs();setSelEmp(null);setStep('depot-rapide');}}
+              style={{position:'relative',width:'100%',marginBottom:'0.9rem',padding:'1.05rem 1rem',borderRadius:14,border:'2px solid var(--accent)',
+                background:'linear-gradient(135deg,var(--accent),var(--accent2))',color:'#fff',cursor:'pointer',touchAction:'manipulation',textAlign:'left',
+                boxShadow:'0 4px 16px rgba(255,122,26,0.35)'}}>
+              <span style={{position:'absolute',top:-9,right:12,background:'#fff',color:'var(--accent)',fontSize:10,fontWeight:800,letterSpacing:'0.08em',padding:'2px 9px',borderRadius:20,border:'1px solid var(--accent)'}}>NOUVEAU</span>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <span style={{fontSize:32}}>📋</span>
+                <span>
+                  <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem'}}>Dépôt AP / OT rapide</div>
+                  <div style={{fontSize:12,opacity:0.95,marginTop:2}}>Photos + vocal d'un appel de service ou ordre de travail. Ne remplace pas ton punch.</div>
+                </span>
+              </div>
             </button>
             <ConvertisseurPiedsMetres/>
             <StockCamions emp={null} notify={notify} jobs={jobs} calendarIds={calendarIds}/>
