@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v239';
+const APP_VERSION='v240';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1997,7 +1997,7 @@ async function uploadToDrive(file, empName, jobName, folderId){
 
     async function tryUpload(parentId){
       const m={name:fname,mimeType:file.type||'application/octet-stream'};
-      if(/^VOCAL_/.test(fname))m.description='Message vocal de '+(empName||'?')+(jobName&&jobName!=='punch'?' — job : '+jobName:'')+' — '+new Date().toLocaleString('fr-CA',{dateStyle:'long',timeStyle:'short'});   // v239
+      if(/^VOCAL_/.test(fname)){const d=new Date(),z=x=>String(x).padStart(2,'0');m.description='Vocal '+vocalInitiales(empName)+(jobName&&jobName!=='punch'?' - '+jobName:'')+' - '+d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+' '+z(d.getHours())+'h'+z(d.getMinutes());}   // v240 : « Vocal PB - job - date »
       if(parentId)m.parents=[parentId];
       const form=new FormData();
       form.append('metadata',new Blob([JSON.stringify(m)],{type:'application/json'}));
