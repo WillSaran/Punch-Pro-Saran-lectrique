@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v238';
+const APP_VERSION='v239';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1997,6 +1997,7 @@ async function uploadToDrive(file, empName, jobName, folderId){
 
     async function tryUpload(parentId){
       const m={name:fname,mimeType:file.type||'application/octet-stream'};
+      if(/^VOCAL_/.test(fname))m.description='Message vocal de '+(empName||'?')+(jobName&&jobName!=='punch'?' — job : '+jobName:'')+' — '+new Date().toLocaleString('fr-CA',{dateStyle:'long',timeStyle:'short'});   // v239
       if(parentId)m.parents=[parentId];
       const form=new FormData();
       form.append('metadata',new Blob([JSON.stringify(m)],{type:'application/json'}));
@@ -2042,6 +2043,14 @@ function Notif({msg,type,onClose}){
 // uploadToDrive) et attache le fichier au bon événement Google Agenda si
 // possible. Le résultat rejoint la même liste fichiersURL que les photos/
 // documents — juste préfixé "VOCAL_" pour être reconnu dans l'affichage.
+// v239 : nom du fichier vocal = qui (initiales), quelle job, quand — ex. « VOCAL_PB_CRS ROUGH LEMAY P03445_2026-11-05_14h32.webm »
+function vocalInitiales(nom){const m=String(nom||'').trim().split(/[\s-]+/).filter(Boolean).map(w=>w[0].toUpperCase()).join('');return m||'EMP';}
+function vocalNomFichier(empName,jobName,ext){
+  const d=new Date(),z=n=>String(n).padStart(2,'0');
+  const quand=d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate())+'_'+z(d.getHours())+'h'+z(d.getMinutes());
+  const job=String(jobName||'').replace(/[\\\/:*?"<>|_#]+/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
+  return 'VOCAL_'+vocalInitiales(empName)+'_'+(job && job.toLowerCase()!=='punch' ? job+'_' : '')+quand+'.'+ext;
+}
 function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded,notify,folderId}){
   const [recording,setRecording]=useState(false);
   const [uploading,setUploading]=useState(false);
@@ -2084,7 +2093,7 @@ function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded
         if(blob.size<500){notify('Enregistrement trop court — réessaie','warn');setRecording(false);setSeconds(0);return;}
         setUploading(true);
         const ext=baseMime==='audio/mp4'?'m4a':baseMime==='audio/ogg'?'ogg':'webm';
-        const fname='VOCAL_'+(empName||'employe').replace(/\s+/g,'-')+'_'+Date.now()+'.'+ext;
+        const fname=vocalNomFichier(empName,jobName,ext);   // v239 : VOCAL_PB_Job_2026-11-05_14h32.webm
         const file=new File([blob],fname,{type:baseMime});
         const result=await uploadToDrive(file,empName,jobName||'punch',folderId||null);
         setUploading(false);setRecording(false);setSeconds(0);
