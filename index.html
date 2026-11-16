@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v240';
+const APP_VERSION='v241';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -6175,9 +6175,11 @@ function StockCamionBloc({camionId,camionNom,emp,notify,autoOuvrirAjout}){
 }
 
 
+// Liste des camions (ajouter un camion = une ligne ici; la ligne du Sheet « Stock Camions » se crée toute seule)
+const CAMIONS=[{id:'camion07',nom:'Camion 07'},{id:'camion25',nom:'Camion 25'},{id:'camion14',nom:'Camion 14'}];
 function StockCamions({emp,notify,jobs,calendarIds}){
   const [showRapide,setShowRapide]=useState(false);
-  const [rapideChoix,setRapideChoix]=useState(null); // 'camion07' | 'camion25' | 'job' | 'custom'
+  const [rapideChoix,setRapideChoix]=useState(null); // id d'un camion (CAMIONS) | 'job' | 'custom'
   const [rapideJob,setRapideJob]=useState(null); // job sélectionnée si choix==='job'
   const [rapideCustomTitre,setRapideCustomTitre]=useState('');
   const [rapideCustomAdresse,setRapideCustomAdresse]=useState('');
@@ -6191,9 +6193,9 @@ function StockCamions({emp,notify,jobs,calendarIds}){
   }
 
   // Écran de commande rapide pour un camion (réutilise le formulaire camion lui-même)
-  if(rapideChoix==='camion07'||rapideChoix==='camion25'){
+  if(CAMIONS.some(c=>c.id===rapideChoix)){
     const camionId=rapideChoix;
-    const camionNom=rapideChoix==='camion07'?'Camion 07':'Camion 25';
+    const camionNom=CAMIONS.find(c=>c.id===rapideChoix).nom;
     return(
       <div style={{marginBottom:'0.75rem'}}>
         <button className="btn-s" style={{fontSize:11,marginBottom:'0.5rem'}} onClick={fermerRapide}>← Retour</button>
@@ -6237,8 +6239,7 @@ function StockCamions({emp,notify,jobs,calendarIds}){
         <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.65rem',marginBottom:'0.65rem',border:'1px dashed rgba(230,81,0,0.4)'}}>
           <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.5rem'}}>Pour qui est cette commande?</div>
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'0.4rem',marginBottom:jobsAujourdhui.length>0?'0.4rem':0}}>
-            <button className="btn-s" style={{fontSize:11}} onClick={()=>setRapideChoix('camion07')}>🚚 Camion 07</button>
-            <button className="btn-s" style={{fontSize:11}} onClick={()=>setRapideChoix('camion25')}>🚚 Camion 25</button>
+            {CAMIONS.map(c=><button key={c.id} className="btn-s" style={{fontSize:11}} onClick={()=>setRapideChoix(c.id)}>🚚 {c.nom}</button>)}
           </div>
           {jobsAujourdhui.length>0&&(
             <div style={{marginBottom:'0.4rem'}}>
@@ -6256,8 +6257,7 @@ function StockCamions({emp,notify,jobs,calendarIds}){
         </div>
       )}
 
-      <StockCamionBloc camionId="camion07" camionNom="Camion 07" emp={emp} notify={notify}/>
-      <StockCamionBloc camionId="camion25" camionNom="Camion 25" emp={emp} notify={notify}/>
+      {CAMIONS.map(c=><StockCamionBloc key={c.id} camionId={c.id} camionNom={c.nom} emp={emp} notify={notify}/>)}
     </div>
   );
 }
