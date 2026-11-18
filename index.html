@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v241';
+const APP_VERSION='v242';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2458,7 +2458,7 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
   }
 
   async function terminer(){
-    if(fichiers.length===0&&!note.trim()&&!blocage.ouvert){notify('Ajoute au moins une photo, un vocal ou une note','warn');return;}
+    if(fichiers.length===0&&!note.trim()&&!(note10>0)&&!blocage.ouvert){notify('Ajoute au moins une photo, un vocal, une note ou une cote sur 10','warn');return;}
     if(blocage.ouvert&&!blocage.desc.trim()){notify('Écris une explication pour le blocage (ou retire-le)','warn');return;}
     setSending(true);
     try{
@@ -2468,6 +2468,9 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
         try{await enregistrerBlocage(sid,emp,{id:job.id,title:job.title},blocage,today);}
         catch(e){console.error(e);blocOk=false;notify('Erreur : blocage non enregistré — réessaie','err');setSending(false);return;}
       }
+      if(sid){try{await enregistrerDepot(sid,emp,job,{type,numero:numero.trim(),note:note.trim(),note10,fichiers,heures:(dejaPunche===false&&heures>0)?heures:0,
+        blocage:blocage.ouvert?{cause:blocage.cause==='Autre'?(blocage.autre||'Autre'):blocage.cause,desc:blocage.desc.trim()}:null});}
+        catch(e){console.error('Dépôt non gardé dans la feuille',e);notify('Attention : dépôt non gardé dans la feuille (le courriel part quand même)','warn');}}
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
       let ok=false;
       if(token)ok=await envoyerDepotCourriel({employe:emp.nom,type,job:job.title,adresse:job.location,numero:numero.trim(),note:note.trim(),fichiers,
@@ -6477,6 +6480,21 @@ async function ensureBlocagesSheet(sid){
   if(res.result.sheets.some(x=>x.properties.title==='Blocages'))return;
   await gapi.client.sheets.spreadsheets.batchUpdate({spreadsheetId:sid,resource:{requests:[{addSheet:{properties:{title:'Blocages'}}}]}});
   await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'Blocages!A1',valueInputOption:'RAW',resource:{values:[BLOCAGES_ENTETE]}});
+}
+// v242 : chaque dépôt rapide AP / OT (note sur 10, note écrite, fichiers, vocaux) est gardé dans l'onglet « Dépôts »
+// de la feuille PunchPro — avant, il partait seulement par courriel. Le CRM le lit pour le topo de chaque job.
+const DEPOTS_ENTETE=['Créé','Employé','Type','Numéro','EventId','Job','Date job','Adresse','Note /10','Note','Fichiers','Heures','Blocage'];
+async function enregistrerDepot(sid,emp,job,d){
+  const res=await gapi.client.sheets.spreadsheets.get({spreadsheetId:sid});
+  if(!res.result.sheets.some(x=>x.properties.title==='Dépôts')){
+    await gapi.client.sheets.spreadsheets.batchUpdate({spreadsheetId:sid,resource:{requests:[{addSheet:{properties:{title:'Dépôts'}}}]}});
+    await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'Dépôts!A1',valueInputOption:'RAW',resource:{values:[DEPOTS_ENTETE]}});
+  }
+  const now=new Date();
+  const cree=now.toLocaleDateString('en-CA')+' '+now.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'});
+  const dateJob=job&&job.start?localDateStr(new Date(job.start)):localDateStr();
+  await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'Dépôts!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
+    resource:{values:[[cree,emp.nom,d.type||'',d.numero||'',(job&&job.id)||'',(job&&job.title)||'',dateJob,(job&&job.location)||'',d.note10>0?d.note10:'',d.note||'',(d.fichiers||[]).join(' | '),d.heures||'',d.blocage?(d.blocage.cause+' — '+d.blocage.desc):'']]}});
 }
 // Enregistre le blocage dans l'onglet « Blocages » de la feuille PunchPro (v235 : appelé à la confirmation de la job)
 function fmtMinutesPerdues(m){const h=Math.floor(m/60),r=m%60;return h?(h+' h'+(r?' '+String(r).padStart(2,'0'):'')):(r+' min');}
