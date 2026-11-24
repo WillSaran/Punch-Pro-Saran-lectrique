@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v248';
+const APP_VERSION='v249';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2537,6 +2537,447 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
         </div>
       </div>
 
+      <div style={{background:'rgba(210,153,34,0.12)',border:'1px solid rgba(210,153,34,0.5)',borderRadius:10,padding:'0.5rem 0.7rem',marginBottom:'0.8rem',fontSize:12,lineHeight:1.4}}>
+        ⚠️ <strong>Ce dépôt ne remplace pas ton punch.</strong> Continue de puncher IN / OUT comme d'habitude. Ceci sert seulement à déposer vite un AP ou un OT.
+      </div>
+
+      {/* 1. Type */}
+      <div className="csec">1. Type de dépôt</div>
+      <div style={{display:'flex',gap:'0.5rem',marginBottom:'0.8rem'}}>
+        <div style={{...cardBtn(type==='AP','var(--success)'),flex:1,textAlign:'center'}} onClick={()=>setType('AP')}>📋 Appel de service</div>
+        <div style={{...cardBtn(type==='OT','var(--warning)'),flex:1,textAlign:'center'}} onClick={()=>setType('OT')}>🔧 Ordre de travail</div>
+      </div>
+
+      {/* 2. Job */}
+      <div className="csec">2. Job</div>
+      {job?(
+        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.55rem 0.75rem',marginBottom:'0.8rem',display:'flex',alignItems:'center',gap:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:600}}>{job.title}</div>
+            {job.location&&<div style={{fontSize:11,color:'var(--muted)'}}>📍 {job.location}</div>}
+          </div>
+          {fichiers.length===0&&<button className="btn-s" style={{fontSize:11}} onClick={()=>setJob(null)}>Changer</button>}
+        </div>
+      ):(
+        <div style={{marginBottom:'0.8rem'}}>
+          {jobsAujourdhui.length>0&&(
+            <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',marginBottom:'0.5rem'}}>
+              <div style={{fontSize:10,color:'var(--muted)'}}>Jobs d'aujourd'hui</div>
+              {jobsAujourdhui.map(j=>(
+                <div key={j.id||j.title} style={cardBtn(false)} onClick={()=>setJob({title:j.title,location:j.location||'',id:j.id})}>
+                  {j.title}{j.location&&<span style={{color:'var(--muted)',fontSize:10}}> — {j.location}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap'}}>
+            <div style={cardBtn(showAgenda)} onClick={()=>{setShowAgenda(v=>!v);setShowNew(false);}}>📅 Autre job de l'agenda</div>
+            <div style={cardBtn(showNew)} onClick={()=>{setShowNew(v=>!v);setShowAgenda(false);}}>➕ Nouvelle job</div>
+          </div>
+          {showAgenda&&(
+            <div style={{marginTop:'0.5rem'}}>
+              <input value={agendaQ} onChange={e=>setAgendaQ(e.target.value)} placeholder="Rechercher (titre ou adresse)..." style={{width:'100%',fontSize:12,marginBottom:'0.4rem'}}/>
+              <div style={{maxHeight:220,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8}}>
+                {agendaFiltre.length===0&&<div style={{padding:'0.6rem',fontSize:11,color:'var(--muted)'}}>Aucune job trouvée</div>}
+                {agendaFiltre.map((j,i)=>(
+                  <div key={(j.id||'')+i} onClick={()=>{setJob({title:j.title,location:j.location||'',id:j.id});setShowAgenda(false);}}
+                    style={{padding:'0.45rem 0.65rem',fontSize:12,borderTop:i?'1px solid var(--border)':'none',cursor:'pointer',touchAction:'manipulation'}}>
+                    <div style={{fontWeight:600}}>{j.title}</div>
+                    <div style={{fontSize:10,color:'var(--muted)'}}>{j.start?localDateStr(new Date(j.start)):''}{j.location?' · '+j.location:''}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {showNew&&(
+            <div style={{marginTop:'0.5rem',background:'var(--bg3)',borderRadius:10,padding:'0.65rem'}}>
+              <input value={newTitre} onChange={e=>setNewTitre(e.target.value)} placeholder="Titre de la job (ex: Tremblay — panneau)" style={{width:'100%',fontSize:12,marginBottom:'0.4rem'}}/>
+              <AddressInput value={newAdresse} onChange={setNewAdresse} placeholder="Adresse (optionnel)..." style={{marginBottom:'0.4rem'}}/>
+              <button className="btn-p" style={{marginTop:0,fontSize:12}} disabled={creating} onClick={creerJob}>{creating?'⏳ Création...':'✓ Créer la job (agenda d\'aujourd\'hui)'}</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 3. Pièces jointes */}
+      {type&&job&&(
+        <>
+          <div className="csec">3. Photos et message vocal</div>
+          <div style={{marginBottom:'0.4rem'}}>
+            <input value={numero} onChange={e=>setNumero(e.target.value)} placeholder="Numéro du document (optionnel)" style={{width:'100%',fontSize:12}}/>
+          </div>
+          {fichiers.length>0&&(
+            <div style={{marginBottom:'0.5rem'}}>
+              {fichiers.map((raw,i)=>{const p=raw.split('|');const nom=p[1]||raw;const voc=nom.startsWith('VOCAL_');
+                return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}>
+                  <a href={p[0]} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{voc?'🎤 Message vocal':'📎 '+nom}</a>
+                </div>);})}
+            </div>
+          )}
+          <div className="file-add-row" style={{marginBottom:'0.4rem'}}>
+            <div className="file-zone" onClick={()=>{if(!uploading)camRef.current&&camRef.current.click();}}>
+              <div>{uploading?'⏳':'📷'}</div><div style={{fontSize:10,color:'var(--muted)'}}>Photo</div>
+              <input ref={camRef} type="file" accept="image/*" capture="environment" style={{display:'none'}}
+                onChange={e=>{if(e.target.files[0])uploadPhoto(e.target.files[0]);e.target.value='';}}/>
+            </div>
+            <div className="file-zone" onClick={()=>{if(!uploading)fileRef.current&&fileRef.current.click();}}>
+              <div>{uploading?'⏳':'📎'}</div><div style={{fontSize:10,color:'var(--muted)'}}>Fichier / galerie</div>
+              <input ref={fileRef} type="file" accept="image/*,application/pdf,.doc,.docx" multiple style={{display:'none'}}
+                onChange={async e=>{const fs=Array.from(e.target.files||[]);e.target.value='';for(const f of fs)await uploadPhoto(f);}}/>
+            </div>
+          </div>
+          <div style={{background:'var(--bg3)',border:'1px solid var(--accent)',borderRadius:10,padding:'0.65rem 0.75rem',margin:'0.3rem 0 0.6rem'}}>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:'0.35rem'}}>🎤 Dis-le en message vocal (ou écris-le plus bas)</div>
+            <div style={{fontSize:13,lineHeight:1.55,marginBottom:'0.5rem'}}>
+              <div>• <strong>Résumé</strong> : comment la job a été, de <strong>1 à 10</strong>.</div>
+              <div>• <strong>Ton feeling</strong> de la job.</div>
+              <div>• <strong>Imprévus</strong> : ce qui n'était pas prévu.</div>
+            </div>
+            <VoiceNoteRecorder empName={emp.nom} jobName={job.title} calendarIds={calendarIds} calEventTitle={job.title}
+              folderId={PAD_SERVICE_ID} notify={notify} onUploaded={u=>setFichiers(prev=>[...prev,u])}/>
+          </div>
+
+          <div className="csec">Comment la job a été? (1 à 10)</div>
+          <div style={{display:'flex',gap:'0.25rem',flexWrap:'wrap',marginBottom:'0.6rem'}}>
+            {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+              <div key={n} onClick={()=>setNote10(note10===n?0:n)} style={{width:34,height:34,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,cursor:'pointer',touchAction:'manipulation',
+                fontWeight:note10===n?800:500,background:note10===n?'var(--accent)':'var(--bg3)',color:note10===n?'#fff':'var(--text)',border:'1px solid '+(note10===n?'var(--accent)':'var(--border)')}}>{n}</div>
+            ))}
+          </div>
+
+          <div className="csec">Note écrite (optionnel)</div>
+          <textarea className="note-input" rows={4} placeholder={"Résumé de la job (1 à 10)...\nTon feeling de la job...\nImprévus..."} value={note} onChange={e=>setNote(e.target.value)}/>
+
+          {dejaPunche===false&&(
+            <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',margin:'0.6rem 0'}}>
+              <div style={{fontWeight:700,fontSize:12,marginBottom:'0.2rem'}}>🕐 Pré-marquer tes heures</div>
+              <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.4rem'}}>Tu n'as encore rien punché aujourd'hui. Indique tes heures ici; le bureau les validera. Tu dois quand même puncher.</div>
+              <div style={{display:'flex',alignItems:'center',gap:8}}>
+                <button className="dur-btn" style={{width:36,height:36,fontSize:18}} onClick={()=>setHeures(h=>Math.max(0,Math.round((h-0.25)*4)/4))}>−</button>
+                <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem',minWidth:70,textAlign:'center',color:'var(--accent)'}}>{heures} h</div>
+                <button className="dur-btn" style={{width:36,height:36,fontSize:18}} onClick={()=>setHeures(h=>Math.round((h+0.25)*4)/4)}>+</button>
+                <button className="dur-btn" style={{width:44,height:36,fontSize:12,fontWeight:700}} onClick={()=>setHeures(h=>Math.round((h+1)*4)/4)}>+1h</button>
+              </div>
+            </div>
+          )}
+
+          <BlocageSection value={blocage} onChange={setBlocage} emp={emp} jobName={job.title} calendarIds={calendarIds} notify={notify}/>
+
+          <button className="btn-p" style={{marginTop:'0.6rem'}} disabled={sending||uploading} onClick={terminer}>
+            {sending?'⏳ Envoi...':'✓ Terminer le dépôt '+type+(blocage.ouvert?' + blocage':'')}
+          </button>
+        </>
+      )}
+      <button className="btn-s" style={{width:'100%',marginTop:'0.5rem'}} onClick={onClose}>← Annuler</button>
+    </div>
+  );
+}
+
+// ── BLOCAGE RAPIDE ───────────────────────────────────────────────────────────
+// Accès rapide pour signaler un ou plusieurs blocages trouvés sur un chantier :
+// 1) employé  2) job  3) un blocage par « point » (cause, explication écrite ou vocal,
+// photos, temps perdu) — on peut en ajouter autant qu'on veut  4) envoi : chaque
+// blocage va dans l'onglet « Blocages » (le CRM le voit) + un seul courriel résumé au bureau.
+function lienPieceJointe(x){
+  if(!x)return '';
+  if(x.k==='lien'&&x.url)return x.url;
+  if(x.id)return 'https://drive.google.com/file/d/'+x.id+'/view';
+  return '';
+}
+async function envoyerBlocagesCourriel(data,token){
+  const totalPerdu=data.items.reduce((s,b)=>s+(b.perdu||0),0);
+  const blocs=data.items.map((b,i)=>{
+    const pj=(b.pj||[]).map(x=>{const l=lienPieceJointe(x);return '    - '+(/^audio/.test(x.mime||'')?'🎤 Vocal':'📷 '+(x.nom||'Fichier'))+(l?' : '+l:'');});
+    return 'BLOCAGE '+(i+1)+' / '+data.items.length+'\n'
+      +'  Cause : '+b.cause+'\n'
+      +'  Explication : '+(b.desc||'(voir vocal / photos)')+'\n'
+      +(b.perdu>0?'  Temps perdu estimé : '+fmtMinutesPerdues(b.perdu)+'\n':'')
+      +(pj.length?'  Pièces jointes :\n'+pj.join('\n')+'\n':'');
+  }).join('\n');
+  const body='Bonjour,\n\n'+data.employe+' a signalé '+data.items.length+' blocage'+(data.items.length>1?'s':'')+' sur la job :\n'+(data.job||'—')+'\n'
+    +(data.adresse?'Adresse : '+data.adresse+'\n':'')
+    +'\n'+blocs
+    +(totalPerdu>0&&data.items.length>1?'\nTEMPS PERDU TOTAL ESTIMÉ : '+fmtMinutesPerdues(totalPerdu)+'\n':'')
+    +'\n(Aussi enregistré dans l\'onglet Blocages de la feuille PunchPro.)\nDate : '+localDateStr()+'\n\nEnvoyé depuis PunchPro — Saran Électrique';
+  const to='info@saranelectrique.com';
+  const subjectTxt='⚠️ '+(data.items.length>1?data.items.length+' blocages':'Blocage')+' — '+(data.job||'Job')+' — '+data.employe;
+  const subjB64=(()=>{const by=new TextEncoder().encode(subjectTxt);let bin='';by.forEach(b=>bin+=String.fromCharCode(b));return btoa(bin);})();
+  const msgHeader='To: '+to+'\r\nSubject: =?UTF-8?B?'+subjB64+'?=\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
+  const bodyBytes=new TextEncoder().encode(body);
+  let b64='';
+  for(let i=0;i<bodyBytes.length;i+=57){
+    const chunk=bodyBytes.slice(i,i+57);let bin='';
+    chunk.forEach(b=>bin+=String.fromCharCode(b));b64+=btoa(bin)+'\r\n';
+  }
+  const encoded=btoa(msgHeader+b64).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({raw:encoded})
+  });
+  return res.ok;
+}
+
+// Courriel au bureau pour les blocages signalés depuis « Confirmer une job » ou le Punch OUT (un seul courriel pour tous les blocages;
+// n'attend pas et n'empêche jamais la confirmation)
+function courrielBlocagesLot(emp,job,items){
+  try{
+    const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
+    if(!token||!items||!items.length)return;
+    envoyerBlocagesCourriel({employe:emp.nom,job:(job&&job.title)||'',adresse:(job&&job.location)||'',
+      items:items.map(b=>({cause:causeBlocage(b),desc:(b.desc||'').trim(),perdu:b.perdu||0,pj:b.pj||[]}))},token).catch(e=>console.warn('courrielBlocages:',e));
+  }catch(e){console.warn('courrielBlocages:',e);}
+}
+// Plusieurs blocages dans un même écran (Confirmer une job, Punch OUT) : « Blocage 1 », « Blocage 2 »… avec « Ajouter un autre blocage »
+function BlocagesMulti({items,setItems,emp,jobName,calendarIds,notify}){
+  const maj=(k,nv)=>{
+    if(nv.ouvert===false){setItems(prev=>prev.filter(b=>b._k!==k));return;} // bouton « Retirer »
+    setItems(prev=>prev.map(b=>b._k===k?{...nv,_k:k}:b));
+  };
+  const ajouter=()=>setItems(prev=>[...prev,{ouvert:true,cause:'',autre:'',desc:'',pj:[],perdu:0,_k:Date.now()+'_'+Math.random()}]);
+  return(
+    <>
+      {items.map((b,i)=>(
+        <div key={b._k} style={{marginBottom:'0.5rem'}}>
+          <BlocageSection value={b} onChange={nv=>maj(b._k,nv)} emp={emp} jobName={jobName} calendarIds={calendarIds} notify={notify}
+            titre={items.length>1?'⚠️ Blocage '+(i+1)+' — envoyé au bureau avec la confirmation':undefined} sansDefinition={i>0}/>
+        </div>
+      ))}
+      <div className="dur-section" style={{paddingTop:items.length?0:undefined}}>
+        <button onClick={ajouter} style={{width:'100%',padding:'0.6rem',borderRadius:10,border:'1px solid rgba(210,153,34,0.5)',background:'rgba(210,153,34,0.1)',color:'#d29922',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+          {items.length?'➕ Ajouter un autre blocage':'⚠️ Signaler un blocage'}
+        </button>
+      </div>
+    </>
+  );
+}
+
+// v248 : chercher un blocage existant (ex. celui d'un collègue qui a oublié les photos) et y ajouter photos / vocal / note
+async function courrielComplementBlocage(b,emp,note,pj){
+  const token=gapi.client.getToken()&&gapi.client.getToken().access_token;if(!token)return false;
+  const liens=(pj||[]).map(x=>'  - '+(/^audio/.test(x.mime||'')?'🎤 Vocal':'📷 '+(x.nom||'Fichier'))+' : '+lienPieceJointe(x)).join('\n');
+  const body='Bonjour,\n\n'+emp.nom+' a ajouté de l\'information à un blocage existant.\n\nJob : '+(b.job||'—')+'\nBlocage de : '+(b.employe||'—')+(b.date?' ('+b.date+')':'')+'\nCause : '+(b.cause||'—')+'\n'
+    +(note?'\nNote ajoutée :\n'+note+'\n':'')+(liens?'\nPièces jointes ajoutées :\n'+liens+'\n':'')+'\nDate : '+localDateStr()+'\n\nEnvoyé depuis PunchPro — Saran Électrique';
+  const subj='➕ Complément de blocage — '+(b.job||'Job')+' — '+emp.nom;
+  const sb=(()=>{const by=new TextEncoder().encode(subj);let bin='';by.forEach(x=>bin+=String.fromCharCode(x));return btoa(bin);})();
+  const hdr='To: info@saranelectrique.com\r\nSubject: =?UTF-8?B?'+sb+'?=\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
+  const bb=new TextEncoder().encode(body);let b64='';
+  for(let i=0;i<bb.length;i+=57){let bin='';bb.slice(i,i+57).forEach(x=>bin+=String.fromCharCode(x));b64+=btoa(bin)+'\r\n';}
+  const raw=btoa(hdr+b64).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const r=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({raw})});
+  return r.ok;
+}
+function ChercherBlocages({emp,sid,calendarIds,notify}){
+  const [rows,setRows]=useState(null);
+  const [q,setQ]=useState('');
+  const [err,setErr]=useState('');
+  const [ouvert,setOuvert]=useState(null);   // numéro de ligne de la feuille en cours de complément
+  const [note,setNote]=useState('');
+  const [ajouts,setAjouts]=useState([]);     // pièces jointes à ajouter
+  const [enCours,setEnCours]=useState(0);
+  const [saving,setSaving]=useState(false);
+  const [dossier,setDossier]=useState(null);
+  const ajRef=useRef([]);ajRef.current=ajouts;
+  async function charger(){
+    setErr('');
+    try{
+      const r=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Blocages!A2:M'});
+      const v=r.result.values||[];
+      setRows(v.map((x,i)=>{let pj=[];try{pj=JSON.parse(x[9]||'[]');}catch(e){}
+        return {ligne:i+2,id:x[0]||'',cree:x[1]||'',employe:x[2]||'',job:x[5]||'',date:x[6]||'',cause:x[7]||'',desc:x[8]||'',pj:Array.isArray(pj)?pj:[],statut:x[10]||''};
+      }).reverse());
+    }catch(e){console.error(e);setRows([]);setErr('Impossible de lire les blocages (onglet pas encore créé ou pas de connexion).');}
+  }
+  useEffect(()=>{if(sid)charger();},[sid]);
+  const mots=q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const liste=(rows||[]).filter(b=>{const h=(b.job+' '+b.cause+' '+b.desc+' '+b.employe+' '+b.date+' '+b.cree+' '+b.statut).toLowerCase();return mots.every(m=>h.includes(m));}).slice(0,mots.length?60:15);
+  async function photos(files){
+    if(!files.length)return;
+    setEnCours(n=>n+files.length);
+    const dP=dossier?Promise.resolve(dossier):dossierBlocages().then(d=>{setDossier(d);return d;});
+    const b=rows.find(x=>x.ligne===ouvert);
+    await Promise.all(files.map(async f0=>{
+      try{
+        const d=await dP;const f=await compresserImage(f0);
+        const nom='BLOCAGE_'+((b&&b.job)||'job').replace(/[\\/|]/g,'-')+'_'+Date.now()+'_'+(f.name||'photo');
+        const r=await uploadToDrive(new File([f],nom,{type:f.type||'application/octet-stream'}),emp.nom,(b&&b.job)||'',d,{rapide:true});
+        if(r.id)setAjouts(p=>[...p,{k:'fichier',nom:f0.name||nom,id:r.id,mime:f.type||f0.type||''}]);
+        else notify('Photo non envoyée : '+(r.error||'vérifie les permissions Drive'),'err');
+      }catch(e){console.error(e);notify('Photo non envoyée : '+e.message,'err');}
+      setEnCours(n=>n-1);
+    }));
+  }
+  async function sauver(b){
+    if(!note.trim()&&!ajouts.length){notify('Ajoute une photo, un vocal ou une note','warn');return;}
+    setSaving(true);
+    try{
+      // relit la ligne juste avant d'écrire (le bureau ou un autre employé a pu la modifier)
+      const r=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:sid,range:'Blocages!A'+b.ligne+':M'+b.ligne});
+      const x=(r.result.values&&r.result.values[0])||[];
+      if((x[0]||'')!==b.id){notify('Le blocage a changé de place — recharge la recherche','err');setSaving(false);charger();return;}
+      let pj=[];try{pj=JSON.parse(x[9]||'[]');}catch(e){}
+      pj=pj.concat(ajouts);
+      const d=new Date();
+      const desc=(x[8]||'')+(note.trim()?'\n➕ '+emp.nom+' ('+d.toLocaleDateString('en-CA')+') : '+note.trim():'');
+      await gapi.client.sheets.spreadsheets.values.update({spreadsheetId:sid,range:'Blocages!I'+b.ligne+':J'+b.ligne,valueInputOption:'RAW',resource:{values:[[desc,JSON.stringify(pj)]]}});
+      let ok=false;try{ok=await courrielComplementBlocage(b,emp,note.trim(),ajouts);}catch(e){console.warn(e);}
+      notify(ok?'✅ Ajouté au blocage — bureau avisé':'✅ Ajouté au blocage (courriel non envoyé)',ok?'success':'warn');
+      setOuvert(null);setNote('');setAjouts([]);charger();
+    }catch(e){console.error(e);notify('Erreur : '+e.message,'err');}
+    setSaving(false);
+  }
+  const champ={width:'100%',padding:'0.5rem',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg3)',color:'var(--text)',fontSize:14,boxSizing:'border-box'};
+  return(
+    <div>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔎 Chercher : job, adresse, cause, employé (ex: Phil)…" style={{...champ,marginBottom:'0.5rem'}}/>
+      {rows===null&&<div style={{fontSize:12,color:'var(--muted)'}}>⏳ Chargement des blocages…</div>}
+      {err&&<div style={{fontSize:12,color:'var(--danger)'}}>{err}</div>}
+      {rows&&!mots.length&&rows.length>0&&<div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.4rem'}}>Les plus récents — écris plus haut pour chercher dans tous.</div>}
+      {rows&&liste.length===0&&!err&&<div style={{fontSize:12,color:'var(--muted)'}}>Aucun blocage trouvé.</div>}
+      {liste.map(b=>(
+        <div key={b.ligne} className="dur-section" style={{border:'1px solid rgba(210,153,34,0.4)',marginBottom:'0.5rem'}}>
+          <div style={{display:'flex',justifyContent:'space-between',gap:8,alignItems:'flex-start'}}>
+            <div style={{fontSize:13,fontWeight:700,minWidth:0}}>{b.job||'(job inconnue)'}</div>
+            <div style={{fontSize:10,padding:'2px 6px',borderRadius:6,flexShrink:0,background:/r[ée]gl/i.test(b.statut)?'rgba(63,185,80,0.15)':'rgba(210,153,34,0.18)',color:/r[ée]gl/i.test(b.statut)?'#3fb950':'#d29922'}}>{b.statut||'Ouvert'}</div>
+          </div>
+          <div style={{fontSize:11,color:'var(--muted)',marginBottom:4}}>{b.employe} · {b.date||b.cree}{b.cause?' · '+b.cause:''}</div>
+          <div style={{fontSize:12,whiteSpace:'pre-wrap',marginBottom:6}}>{b.desc}</div>
+          {b.pj.length>0?(
+            <div style={{display:'flex',gap:6,flexWrap:'wrap',marginBottom:6}}>
+              {b.pj.map((x,i)=>{const l=lienPieceJointe(x);const aud=/^audio/.test(x.mime||'');return(
+                <a key={i} href={l} target="_blank" rel="noreferrer" style={{textDecoration:'none',color:'var(--text)'}}>
+                  {x.id&&!aud?<img src={'https://drive.google.com/thumbnail?id='+x.id+'&sz=w240'} alt="" style={{width:72,height:72,borderRadius:8,objectFit:'cover',background:'var(--bg3)',display:'block'}}/>
+                    :<div style={{width:72,height:72,borderRadius:8,background:'var(--bg3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>{aud?'🎤':'📎'}</div>}
+                </a>);})}
+            </div>
+          ):<div style={{fontSize:11,color:'#d29922',marginBottom:6}}>📷 Aucune photo pour l'instant</div>}
+          {ouvert===b.ligne?(
+            <div style={{borderTop:'1px solid var(--border)',paddingTop:'0.5rem'}}>
+              <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="Note à ajouter (facultatif)…" style={{...champ,marginBottom:'0.4rem',resize:'vertical'}}/>
+              <VoiceNoteRecorder empName={emp.nom} jobName={b.job} calendarIds={calendarIds} calEventTitle={b.job||null} folderId={dossier}
+                onUploaded={raw=>{const [u,nom]=raw.split('|');const m=u.match(/\/d\/([^/]+)/);setAjouts(p=>[...p,m?{k:'fichier',nom:nom||'Mémo vocal',id:m[1],mime:'audio/webm'}:{k:'lien',url:u,nom:nom||'Mémo vocal'}]);}} notify={notify}/>
+              <label style={{display:'inline-block',padding:'0.45rem 0.8rem',borderRadius:8,border:'1px solid var(--border)',fontSize:13,cursor:'pointer',marginBottom:'0.4rem'}}>
+                📷 Ajouter des photos<input type="file" accept="image/*,video/*" multiple style={{display:'none'}} onChange={e=>{const l=[...e.target.files];e.target.value='';photos(l);}}/>
+              </label>
+              {(ajouts.length>0||enCours>0)&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:'0.4rem'}}>
+                {ajouts.map((x,i)=><div key={i}>✅ {/^audio/.test(x.mime||'')?'🎤':'📷'} {x.nom} <span style={{cursor:'pointer',color:'var(--danger)'}} onClick={()=>setAjouts(p=>p.filter((y,k)=>k!==i))}>✕</span></div>)}
+                {enCours>0&&<div>⏳ Envoi de {enCours} fichier{enCours>1?'s':''}… ne ferme pas l'écran</div>}
+              </div>}
+              <div style={{display:'flex',gap:8}}>
+                <button className="btn-p" style={{marginTop:0,flex:1}} disabled={saving||enCours>0} onClick={()=>sauver(b)}>{saving?'⏳ Enregistrement…':'✓ Ajouter à ce blocage'}</button>
+                <button className="btn-s" onClick={()=>{setOuvert(null);setNote('');setAjouts([]);}}>Annuler</button>
+              </div>
+            </div>
+          ):(
+            <button className="btn-s" style={{width:'100%',fontSize:12,borderColor:'rgba(210,153,34,0.6)',color:'#d29922',fontWeight:700}} onClick={()=>{setOuvert(b.ligne);setNote('');setAjouts([]);}}>➕ Ajouter photos / vocal / note</button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
+  const nouveauBloc=()=>({ouvert:true,cause:'',autre:'',desc:'',pj:[],perdu:0});
+  const brouillon=useRef((()=>{try{const d=JSON.parse(localStorage.getItem('pp_blocage_brouillon')||'null');return d&&Date.now()-d.t<3*3600e3?d:null;}catch(e){return null;}})()).current;
+  const [emp,setEmp]=useState(empProp||(brouillon&&(emps||[]).find(e=>e.nom===brouillon.emp))||null);
+  const [job,setJob]=useState((brouillon&&brouillon.job)||null); // {title,location,id}
+  const [showAgenda,setShowAgenda]=useState(false);
+  const [agendaQ,setAgendaQ]=useState('');
+  const [showNew,setShowNew]=useState(false);
+  const [newTitre,setNewTitre]=useState('');
+  const [newAdresse,setNewAdresse]=useState('');
+  const [creating,setCreating]=useState(false);
+  const [items,setItems]=useState(()=>brouillon&&brouillon.items&&brouillon.items.length?brouillon.items:[{...nouveauBloc(),_k:1}]);
+  const cle=useRef(brouillon&&brouillon.items?Math.max(1,...brouillon.items.map(b=>+b._k||1)):1);
+  useEffect(()=>{try{if(emp&&(job||items.some(b=>b.desc||(b.pj||[]).length)))localStorage.setItem('pp_blocage_brouillon',JSON.stringify({t:Date.now(),emp:emp.nom,job,items}));}catch(e){}},[emp,job,items]);
+  const viderBrouillon=()=>{try{localStorage.removeItem('pp_blocage_brouillon');}catch(e){}};
+  const dejaEnregistres=useRef(new Set()); // évite les doublons dans la feuille si on réessaie après une erreur
+  const [sending,setSending]=useState(false);
+  const [onglet,setOnglet]=useState('nouveau');
+
+  const today=localDateStr();
+  const jobsAujourdhui=(jobs||[]).filter(j=>j.start&&localDateStr(new Date(j.start))===today);
+  const agendaFiltre=(allJobs||[]).filter(j=>!agendaQ.trim()||(j.title||'').toLowerCase().includes(agendaQ.trim().toLowerCase())||(j.location||'').toLowerCase().includes(agendaQ.trim().toLowerCase())).slice(0,40);
+
+  async function creerJob(){
+    const titre=newTitre.trim();
+    if(!titre){notify('Entre un titre pour la job','warn');return;}
+    setCreating(true);
+    try{
+      const calId=(calendarIds&&calendarIds[0])||'primary';
+      const evt=await createCalendarEvent(calId,titre,today,emp&&emp.couleur,newAdresse.trim(),'Créée via Blocage rapide par '+(emp?emp.nom:''));
+      if(!evt){notify('Erreur création de la job dans l\'agenda','err');setCreating(false);return;}
+      setJob({title:titre,location:newAdresse.trim(),id:evt.id});
+      setShowNew(false);
+      notify('✅ Job créée dans l\'agenda','success');
+      if(onJobCreated)onJobCreated();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+    setCreating(false);
+  }
+
+  function ajouterBlocage(){cle.current+=1;setItems(prev=>[...prev,{...nouveauBloc(),_k:cle.current}]);}
+  function majBlocage(k,nv){
+    if(nv.ouvert===false){setItems(prev=>prev.filter(b=>b._k!==k));return;} // « Retirer » dans BlocageSection
+    setItems(prev=>prev.map(b=>b._k===k?{...nv,_k:k}:b));
+  }
+
+  async function envoyer(){
+    if(!items.length){notify('Ajoute au moins un blocage','warn');return;}
+    for(let i=0;i<items.length;i++){
+      const b=items[i];
+      if(!b.desc.trim()&&(b.pj||[]).length===0){notify('Blocage '+(i+1)+' : écris une explication ou joins un vocal / une photo','warn');return;}
+    }
+    if(!sid){notify('Blocage non envoyé : feuille introuvable','err');return;}
+    setSending(true);
+    try{
+      for(const b of items){
+        if(dejaEnregistres.current.has(b._k))continue;
+        await enregistrerBlocage(sid,emp,{id:job.id,title:job.title},{...b,desc:b.desc.trim()||'(voir pièces jointes)'},today);
+        dejaEnregistres.current.add(b._k);
+      }
+    }catch(e){console.error(e);notify('Erreur : blocage non enregistré — réessaie','err');setSending(false);return;}
+    let ok=false;
+    try{
+      const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
+      if(token)ok=await envoyerBlocagesCourriel({employe:emp.nom,job:job.title,adresse:job.location,
+        items:items.map(b=>({cause:causeBlocage(b),desc:b.desc.trim(),perdu:b.perdu||0,pj:b.pj||[]}))},token);
+    }catch(e){console.error(e);}
+    notify(ok?'⚠️ '+items.length+' blocage'+(items.length>1?'s':'')+' envoyé'+(items.length>1?'s':'')+' au bureau':'⚠️ Blocage(s) enregistré(s) (courriel non envoyé)',ok?'success':'warn');
+    setSending(false);
+    viderBrouillon();
+    onClose();
+  }
+
+  const cardBtn=sel=>({padding:'0.5rem 0.8rem',borderRadius:10,fontSize:12,cursor:'pointer',touchAction:'manipulation',fontWeight:sel?700:500,
+    background:sel?'rgba(210,153,34,0.15)':'var(--bg3)',border:'1px solid '+(sel?'#d29922':'var(--border)'),color:sel?'#d29922':'var(--text)'});
+
+  // ── Étape 0: employé ──
+  if(!emp)return(
+    <div style={{maxWidth:560,width:'100%'}}>
+      <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',marginBottom:'0.2rem'}}>⚠️ Blocage rapide</div>
+      <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.8rem'}}>Qui signale?</div>
+      <div className="emp-grid">
+        {(emps||[]).map(e=>(
+          <div key={e.nom} className="emp-card" onClick={()=>setEmp(e)}>
+            <div className="emp-av-lg" style={{background:e.couleur}}>{e.code}</div>
+            <div style={{fontSize:12,fontWeight:600}}>{e.nom}</div>
+          </div>
+        ))}
+      </div>
+      <button className="btn-s" style={{width:'100%',marginTop:'0.8rem'}} onClick={onClose}>← Retour</button>
+    </div>
+  );
+
+  return(
+    <div style={{maxWidth:560,width:'100%',textAlign:'left'}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.8rem'}}>
+        <div className="emp-av" style={{background:emp.couleur,width:34,height:34,fontSize:11}}>{emp.code}</div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'0.95rem'}}>⚠️ Blocage rapide</div>
+          <div style={{fontSize:11,color:'var(--muted)'}}>{emp.nom}{!empProp&&<span style={{textDecoration:'underline',cursor:'pointer',marginLeft:8}} onClick={()=>setEmp(null)}>changer</span>}</div>
+        </div>
+      </div>
+
       <div style={{display:'flex',gap:'0.4rem',marginBottom:'0.8rem'}}>
         <div style={{...cardBtn(onglet==='nouveau'),flex:1,textAlign:'center',padding:'0.6rem 0.4rem',fontSize:13}} onClick={()=>setOnglet('nouveau')}>➕ Nouveau blocage</div>
         <div style={{...cardBtn(onglet==='chercher'),flex:1,textAlign:'center',padding:'0.6rem 0.4rem',fontSize:13}} onClick={()=>setOnglet('chercher')}>🔎 Chercher un blocage</div>
@@ -2614,7 +3055,7 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
         </>
       )}
       </>}
-      <button className="btn-s" style={{width:'100%',marginTop:'0.5rem'}} onClick={onClose}>← Annuler</button>
+      <button className="btn-s" style={{width:'100%',marginTop:'0.5rem'}} onClick={()=>{viderBrouillon();onClose();}}>← Annuler</button>
     </div>
   );
 }
@@ -8936,7 +9377,21 @@ if('serviceWorker' in navigator){
   });
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+class ErreurEcran extends React.Component{
+  constructor(p){super(p);this.state={e:null};}
+  static getDerivedStateFromError(e){return {e};}
+  componentDidCatch(e,info){console.error('ErreurEcran:',e,info);}
+  render(){
+    if(!this.state.e)return this.props.children;
+    return <div style={{padding:'1.5rem',color:'#e6edf3',background:'#0d1117',minHeight:'100vh',fontFamily:'sans-serif'}}>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:8}}>⚠️ Oups, un écran a planté</div>
+      <div style={{fontSize:13,marginBottom:12}}>Appuie sur le bouton pour recharger. Si ça recommence, fais une capture de ce message et envoie-la à William.</div>
+      <pre style={{whiteSpace:'pre-wrap',fontSize:11,background:'#161b22',padding:10,borderRadius:8}}>{String((this.state.e&&this.state.e.stack)||this.state.e).slice(0,700)}</pre>
+      <button style={{padding:'0.7rem 1.2rem',borderRadius:10,fontSize:15,marginTop:10}} onClick={()=>location.reload()}>Recharger l'app</button>
+    </div>;
+  }
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<ErreurEcran><App/></ErreurEcran>);
 </script>
 </body>
 </html>
