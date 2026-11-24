@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v245';
+const APP_VERSION='v246';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2718,6 +2718,16 @@ async function envoyerBlocagesCourriel(data,token){
   return res.ok;
 }
 
+// Courriel au bureau pour un blocage signalé depuis « Confirmer une job » ou le Punch OUT (n'attend pas, n'empêche jamais la confirmation)
+function courrielBlocageSimple(emp,job,v){
+  try{
+    const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
+    if(!token)return;
+    envoyerBlocagesCourriel({employe:emp.nom,job:(job&&job.title)||'',adresse:(job&&job.location)||'',
+      items:[{cause:causeBlocage(v),desc:(v.desc||'').trim(),perdu:v.perdu||0,pj:v.pj||[]}]},token).catch(e=>console.warn('courrielBlocage:',e));
+  }catch(e){console.warn('courrielBlocage:',e);}
+}
+
 function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
   const nouveauBloc=()=>({ouvert:true,cause:'',autre:'',desc:'',pj:[],perdu:0});
   const [emp,setEmp]=useState(empProp||null);
@@ -3024,7 +3034,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
       if(!blocage.desc.trim()){notify('Écris une explication pour le blocage (ou retire-le)','warn');return;}
       if(!sid){notify('Blocage non envoyé : feuille introuvable','err');return;}
       setEnvoiBloc(true);
-      try{await enregistrerBlocage(sid,emp,{title:(selJobData&&selJobData.job)||''},blocage,(selJobData&&selJobData.date)||localDateStr());notify('⚠️ Blocage envoyé au bureau','success');}
+      try{await enregistrerBlocage(sid,emp,{title:(selJobData&&selJobData.job)||''},blocage,(selJobData&&selJobData.date)||localDateStr());courrielBlocageSimple(emp,{title:(selJobData&&selJobData.job)||''},blocage);notify('⚠️ Blocage envoyé au bureau','success');}
       catch(e){console.error(e);setEnvoiBloc(false);notify('Erreur : blocage non enregistré — réessaie','err');return;}
     }
     const noteFinale=((note10>0?'Bilan de la job : '+note10+'/10. ':'')+(note||'')).trim();
@@ -3221,7 +3231,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
       if(!blocage.desc.trim()){notify('Écris une explication pour le blocage (ou retire-le)','warn');return;}
       if(!sid){notify('Blocage non envoyé : feuille introuvable','err');return;}
       setEnvoiBloc(true);
-      try{await enregistrerBlocage(sid,emp,jobEvent||{title:jobName||''},blocage,dateTravail);notify('⚠️ Blocage envoyé au bureau','success');}
+      try{await enregistrerBlocage(sid,emp,jobEvent||{title:jobName||''},blocage,dateTravail);courrielBlocageSimple(emp,{title:(jobEvent&&jobEvent.title)||jobName||'',location:(jobEvent&&jobEvent.location)||jobLocation||''},blocage);notify('⚠️ Blocage envoyé au bureau','success');}
       catch(e){console.error(e);setEnvoiBloc(false);notify('Erreur : blocage non enregistré — réessaie','err');return;}
       setEnvoiBloc(false);
     }
