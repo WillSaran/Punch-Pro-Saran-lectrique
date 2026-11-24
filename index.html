@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v244';
+const APP_VERSION='v245';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2423,7 +2423,7 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
   const [note10,setNote10]=useState(0); // appréciation de la job, 1 à 10
   const [heures,setHeures]=useState(0); // heures pré-marquées (si rien de punché aujourd'hui)
   const [dejaPunche,setDejaPunche]=useState(null); // null = on vérifie
-  const [blocage,setBlocage]=useState({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0});
+  const [blocage,setBlocage]=useState({ouvert:false,cause:'',autre:'',desc:'',pj:[],perdu:0});
   const [uploading,setUploading]=useState(false);
   const [sending,setSending]=useState(false);
   const fileRef=useRef();const camRef=useRef();
@@ -2494,13 +2494,13 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
         catch(e){console.error(e);blocOk=false;notify('Erreur : blocage non enregistré — réessaie','err');setSending(false);return;}
       }
       if(sid){try{await enregistrerDepot(sid,emp,job,{type,numero:numero.trim(),note:note.trim(),note10,fichiers,heures:(dejaPunche===false&&heures>0)?heures:0,
-        blocage:blocage.ouvert?{cause:blocage.cause==='Autre'?(blocage.autre||'Autre'):blocage.cause,desc:blocage.desc.trim()}:null});}
+        blocage:blocage.ouvert?{cause:causeBlocage(blocage),desc:blocage.desc.trim()}:null});}
         catch(e){console.error('Dépôt non gardé dans la feuille',e);notify('Attention : dépôt non gardé dans la feuille (le courriel part quand même)','warn');}}
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
       let ok=false;
       if(token)ok=await envoyerDepotCourriel({employe:emp.nom,type,job:job.title,adresse:job.location,numero:numero.trim(),note:note.trim(),fichiers,
         note10,heures:(dejaPunche===false&&heures>0)?heures:0,
-        blocage:blocage.ouvert?{cause:blocage.cause==='Autre'?(blocage.autre||'Autre'):blocage.cause,desc:blocage.desc.trim(),perdu:blocage.perdu||0}:null},token);
+        blocage:blocage.ouvert?{cause:causeBlocage(blocage),desc:blocage.desc.trim(),perdu:blocage.perdu||0}:null},token);
       notify(ok?'✅ '+type+' déposé — courriel envoyé':'✅ '+type+' déposé (courriel non envoyé)',ok?'success':'warn');
       onClose();
     }catch(e){notify('Erreur: '+e.message,'err');}
@@ -2719,7 +2719,7 @@ async function envoyerBlocagesCourriel(data,token){
 }
 
 function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
-  const nouveauBloc=()=>({ouvert:true,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0});
+  const nouveauBloc=()=>({ouvert:true,cause:'',autre:'',desc:'',pj:[],perdu:0});
   const [emp,setEmp]=useState(empProp||null);
   const [job,setJob]=useState(null); // {title,location,id}
   const [showAgenda,setShowAgenda]=useState(false);
@@ -2778,7 +2778,7 @@ function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onC
     try{
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
       if(token)ok=await envoyerBlocagesCourriel({employe:emp.nom,job:job.title,adresse:job.location,
-        items:items.map(b=>({cause:b.cause==='Autre'?((b.autre||'').trim()||'Autre'):b.cause,desc:b.desc.trim(),perdu:b.perdu||0,pj:b.pj||[]}))},token);
+        items:items.map(b=>({cause:causeBlocage(b),desc:b.desc.trim(),perdu:b.perdu||0,pj:b.pj||[]}))},token);
     }catch(e){console.error(e);}
     notify(ok?'⚠️ '+items.length+' blocage'+(items.length>1?'s':'')+' envoyé'+(items.length>1?'s':'')+' au bureau':'⚠️ Blocage(s) enregistré(s) (courriel non envoyé)',ok?'success':'warn');
     setSending(false);
@@ -2979,7 +2979,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
   const [coeqHeures,setCoeqHeures]=useState({});
   const [showCalJobs,setShowCalJobs]=useState(false);
   const [note10,setNote10]=useState(0); // bilan de la job: 1 à 10
-  const [blocage,setBlocage]=useState({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0});
+  const [blocage,setBlocage]=useState({ouvert:false,cause:'',autre:'',desc:'',pj:[],perdu:0});
   const [envoiBloc,setEnvoiBloc]=useState(false);
   const pts=ptsProp||[];
   const travelOpts=[0,15,30,45,60,90];
@@ -3189,7 +3189,7 @@ function TimePicker({label,value,onChange,color}){
 
 
 function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,onConfirm,onBack,notify,folders,calendarIds,sid,jobEvent}){
-  const [blocage,setBlocage]=useState({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0});   // v235
+  const [blocage,setBlocage]=useState({ouvert:false,cause:'',autre:'',desc:'',pj:[],perdu:0});   // v235
   const [envoiBloc,setEnvoiBloc]=useState(false);
   const [heureDebut,setHeureDebut]=useState('07:00');
   const [heureFin,setHeureFin]=useState('15:30');
@@ -6702,7 +6702,14 @@ function ReferencesRapides(){
 // Enregistré dans l'onglet « Blocages » de la feuille PunchPro ; les fichiers vont dans
 // le dossier partagé PHOTOS & VIDÉOS › BLOCAGES (jamais dans le Drive perso du gars).
 // Le CRM lit cet onglet : le « ! » apparaît dans Projets et une alerte au tableau de bord.
-const BLOCAGE_CAUSES=['SERV supplémentaire demandée','Matériel manquant','Retour au chantier','Problème d\'accès','Problème découvert pendant les travaux','Autre'];
+const BLOCAGE_CAUSES=['SERV supplémentaire demandée','Matériel manquant','Retour au chantier','Problème d\'accès','Problème découvert pendant les travaux','Problèmes divers'];
+// La cause est facultative : on peut cliquer une suggestion, écrire la sienne, ou les deux
+// (« Matériel manquant — disjoncteur 20 A »). Sans rien : « Problèmes divers ».
+function causeBlocage(v){
+  const c=(v&&v.cause&&v.cause!=='Autre')?v.cause:'';
+  const t=((v&&v.autre)||'').trim();
+  return [c,t].filter(Boolean).join(' — ')||'Problèmes divers';
+}
 const BLOCAGES_ENTETE=['Id','Créé le','Employé','Event ID','Calendrier','Job','Date du passage','Cause','Description','Pièces jointes','Statut','Réglé le','Réglé par'];
 const PHOTOS_VIDEOS_ID='1Xtp0JA_8Livc2RcyK7qNN_SM9mWPIAqn';
 let BLOCAGES_DOSSIER=null;
@@ -6748,7 +6755,7 @@ async function enregistrerBlocage(sid,emp,job,v,dateJob){
   await ensureBlocagesSheet(sid);
   const now=new Date();
   const cree=now.toLocaleDateString('en-CA')+' '+now.toLocaleTimeString('fr-CA',{hour:'2-digit',minute:'2-digit'});
-  const c=v.cause==='Autre'?((v.autre||'').trim()||'Autre'):v.cause;
+  const c=causeBlocage(v);
   await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'Blocages!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',
     resource:{values:[[String(Date.now()),cree,emp.nom,(job&&job.id)||'','',(job&&job.title)||'',dateJob||'',c,((v.desc||'').trim()+(v.perdu>0?'\n⏱ Temps perdu estimé : '+fmtMinutesPerdues(v.perdu):'')),JSON.stringify(v.pj||[]),'Ouvert','','']]}});
 }
@@ -6791,14 +6798,19 @@ function BlocageSection({value,onChange,emp,jobName,calendarIds,notify,titre,san
     <div className="dur-section" style={{border:'1px solid rgba(210,153,34,0.5)'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.4rem'}}>
         <div className="csec" style={{color:'#d29922',margin:0}}>{titre||'⚠️ Blocage — envoyé au bureau avec la confirmation'}</div>
-        <button onClick={()=>onChange({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0})} style={{background:'none',border:'none',color:'var(--muted)',fontSize:13,cursor:'pointer'}}>Retirer</button>
+        <button onClick={()=>onChange({ouvert:false,cause:'',autre:'',desc:'',pj:[],perdu:0})} style={{background:'none',border:'none',color:'var(--muted)',fontSize:13,cursor:'pointer'}}>Retirer</button>
       </div>
       {!sansDefinition&&<div style={{background:'rgba(210,153,34,0.08)',borderRadius:8,padding:'0.5rem 0.6rem',marginBottom:'0.5rem',fontSize:12,lineHeight:1.45,color:'var(--text)'}}>
         <strong>C'est quoi un blocage?</strong> Tout ce qui a compliqué ou ralenti la job : accès impossible, client absent, matériel manquant, travail d'un autre corps de métier pas fini, problème découvert en cours de route, etc.
         <div style={{marginTop:4,color:'var(--muted)'}}>Choisis la cause, explique ce qui s'est passé et estime le temps perdu à cause de ça.</div>
       </div>}
-      <select value={v.cause} onChange={e=>set({cause:e.target.value})} style={{...champ,marginBottom:'0.5rem'}}>{BLOCAGE_CAUSES.map(x=><option key={x}>{x}</option>)}</select>
-      {v.cause==='Autre'&&<input value={v.autre} onChange={e=>set({autre:e.target.value})} placeholder="Quel problème ?" style={{...champ,marginBottom:'0.5rem'}}/>}
+      <div style={{fontSize:12,fontWeight:700,marginBottom:'0.3rem'}}>Cause <span style={{fontWeight:400,color:'var(--muted)'}}>(facultatif — clique une suggestion et/ou écris la tienne)</span></div>
+      <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.4rem'}}>
+        {BLOCAGE_CAUSES.map(x=>{const sel=v.cause===x;return(
+          <div key={x} onClick={()=>set({cause:sel?'':x})} style={{padding:'0.35rem 0.6rem',borderRadius:8,fontSize:12,cursor:'pointer',touchAction:'manipulation',
+            fontWeight:sel?700:400,background:sel?'rgba(210,153,34,0.2)':'var(--bg3)',border:'1px solid '+(sel?'#d29922':'var(--border)'),color:sel?'#d29922':'var(--text)'}}>{x}</div>);})}
+      </div>
+      <input value={v.autre||''} onChange={e=>set({autre:e.target.value})} placeholder="Ou écris le problème avec tes mots…" style={{...champ,marginBottom:'0.5rem'}}/>
       <textarea value={v.desc} onChange={e=>set({desc:e.target.value})} rows={3} placeholder="Explication : ce qui bloque, ce qu'il faut faire, ce qui manque…" style={{...champ,marginBottom:'0.5rem',resize:'vertical'}}/>
       <div style={{fontSize:12,fontWeight:700,marginBottom:'0.3rem'}}>⏱ Temps perdu estimé à cause du blocage</div>
       <div style={{display:'flex',gap:'0.3rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
