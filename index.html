@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v246';
+const APP_VERSION='v247';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2718,14 +2718,38 @@ async function envoyerBlocagesCourriel(data,token){
   return res.ok;
 }
 
-// Courriel au bureau pour un blocage signalé depuis « Confirmer une job » ou le Punch OUT (n'attend pas, n'empêche jamais la confirmation)
-function courrielBlocageSimple(emp,job,v){
+// Courriel au bureau pour les blocages signalés depuis « Confirmer une job » ou le Punch OUT (un seul courriel pour tous les blocages;
+// n'attend pas et n'empêche jamais la confirmation)
+function courrielBlocagesLot(emp,job,items){
   try{
     const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
-    if(!token)return;
+    if(!token||!items||!items.length)return;
     envoyerBlocagesCourriel({employe:emp.nom,job:(job&&job.title)||'',adresse:(job&&job.location)||'',
-      items:[{cause:causeBlocage(v),desc:(v.desc||'').trim(),perdu:v.perdu||0,pj:v.pj||[]}]},token).catch(e=>console.warn('courrielBlocage:',e));
-  }catch(e){console.warn('courrielBlocage:',e);}
+      items:items.map(b=>({cause:causeBlocage(b),desc:(b.desc||'').trim(),perdu:b.perdu||0,pj:b.pj||[]}))},token).catch(e=>console.warn('courrielBlocages:',e));
+  }catch(e){console.warn('courrielBlocages:',e);}
+}
+// Plusieurs blocages dans un même écran (Confirmer une job, Punch OUT) : « Blocage 1 », « Blocage 2 »… avec « Ajouter un autre blocage »
+function BlocagesMulti({items,setItems,emp,jobName,calendarIds,notify}){
+  const maj=(k,nv)=>{
+    if(nv.ouvert===false){setItems(prev=>prev.filter(b=>b._k!==k));return;} // bouton « Retirer »
+    setItems(prev=>prev.map(b=>b._k===k?{...nv,_k:k}:b));
+  };
+  const ajouter=()=>setItems(prev=>[...prev,{ouvert:true,cause:'',autre:'',desc:'',pj:[],perdu:0,_k:Date.now()+'_'+Math.random()}]);
+  return(
+    <>
+      {items.map((b,i)=>(
+        <div key={b._k} style={{marginBottom:'0.5rem'}}>
+          <BlocageSection value={b} onChange={nv=>maj(b._k,nv)} emp={emp} jobName={jobName} calendarIds={calendarIds} notify={notify}
+            titre={items.length>1?'⚠️ Blocage '+(i+1)+' — envoyé au bureau avec la confirmation':undefined} sansDefinition={i>0}/>
+        </div>
+      ))}
+      <div className="dur-section" style={{paddingTop:items.length?0:undefined}}>
+        <button onClick={ajouter} style={{width:'100%',padding:'0.6rem',borderRadius:10,border:'1px solid rgba(210,153,34,0.5)',background:'rgba(210,153,34,0.1)',color:'#d29922',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+          {items.length?'➕ Ajouter un autre blocage':'⚠️ Signaler un blocage'}
+        </button>
+      </div>
+    </>
+  );
 }
 
 function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
@@ -2989,7 +3013,8 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
   const [coeqHeures,setCoeqHeures]=useState({});
   const [showCalJobs,setShowCalJobs]=useState(false);
   const [note10,setNote10]=useState(0); // bilan de la job: 1 à 10
-  const [blocage,setBlocage]=useState({ouvert:false,cause:'',autre:'',desc:'',pj:[],perdu:0});
+  const [blocages,setBlocages]=useState([]);   // plusieurs blocages possibles
+  const dejaBloc=useRef(new Set());
   const [envoiBloc,setEnvoiBloc]=useState(false);
   const pts=ptsProp||[];
   const travelOpts=[0,15,30,45,60,90];
@@ -3030,11 +3055,21 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
 
   async function confirm(){
     if(envoiBloc)return;
-    if(blocage.ouvert){
-      if(!blocage.desc.trim()){notify('Écris une explication pour le blocage (ou retire-le)','warn');return;}
+    if(blocages.length){
+      const vide=blocages.findIndex(b=>!b.desc.trim()&&(b.pj||[]).length===0);
+      if(vide>=0){notify('Blocage '+(vide+1)+' : écris une explication ou joins un vocal / une photo (ou retire-le)','warn');return;}
       if(!sid){notify('Blocage non envoyé : feuille introuvable','err');return;}
       setEnvoiBloc(true);
-      try{await enregistrerBlocage(sid,emp,{title:(selJobData&&selJobData.job)||''},blocage,(selJobData&&selJobData.date)||localDateStr());courrielBlocageSimple(emp,{title:(selJobData&&selJobData.job)||''},blocage);notify('⚠️ Blocage envoyé au bureau','success');}
+      const jobT={title:(selJobData&&selJobData.job)||''};
+      try{
+        for(const b of blocages){
+          if(dejaBloc.current.has(b._k))continue;
+          await enregistrerBlocage(sid,emp,jobT,{...b,desc:b.desc.trim()||'(voir pièces jointes)'},(selJobData&&selJobData.date)||localDateStr());
+          dejaBloc.current.add(b._k);
+        }
+        courrielBlocagesLot(emp,jobT,blocages);
+        notify('⚠️ '+blocages.length+' blocage'+(blocages.length>1?'s':'')+' envoyé'+(blocages.length>1?'s':'')+' au bureau','success');
+      }
       catch(e){console.error(e);setEnvoiBloc(false);notify('Erreur : blocage non enregistré — réessaie','err');return;}
     }
     const noteFinale=((note10>0?'Bilan de la job : '+note10+'/10. ':'')+(note||'')).trim();
@@ -3150,10 +3185,10 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
         <div className="csec">Note écrite (optionnel)</div>
         <textarea className="note-input" rows={3} placeholder={"Résumé de la job (1 à 10)...\nTon feeling de la job...\nImprévus..."} value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/>
       </div>
-      <BlocageSection value={blocage} onChange={setBlocage} emp={emp} jobName={(selJobData&&selJobData.job)||''} calendarIds={calendarIds} notify={notify}/>
+      <BlocagesMulti items={blocages} setItems={setBlocages} emp={emp} jobName={(selJobData&&selJobData.job)||''} calendarIds={calendarIds} notify={notify}/>
       {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:nom.startsWith('VOCAL_')?'🎤 Message vocal':'📎 '+nom;return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} jobLocation={selJobData&&selJobData.location||''} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
-      <button className="btn-p" style={{marginTop:'0.65rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')+(blocage.ouvert?' + blocage':'')}</button>
+      <button className="btn-p" style={{marginTop:'0.65rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')+(blocages.length?' + '+blocages.length+' blocage'+(blocages.length>1?'s':''):'')}</button>
     </div>
   );
 }
@@ -3199,7 +3234,8 @@ function TimePicker({label,value,onChange,color}){
 
 
 function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,onConfirm,onBack,notify,folders,calendarIds,sid,jobEvent}){
-  const [blocage,setBlocage]=useState({ouvert:false,cause:'',autre:'',desc:'',pj:[],perdu:0});   // v235
+  const [blocages,setBlocages]=useState([]);   // v235 ; plusieurs blocages possibles
+  const dejaBloc=useRef(new Set());
   const [envoiBloc,setEnvoiBloc]=useState(false);
   const [heureDebut,setHeureDebut]=useState('07:00');
   const [heureFin,setHeureFin]=useState('15:30');
@@ -3227,11 +3263,21 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
   useEffect(()=>{setCoeqHeures(p=>{const u={...p};coequipiers.forEach(n=>{if(u[n]===undefined)u[n]=totalH;});return u;});},[totalH]);
 
   async function confirm(){
-    if(blocage.ouvert){   // v235 : le blocage part avec la confirmation
-      if(!blocage.desc.trim()){notify('Écris une explication pour le blocage (ou retire-le)','warn');return;}
+    if(blocages.length){   // v235 : les blocages partent avec la confirmation
+      const vide=blocages.findIndex(b=>!b.desc.trim()&&(b.pj||[]).length===0);
+      if(vide>=0){notify('Blocage '+(vide+1)+' : écris une explication ou joins un vocal / une photo (ou retire-le)','warn');return;}
       if(!sid){notify('Blocage non envoyé : feuille introuvable','err');return;}
       setEnvoiBloc(true);
-      try{await enregistrerBlocage(sid,emp,jobEvent||{title:jobName||''},blocage,dateTravail);courrielBlocageSimple(emp,{title:(jobEvent&&jobEvent.title)||jobName||'',location:(jobEvent&&jobEvent.location)||jobLocation||''},blocage);notify('⚠️ Blocage envoyé au bureau','success');}
+      const jobT=jobEvent||{title:jobName||''};
+      try{
+        for(const b of blocages){
+          if(dejaBloc.current.has(b._k))continue;
+          await enregistrerBlocage(sid,emp,jobT,{...b,desc:b.desc.trim()||'(voir pièces jointes)'},dateTravail);
+          dejaBloc.current.add(b._k);
+        }
+        courrielBlocagesLot(emp,{title:(jobEvent&&jobEvent.title)||jobName||'',location:(jobEvent&&jobEvent.location)||jobLocation||''},blocages);
+        notify('⚠️ '+blocages.length+' blocage'+(blocages.length>1?'s':'')+' envoyé'+(blocages.length>1?'s':'')+' au bureau','success');
+      }
       catch(e){console.error(e);setEnvoiBloc(false);notify('Erreur : blocage non enregistré — réessaie','err');return;}
       setEnvoiBloc(false);
     }
@@ -3280,7 +3326,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
       <VoiceNoteRecorder empName={emp.nom} jobName={jobName||'punch'} calendarIds={calendarIds} calEventTitle={jobName||null} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
       {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:nom.startsWith('VOCAL_')?'🎤 Message vocal':'📎 '+nom;return(<div key={i} className="file-item"><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={jobName||'punch'} jobLocation={jobLocation||''} calendarIds={calendarIds} calEventTitle={jobName||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
-      {!isOut&&<BlocageSection value={blocage} onChange={setBlocage} emp={emp} jobName={jobName||''} calendarIds={calendarIds} notify={notify}/>}
+      {!isOut&&<BlocagesMulti items={blocages} setItems={setBlocages} emp={emp} jobName={jobName||''} calendarIds={calendarIds} notify={notify}/>}
       {/* ── HEURES DE BANQUE ── */}
       <div className="dur-section">
         <div className="csec">Heures de banque</div>
@@ -3303,7 +3349,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
           </div>
         )}
       </div>
-      <button className="btn-p" style={{marginTop:'0.4rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'✓ Confirmer la job'+(blocage.ouvert?' + blocage':'')}</button>
+      <button className="btn-p" style={{marginTop:'0.4rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'✓ Confirmer la job'+(blocages.length?' + '+blocages.length+' blocage'+(blocages.length>1?'s':''):'')}</button>
     </div>
   );
 }
