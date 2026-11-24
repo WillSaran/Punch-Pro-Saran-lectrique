@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v242';
+const APP_VERSION='v243';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2640,6 +2640,227 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
 
           <button className="btn-p" style={{marginTop:'0.6rem'}} disabled={sending||uploading} onClick={terminer}>
             {sending?'⏳ Envoi...':'✓ Terminer le dépôt '+type+(blocage.ouvert?' + blocage':'')}
+          </button>
+        </>
+      )}
+      <button className="btn-s" style={{width:'100%',marginTop:'0.5rem'}} onClick={onClose}>← Annuler</button>
+    </div>
+  );
+}
+
+// ── BLOCAGE RAPIDE ───────────────────────────────────────────────────────────
+// Accès rapide pour signaler un ou plusieurs blocages trouvés sur un chantier :
+// 1) employé  2) job  3) un blocage par « point » (cause, explication écrite ou vocal,
+// photos, temps perdu) — on peut en ajouter autant qu'on veut  4) envoi : chaque
+// blocage va dans l'onglet « Blocages » (le CRM le voit) + un seul courriel résumé au bureau.
+function lienPieceJointe(x){
+  if(!x)return '';
+  if(x.k==='lien'&&x.url)return x.url;
+  if(x.id)return 'https://drive.google.com/file/d/'+x.id+'/view';
+  return '';
+}
+async function envoyerBlocagesCourriel(data,token){
+  const totalPerdu=data.items.reduce((s,b)=>s+(b.perdu||0),0);
+  const blocs=data.items.map((b,i)=>{
+    const pj=(b.pj||[]).map(x=>{const l=lienPieceJointe(x);return '    - '+(/^audio/.test(x.mime||'')?'🎤 Vocal':'📷 '+(x.nom||'Fichier'))+(l?' : '+l:'');});
+    return 'BLOCAGE '+(i+1)+' / '+data.items.length+'\n'
+      +'  Cause : '+b.cause+'\n'
+      +'  Explication : '+(b.desc||'(voir vocal / photos)')+'\n'
+      +(b.perdu>0?'  Temps perdu estimé : '+fmtMinutesPerdues(b.perdu)+'\n':'')
+      +(pj.length?'  Pièces jointes :\n'+pj.join('\n')+'\n':'');
+  }).join('\n');
+  const body='Bonjour,\n\n'+data.employe+' a signalé '+data.items.length+' blocage'+(data.items.length>1?'s':'')+' sur la job :\n'+(data.job||'—')+'\n'
+    +(data.adresse?'Adresse : '+data.adresse+'\n':'')
+    +'\n'+blocs
+    +(totalPerdu>0&&data.items.length>1?'\nTEMPS PERDU TOTAL ESTIMÉ : '+fmtMinutesPerdues(totalPerdu)+'\n':'')
+    +'\n(Aussi enregistré dans l\'onglet Blocages de la feuille PunchPro.)\nDate : '+localDateStr()+'\n\nEnvoyé depuis PunchPro — Saran Électrique';
+  const to='info@saranelectrique.com';
+  const subjectTxt='⚠️ '+(data.items.length>1?data.items.length+' blocages':'Blocage')+' — '+(data.job||'Job')+' — '+data.employe;
+  const subjB64=(()=>{const by=new TextEncoder().encode(subjectTxt);let bin='';by.forEach(b=>bin+=String.fromCharCode(b));return btoa(bin);})();
+  const msgHeader='To: '+to+'\r\nSubject: =?UTF-8?B?'+subjB64+'?=\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
+  const bodyBytes=new TextEncoder().encode(body);
+  let b64='';
+  for(let i=0;i<bodyBytes.length;i+=57){
+    const chunk=bodyBytes.slice(i,i+57);let bin='';
+    chunk.forEach(b=>bin+=String.fromCharCode(b));b64+=btoa(bin)+'\r\n';
+  }
+  const encoded=btoa(msgHeader+b64).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const res=await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send',{
+    method:'POST',
+    headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+    body:JSON.stringify({raw:encoded})
+  });
+  return res.ok;
+}
+
+function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
+  const nouveauBloc=()=>({ouvert:true,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0});
+  const [emp,setEmp]=useState(empProp||null);
+  const [job,setJob]=useState(null); // {title,location,id}
+  const [showAgenda,setShowAgenda]=useState(false);
+  const [agendaQ,setAgendaQ]=useState('');
+  const [showNew,setShowNew]=useState(false);
+  const [newTitre,setNewTitre]=useState('');
+  const [newAdresse,setNewAdresse]=useState('');
+  const [creating,setCreating]=useState(false);
+  const [items,setItems]=useState(()=>[{...nouveauBloc(),_k:1}]);
+  const cle=useRef(1);
+  const dejaEnregistres=useRef(new Set()); // évite les doublons dans la feuille si on réessaie après une erreur
+  const [sending,setSending]=useState(false);
+
+  const today=localDateStr();
+  const jobsAujourdhui=(jobs||[]).filter(j=>j.start&&localDateStr(new Date(j.start))===today);
+  const agendaFiltre=(allJobs||[]).filter(j=>!agendaQ.trim()||(j.title||'').toLowerCase().includes(agendaQ.trim().toLowerCase())||(j.location||'').toLowerCase().includes(agendaQ.trim().toLowerCase())).slice(0,40);
+
+  async function creerJob(){
+    const titre=newTitre.trim();
+    if(!titre){notify('Entre un titre pour la job','warn');return;}
+    setCreating(true);
+    try{
+      const calId=(calendarIds&&calendarIds[0])||'primary';
+      const evt=await createCalendarEvent(calId,titre,today,emp&&emp.couleur,newAdresse.trim(),'Créée via Blocage rapide par '+(emp?emp.nom:''));
+      if(!evt){notify('Erreur création de la job dans l\'agenda','err');setCreating(false);return;}
+      setJob({title:titre,location:newAdresse.trim(),id:evt.id});
+      setShowNew(false);
+      notify('✅ Job créée dans l\'agenda','success');
+      if(onJobCreated)onJobCreated();
+    }catch(e){notify('Erreur: '+e.message,'err');}
+    setCreating(false);
+  }
+
+  function ajouterBlocage(){cle.current+=1;setItems(prev=>[...prev,{...nouveauBloc(),_k:cle.current}]);}
+  function majBlocage(k,nv){
+    if(nv.ouvert===false){setItems(prev=>prev.filter(b=>b._k!==k));return;} // « Retirer » dans BlocageSection
+    setItems(prev=>prev.map(b=>b._k===k?{...nv,_k:k}:b));
+  }
+
+  async function envoyer(){
+    if(!items.length){notify('Ajoute au moins un blocage','warn');return;}
+    for(let i=0;i<items.length;i++){
+      const b=items[i];
+      if(!b.desc.trim()&&(b.pj||[]).length===0){notify('Blocage '+(i+1)+' : écris une explication ou joins un vocal / une photo','warn');return;}
+    }
+    if(!sid){notify('Blocage non envoyé : feuille introuvable','err');return;}
+    setSending(true);
+    try{
+      for(const b of items){
+        if(dejaEnregistres.current.has(b._k))continue;
+        await enregistrerBlocage(sid,emp,{id:job.id,title:job.title},{...b,desc:b.desc.trim()||'(voir pièces jointes)'},today);
+        dejaEnregistres.current.add(b._k);
+      }
+    }catch(e){console.error(e);notify('Erreur : blocage non enregistré — réessaie','err');setSending(false);return;}
+    let ok=false;
+    try{
+      const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
+      if(token)ok=await envoyerBlocagesCourriel({employe:emp.nom,job:job.title,adresse:job.location,
+        items:items.map(b=>({cause:b.cause==='Autre'?((b.autre||'').trim()||'Autre'):b.cause,desc:b.desc.trim(),perdu:b.perdu||0,pj:b.pj||[]}))},token);
+    }catch(e){console.error(e);}
+    notify(ok?'⚠️ '+items.length+' blocage'+(items.length>1?'s':'')+' envoyé'+(items.length>1?'s':'')+' au bureau':'⚠️ Blocage(s) enregistré(s) (courriel non envoyé)',ok?'success':'warn');
+    setSending(false);
+    onClose();
+  }
+
+  const cardBtn=sel=>({padding:'0.5rem 0.8rem',borderRadius:10,fontSize:12,cursor:'pointer',touchAction:'manipulation',fontWeight:sel?700:500,
+    background:sel?'rgba(210,153,34,0.15)':'var(--bg3)',border:'1px solid '+(sel?'#d29922':'var(--border)'),color:sel?'#d29922':'var(--text)'});
+
+  // ── Étape 0: employé ──
+  if(!emp)return(
+    <div style={{maxWidth:560,width:'100%'}}>
+      <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',marginBottom:'0.2rem'}}>⚠️ Blocage rapide</div>
+      <div style={{fontSize:11,color:'var(--muted)',marginBottom:'0.8rem'}}>Qui signale?</div>
+      <div className="emp-grid">
+        {(emps||[]).map(e=>(
+          <div key={e.nom} className="emp-card" onClick={()=>setEmp(e)}>
+            <div className="emp-av-lg" style={{background:e.couleur}}>{e.code}</div>
+            <div style={{fontSize:12,fontWeight:600}}>{e.nom}</div>
+          </div>
+        ))}
+      </div>
+      <button className="btn-s" style={{width:'100%',marginTop:'0.8rem'}} onClick={onClose}>← Retour</button>
+    </div>
+  );
+
+  return(
+    <div style={{maxWidth:560,width:'100%',textAlign:'left'}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'0.8rem'}}>
+        <div className="emp-av" style={{background:emp.couleur,width:34,height:34,fontSize:11}}>{emp.code}</div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'0.95rem'}}>⚠️ Blocage rapide</div>
+          <div style={{fontSize:11,color:'var(--muted)'}}>{emp.nom}{!empProp&&<span style={{textDecoration:'underline',cursor:'pointer',marginLeft:8}} onClick={()=>setEmp(null)}>changer</span>}</div>
+        </div>
+      </div>
+
+      <div style={{background:'rgba(210,153,34,0.12)',border:'1px solid rgba(210,153,34,0.5)',borderRadius:10,padding:'0.5rem 0.7rem',marginBottom:'0.8rem',fontSize:12,lineHeight:1.4}}>
+        <strong>C'est quoi un blocage?</strong> Tout ce qui a compliqué ou ralenti la job : accès impossible, client absent, matériel manquant, travail d'un autre métier pas fini, problème découvert en cours de route. <strong>Tu peux en signaler plusieurs</strong>, un par point. Ça ne remplace pas ton punch.
+      </div>
+
+      {/* 1. Job */}
+      <div className="csec">1. Job</div>
+      {job?(
+        <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.55rem 0.75rem',marginBottom:'0.8rem',display:'flex',alignItems:'center',gap:8}}>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:600}}>{job.title}</div>
+            {job.location&&<div style={{fontSize:11,color:'var(--muted)'}}>📍 {job.location}</div>}
+          </div>
+          <button className="btn-s" style={{fontSize:11}} onClick={()=>setJob(null)}>Changer</button>
+        </div>
+      ):(
+        <div style={{marginBottom:'0.8rem'}}>
+          {jobsAujourdhui.length>0&&(
+            <div style={{display:'flex',flexDirection:'column',gap:'0.35rem',marginBottom:'0.5rem'}}>
+              <div style={{fontSize:10,color:'var(--muted)'}}>Jobs d'aujourd'hui</div>
+              {jobsAujourdhui.map(j=>(
+                <div key={j.id||j.title} style={cardBtn(false)} onClick={()=>setJob({title:j.title,location:j.location||'',id:j.id})}>
+                  {j.title}{j.location&&<span style={{color:'var(--muted)',fontSize:10}}> — {j.location}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          <div style={{display:'flex',gap:'0.4rem',flexWrap:'wrap'}}>
+            <div style={cardBtn(showAgenda)} onClick={()=>{setShowAgenda(v=>!v);setShowNew(false);}}>📅 Autre job de l'agenda</div>
+            <div style={cardBtn(showNew)} onClick={()=>{setShowNew(v=>!v);setShowAgenda(false);}}>➕ Nouvelle job</div>
+          </div>
+          {showAgenda&&(
+            <div style={{marginTop:'0.5rem'}}>
+              <input value={agendaQ} onChange={e=>setAgendaQ(e.target.value)} placeholder="Rechercher (titre ou adresse)..." style={{width:'100%',fontSize:12,marginBottom:'0.4rem'}}/>
+              <div style={{maxHeight:220,overflowY:'auto',border:'1px solid var(--border)',borderRadius:8}}>
+                {agendaFiltre.length===0&&<div style={{padding:'0.6rem',fontSize:11,color:'var(--muted)'}}>Aucune job trouvée</div>}
+                {agendaFiltre.map((j,i)=>(
+                  <div key={(j.id||'')+i} onClick={()=>{setJob({title:j.title,location:j.location||'',id:j.id});setShowAgenda(false);}}
+                    style={{padding:'0.45rem 0.65rem',fontSize:12,borderTop:i?'1px solid var(--border)':'none',cursor:'pointer',touchAction:'manipulation'}}>
+                    <div style={{fontWeight:600}}>{j.title}</div>
+                    <div style={{fontSize:10,color:'var(--muted)'}}>{j.start?localDateStr(new Date(j.start)):''}{j.location?' · '+j.location:''}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {showNew&&(
+            <div style={{marginTop:'0.5rem',background:'var(--bg3)',borderRadius:10,padding:'0.65rem'}}>
+              <input value={newTitre} onChange={e=>setNewTitre(e.target.value)} placeholder="Titre de la job (ex: Tremblay — panneau)" style={{width:'100%',fontSize:12,marginBottom:'0.4rem'}}/>
+              <AddressInput value={newAdresse} onChange={setNewAdresse} placeholder="Adresse (optionnel)..." style={{marginBottom:'0.4rem'}}/>
+              <button className="btn-p" style={{marginTop:0,fontSize:12}} disabled={creating} onClick={creerJob}>{creating?'⏳ Création...':'✓ Créer la job (agenda d\'aujourd\'hui)'}</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 2. Blocages */}
+      {job&&(
+        <>
+          <div className="csec">2. Blocages ({items.length})</div>
+          {items.length===0&&<div style={{fontSize:12,color:'var(--muted)',marginBottom:'0.5rem'}}>Aucun blocage. Appuie sur « Ajouter un blocage ».</div>}
+          {items.map((b,i)=>(
+            <div key={b._k} style={{marginBottom:'0.6rem'}}>
+              <BlocageSection value={b} onChange={nv=>majBlocage(b._k,nv)} emp={emp} jobName={job.title} calendarIds={calendarIds} notify={notify}
+                titre={'⚠️ Blocage '+(i+1)} sansDefinition={true}/>
+            </div>
+          ))}
+          <button className="btn-s" style={{width:'100%',marginBottom:'0.6rem',borderColor:'rgba(210,153,34,0.6)',color:'#d29922',fontWeight:700}} onClick={ajouterBlocage}>
+            ➕ Ajouter {items.length?'un autre blocage':'un blocage'}
+          </button>
+          <button className="btn-p" disabled={sending||items.length===0} onClick={envoyer}>
+            {sending?'⏳ Envoi...':'✓ Envoyer '+items.length+' blocage'+(items.length>1?'s':'')+' au bureau'}
           </button>
         </>
       )}
@@ -6508,7 +6729,7 @@ async function enregistrerBlocage(sid,emp,job,v,dateJob){
 }
 // Section « Signaler un blocage » de l'écran Confirmer une job (v235) — le blocage part avec la confirmation.
 // Seul le bureau le règle, dans le CRM.
-function BlocageSection({value,onChange,emp,jobName,calendarIds,notify}){
+function BlocageSection({value,onChange,emp,jobName,calendarIds,notify,titre,sansDefinition}){
   const v=value;const set=o=>onChange({...v,...o});
   const [envoi,setEnvoi]=useState('');
   const [dossier,setDossier]=useState(null);
@@ -6536,13 +6757,13 @@ function BlocageSection({value,onChange,emp,jobName,calendarIds,notify}){
   return(
     <div className="dur-section" style={{border:'1px solid rgba(210,153,34,0.5)'}}>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'0.4rem'}}>
-        <div className="csec" style={{color:'#d29922',margin:0}}>⚠️ Blocage — envoyé au bureau avec la confirmation</div>
+        <div className="csec" style={{color:'#d29922',margin:0}}>{titre||'⚠️ Blocage — envoyé au bureau avec la confirmation'}</div>
         <button onClick={()=>onChange({ouvert:false,cause:BLOCAGE_CAUSES[0],autre:'',desc:'',pj:[],perdu:0})} style={{background:'none',border:'none',color:'var(--muted)',fontSize:13,cursor:'pointer'}}>Retirer</button>
       </div>
-      <div style={{background:'rgba(210,153,34,0.08)',borderRadius:8,padding:'0.5rem 0.6rem',marginBottom:'0.5rem',fontSize:12,lineHeight:1.45,color:'var(--text)'}}>
+      {!sansDefinition&&<div style={{background:'rgba(210,153,34,0.08)',borderRadius:8,padding:'0.5rem 0.6rem',marginBottom:'0.5rem',fontSize:12,lineHeight:1.45,color:'var(--text)'}}>
         <strong>C'est quoi un blocage?</strong> Tout ce qui a compliqué ou ralenti la job : accès impossible, client absent, matériel manquant, travail d'un autre corps de métier pas fini, problème découvert en cours de route, etc.
         <div style={{marginTop:4,color:'var(--muted)'}}>Choisis la cause, explique ce qui s'est passé et estime le temps perdu à cause de ça.</div>
-      </div>
+      </div>}
       <select value={v.cause} onChange={e=>set({cause:e.target.value})} style={{...champ,marginBottom:'0.5rem'}}>{BLOCAGE_CAUSES.map(x=><option key={x}>{x}</option>)}</select>
       {v.cause==='Autre'&&<input value={v.autre} onChange={e=>set({autre:e.target.value})} placeholder="Quel problème ?" style={{...champ,marginBottom:'0.5rem'}}/>}
       <textarea value={v.desc} onChange={e=>set({desc:e.target.value})} rows={3} placeholder="Explication : ce qui bloque, ce qu'il faut faire, ce qui manque…" style={{...champ,marginBottom:'0.5rem',resize:'vertical'}}/>
@@ -7165,7 +7386,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
     else if(step==='duration-out')setStep('mode');
     else if(step==='history'||step==='projets'||step==='agenda-emp'||step==='mon-dashboard')setStep('mode');
     else if(step==='admin-team'||step==='config-emp')setStep('mode');
-    else if(step==='depot-rapide')setStep(selEmp?'mode':'emps');
+    else if(step==='depot-rapide'||step==='blocage-rapide')setStep(selEmp?'mode':'emps');
     else setStep('emps');
   }
 
@@ -7625,6 +7846,14 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
 
   // ── MODE SELECTION ──
   // ── DÉPÔT RAPIDE AP / OT ──
+  // ── BLOCAGE RAPIDE ──
+  if(step==='blocage-rapide')return(
+    <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
+      <BlocageRapide emps={emps} emp={selEmp} sid={sid} jobs={jobs} allJobs={allJobs} calendarIds={calendarIds}
+        notify={notify} onJobCreated={refreshCalJobs}
+        onClose={()=>setStep(selEmp?'mode':'emps')}/>
+    </div>
+  );
   if(step==='depot-rapide')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
       <DepotRapide emps={emps} emp={selEmp} sid={sid} jobs={jobs} allJobs={allJobs} calendarIds={calendarIds}
@@ -7676,6 +7905,11 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           <span style={{position:'absolute',top:-9,right:12,background:'var(--accent)',color:'#fff',fontSize:10,fontWeight:800,letterSpacing:'0.08em',padding:'2px 9px',borderRadius:20}}>NOUVEAU</span>
           <div className="mode-icon" style={{fontSize:'1.6rem'}}>📋</div>
           <div><div className="mode-title" style={{fontSize:'1.05rem'}}>Dépôt AP / OT rapide</div><div className="mode-desc">Appel de service ou ordre de travail — photos, vocal. Ne remplace pas ton punch.</div></div>
+        </div>
+        <div className="mode-btn" style={{borderColor:'#d29922',borderWidth:2,boxShadow:'0 0 0 1px #d29922, 0 4px 14px rgba(210,153,34,0.25)',position:'relative'}} onClick={()=>{refreshCalJobs();setStep('blocage-rapide');}}>
+          <span style={{position:'absolute',top:-9,right:12,background:'#d29922',color:'#fff',fontSize:10,fontWeight:800,letterSpacing:'0.08em',padding:'2px 9px',borderRadius:20}}>NOUVEAU</span>
+          <div className="mode-icon" style={{fontSize:'1.6rem'}}>⚠️</div>
+          <div><div className="mode-title" style={{fontSize:'1.05rem'}}>Blocage rapide</div><div className="mode-desc">Signale un ou plusieurs blocages — photos, vocal ou texte. Ne remplace pas ton punch.</div></div>
         </div>
         {selEmp.permissions&&selEmp.permissions.some(p=>p!=='config')&&(
           <div className="mode-btn" onClick={()=>setStep('admin-team')}>
@@ -7740,6 +7974,19 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
                 <span>
                   <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem'}}>Dépôt AP / OT rapide</div>
                   <div style={{fontSize:12,opacity:0.95,marginTop:2}}>Photos + vocal d'un appel de service ou ordre de travail. Ne remplace pas ton punch.</div>
+                </span>
+              </div>
+            </button>
+            <button onClick={()=>{refreshCalJobs();setSelEmp(null);setStep('blocage-rapide');}}
+              style={{position:'relative',width:'100%',marginBottom:'0.9rem',padding:'0.9rem 1rem',borderRadius:14,border:'2px solid #d29922',
+                background:'rgba(210,153,34,0.14)',color:'var(--text)',cursor:'pointer',touchAction:'manipulation',textAlign:'left',
+                boxShadow:'0 4px 16px rgba(210,153,34,0.25)'}}>
+              <span style={{position:'absolute',top:-9,right:12,background:'#d29922',color:'#fff',fontSize:10,fontWeight:800,letterSpacing:'0.08em',padding:'2px 9px',borderRadius:20}}>NOUVEAU</span>
+              <div style={{display:'flex',alignItems:'center',gap:12}}>
+                <span style={{fontSize:30}}>⚠️</span>
+                <span>
+                  <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.05rem',color:'#d29922'}}>Blocage rapide</div>
+                  <div style={{fontSize:12,color:'var(--muted)',marginTop:2}}>Un ou plusieurs blocages sur le chantier : photos, vocal ou texte.</div>
                 </span>
               </div>
             </button>
