@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v249';
+const APP_VERSION='v250';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1942,36 +1942,56 @@ async function updateBanqueStatus(sid,row,statut){
 // (colonne A, format dd/MM/yyyy) est dans le passé. Statut "manquante" si
 // l'appel de service (colonne K) est aussi vide, sinon "en-traitement".
 function _cellStr_(v){return(v===null||v===undefined)?'':String(v).trim();}
+// v250 : alignée sur le CRM — lit depuis la ligne 1 (les en-têtes/diviseurs sont écartés faute de date lisible),
+// date jj/mm/aaaa ou ISO, « ** » ou « - » (colonne K ou M) = pas à facturer, ID d'événement par en-tête (sinon colonne N).
+function _dateSuivi_(str){
+  const s=_cellStr_(str);if(!s)return null;
+  let m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+  if(m){const yy=m[3].length===2?'20'+m[3]:m[3];const d=new Date(parseInt(yy,10),parseInt(m[2],10)-1,parseInt(m[1],10));return isNaN(d.getTime())?null:d;}
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m){const d=new Date(parseInt(m[1],10),parseInt(m[2],10)-1,parseInt(m[3],10));return isNaN(d.getTime())?null:d;}
+  return null;
+}
 async function getFacturesManquantes(){
   const out=[];
   const today=new Date();today.setHours(0,0,0,0);
+  const pasAFacturer=v=>/^\*\*/.test(v)||/^-+$/.test(v);
   for(const feuille of SUIVI_TRAVAUX_SHEETS){
     let res;
     try{
       res=await withTokenCheck(()=>gapi.client.sheets.spreadsheets.values.get({
         spreadsheetId:SUIVI_TRAVAUX_SID,
-        range:"'"+feuille+"'!A3:N"
+        range:"'"+feuille+"'!A1:Z"
       }));
     }catch(e){console.warn('[Facture manquante] onglet "'+feuille+'" ignoré:',e&&e.message||e);continue;}
     const rows=res.result.values||[];
+    let iEv=13;
+    for(let i=0;i<3&&i<rows.length;i++){const k=(rows[i]||[]).findIndex(h=>/calendar|event\s*id/i.test(String(h||'')));if(k>=0){iEv=k;break;}}
     rows.forEach(r=>{
-      const dateStr=_cellStr_(r[0]);
+      const d=_dateSuivi_(r[0]);
       const projet=_cellStr_(r[1]);
       const appel=_cellStr_(r[10]);
       const ot=_cellStr_(r[11]);
       const facture=_cellStr_(r[12]);
-      const eventId=_cellStr_(r[13]);
-      if(!projet)return;
+      const eventId=_cellStr_(r[iEv]);
+      if(!d||!projet)return;
+      if(pasAFacturer(appel)||pasAFacturer(facture))return;
       if(facture!==''&&facture!=='0')return;
-      const parts=dateStr.split('/');
-      if(parts.length!==3)return;
-      const d=new Date(parseInt(parts[2]),parseInt(parts[1])-1,parseInt(parts[0]));
-      if(isNaN(d.getTime())||d>=today)return;
-      out.push({feuille,date:dateStr,dateObj:d,projet,appel,ot,eventId,statut:appel?'en-traitement':'manquante'});
+      if(d>=today)return;
+      out.push({feuille,date:_cellStr_(r[0]),dateObj:d,projet,appel,ot,eventId,statut:appel?'en-traitement':'manquante'});
     });
   }
   out.sort((a,b)=>a.dateObj-b.dateObj);
   return out;
+}
+// À qui est la facture : job de l'agenda par ID d'événement (avec ou sans suffixe _…), sinon codes/initiales dans le projet (comme le CRM)
+function assigneesFacture(t,jobsForLookup,emps){
+  const id=t.eventId||'';
+  const base=id.split('_')[0];
+  const job=id?(jobsForLookup||[]).find(j=>j.id===id||String(j.id).split('_')[0]===base):null;
+  let a=job?jobAssignees(job,emps||[]):[];
+  if(!a.length)a=(emps||[]).filter(e=>mentionsEmployee(t.projet,e));
+  return a;
 }
 async function addMessage(sid,de,action,details){
   await gapi.client.sheets.spreadsheets.values.append({spreadsheetId:sid,range:'Messages!A1',valueInputOption:'RAW',insertDataOption:'INSERT_ROWS',resource:{values:[[de,action,details,new Date().toISOString(),'non']]}});
@@ -8116,6 +8136,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
 
   if(step==='mode'&&selEmp)return(
     <div className="welcome">
+      <FacturesManquantesPopup emp={selEmp} emps={emps} jobsForLookup={allJobs.length>0?allJobs:jobs} onVoir={()=>{refreshCalJobs();setMonDashTab('factures');setStep('mon-dashboard');}}/>
       <TimeHeader/>
       <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:'1.25rem'}}>
         <div className="emp-av" style={{background:selEmp.couleur,width:36,height:36,fontSize:12}}>{selEmp.code}</div>
@@ -8517,6 +8538,47 @@ function EmployeesManager({sid,notify,onRefresh}){
 // Lit le Sheet externe "Suivi Travaux" et enrichit chaque ligne avec la
 // couleur/nom du ou des employés assignés, en croisant l'Event ID (colonne N,
 // même ID que Google Calendar) avec les jobs déjà chargés dans l'app.
+// v250 : à l'ouverture du compte d'un employé — ses factures manquantes en premier (une fois par jour, fermable)
+function FacturesManquantesPopup({emp,emps,jobsForLookup,onVoir}){
+  const cle='pp_fm_ferme_'+emp.nom;
+  const aujourdhui=localDateStr();
+  const [ouvert,setOuvert]=useState(()=>{try{return localStorage.getItem(cle)!==aujourdhui;}catch(e){return true;}});
+  const [liste,setListe]=useState(null);
+  useEffect(()=>{
+    if(!ouvert)return;let ok=true;
+    getFacturesManquantes().then(f=>{if(ok)setListe(f);}).catch(()=>{if(ok)setListe([]);});
+    return()=>{ok=false;};
+  },[ouvert]);
+  const mine=liste?liste.map(t=>({...t,assignees:assigneesFacture(t,jobsForLookup,emps)})).filter(t=>t.assignees.some(e=>e.nom===emp.nom)):[];
+  const manq=mine.filter(t=>t.statut==='manquante'),trait=mine.filter(t=>t.statut==='en-traitement');
+  if(!ouvert||!liste||mine.length===0)return null;
+  const fermer=()=>{try{localStorage.setItem(cle,aujourdhui);}catch(e){}setOuvert(false);};
+  const ligne=(t,i)=>(
+    <div key={i} style={{padding:'0.45rem 0',borderTop:'1px solid var(--border)',fontSize:13}}>
+      <div style={{fontWeight:600}}>{t.projet}</div>
+      <div style={{fontSize:11,color:'var(--muted)'}}>{t.feuille} · {t.date}{t.appel?' · AP '+t.appel:' · aucun appel de service'}</div>
+    </div>);
+  return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.65)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+      <div style={{background:'var(--bg2, #161b22)',border:'1px solid var(--border)',borderRadius:14,maxWidth:480,width:'100%',maxHeight:'85vh',display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'1rem 1rem 0.5rem'}}>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem'}}>🧾 {emp.nom.split(' ')[0]}, tes factures manquantes</div>
+          <div style={{fontSize:12,color:'var(--muted)'}}>{manq.length} sans appel de service · {trait.length} en traitement</div>
+        </div>
+        <div style={{overflowY:'auto',padding:'0 1rem',flex:1}}>
+          {manq.length>0&&<div style={{fontSize:11,fontWeight:700,color:'var(--danger)',margin:'0.4rem 0 0'}}>🔴 À inscrire — aucun appel de service</div>}
+          {manq.map(ligne)}
+          {trait.length>0&&<div style={{fontSize:11,fontWeight:700,color:'var(--warning)',margin:'0.7rem 0 0'}}>🟠 En traitement — facture à venir</div>}
+          {trait.map(ligne)}
+        </div>
+        <div style={{display:'flex',gap:8,padding:'0.8rem 1rem'}}>
+          <button className="btn-p" style={{marginTop:0,flex:1}} onClick={fermer}>OK, fermer pour aujourd'hui</button>
+          <button className="btn-s" onClick={()=>{fermer();onVoir();}}>Voir tout</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 function FacturesManquantesView({emps,jobsForLookup,meEmp}){
   const [facturesManquantes,setFacturesManquantes]=useState(null); // null = pas encore chargé
   const [loadingFactures,setLoadingFactures]=useState(false);
@@ -8538,10 +8600,7 @@ function FacturesManquantesView({emps,jobsForLookup,meEmp}){
     return jobAssignees(job,emps||[]);
   }
 
-  let liste=(facturesManquantes||[]).map(t=>{
-    const job=getJobByEventId(t.eventId);
-    return{...t,assignees:job?getAssignees(job):[]};
-  });
+  let liste=(facturesManquantes||[]).map(t=>({...t,assignees:assigneesFacture(t,jobsForLookup,emps)}));
   if(meEmp&&scope==='mine')liste=liste.filter(t=>t.assignees.some(e=>e.nom===meEmp.nom));
 
   const manquantes=liste.filter(t=>t.statut==='manquante');
