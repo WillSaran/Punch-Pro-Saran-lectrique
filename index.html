@@ -781,7 +781,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v243';
+const APP_VERSION='v244';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1988,7 +1988,30 @@ async function markMessageRead(sid,row){
 
 // ── DRIVE ────────────────────────────────────────────────────────────────────
 // Upload vers un dossier Drive spécifique, retourne {id, webViewLink, name}
-async function uploadToDrive(file, empName, jobName, folderId){
+// Réduit une photo de téléphone (3-10 Mo) à ~200-500 Ko avant l'envoi : l'upload est beaucoup plus rapide.
+// Si quoi que ce soit échoue (format non lisible, etc.), on renvoie le fichier d'origine tel quel.
+async function compresserImage(file,maxPx=1600,qualite=0.8){
+  try{
+    if(!file||!/^image\/(jpeg|png|webp|heic|heif)/i.test(file.type||'')||file.size<250*1024)return file;
+    let bmp;
+    try{bmp=await createImageBitmap(file,{imageOrientation:'from-image'});}
+    catch(e){
+      bmp=await new Promise((res,rej)=>{const im=new Image();const u=URL.createObjectURL(file);im.onload=()=>{URL.revokeObjectURL(u);res(im);};im.onerror=rej;im.src=u;});
+    }
+    const w0=bmp.width||bmp.naturalWidth,h0=bmp.height||bmp.naturalHeight;
+    if(!w0||!h0)return file;
+    const k=Math.min(1,maxPx/Math.max(w0,h0));
+    const c=document.createElement('canvas');c.width=Math.round(w0*k);c.height=Math.round(h0*k);
+    c.getContext('2d').drawImage(bmp,0,0,c.width,c.height);
+    if(bmp.close)bmp.close();
+    const blob=await new Promise(r=>c.toBlob(r,'image/jpeg',qualite));
+    if(!blob||blob.size>=file.size)return file;
+    const base=(file.name||'photo').replace(/\.[^.]+$/,'');
+    return new File([blob],base+'.jpg',{type:'image/jpeg'});
+  }catch(e){console.warn('compresserImage:',e);return file;}
+}
+
+async function uploadToDrive(file, empName, jobName, folderId, opts){
   try{
     const token=gapi.client.getToken();
     if(!token||!token.access_token){console.error('No access token');return{url:'',id:''};}
@@ -2025,9 +2048,10 @@ async function uploadToDrive(file, empName, jobName, folderId){
     const data=result.data;
     // Rendre le fichier lisible publiquement (supportsAllDrives requis aussi)
     try{
-      await fetch('https://www.googleapis.com/drive/v3/files/'+data.id+'/permissions?supportsAllDrives=true',
+      const pPerm=fetch('https://www.googleapis.com/drive/v3/files/'+data.id+'/permissions?supportsAllDrives=true',
         {method:'POST',headers:{'Authorization':'Bearer '+token.access_token,'Content-Type':'application/json'},
-        body:JSON.stringify({role:'reader',type:'anyone'})});
+        body:JSON.stringify({role:'reader',type:'anyone'})}).catch(e=>console.warn('Permission set failed:',e));
+      if(!(opts&&opts.rapide))await pPerm; // mode rapide : on n'attend pas la permission, elle se règle en arrière-plan
     }catch(e){console.warn('Permission set failed:',e);}
 
     return{url:data.webViewLink||('https://drive.google.com/file/d/'+data.id+'/view'),id:data.id,name:fname};
@@ -2433,16 +2457,17 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
     setCreating(false);
   }
 
-  async function uploadPhoto(f){
-    if(!f)return;
+  async function uploadPhoto(f0){
+    if(!f0)return;
     if(!type||!job){notify('Choisis AP/OT et la job d\'abord','warn');return;}
-    const ext=f.name&&f.name.includes('.')?'.'+f.name.split('.').pop():'.jpg';
-    const n=fichiers.filter(x=>!(x.split('|')[1]||'').startsWith('VOCAL_')).length;
-    const finalName=type+'_'+clean(numero.trim()||'sans-numero')+'_'+clean(job.title)+(n>0?'_'+(n+1):'')+ext;
-    setUploading(true);notify('⏳ Upload...','warn');
+    setUploading(true);notify('⏳ Envoi de la photo…','warn');
     try{
+      const f=await compresserImage(f0);   // photo réduite = envoi beaucoup plus rapide
+      const ext=f.name&&f.name.includes('.')?'.'+f.name.split('.').pop():'.jpg';
+      const n=fichiers.filter(x=>!(x.split('|')[1]||'').startsWith('VOCAL_')).length;
+      const finalName=type+'_'+clean(numero.trim()||'sans-numero')+'_'+clean(job.title)+(n>0?'_'+(n+1):'')+ext;
       const renamed=new File([f],finalName,{type:f.type});
-      const result=await uploadToDrive(renamed,emp.nom,finalName.replace(/\.[^.]+$/,''),PAD_SERVICE_ID);
+      const result=await uploadToDrive(renamed,emp.nom,finalName.replace(/\.[^.]+$/,''),PAD_SERVICE_ID,{rapide:true});
       if(!result.url||!result.id){notify('Erreur: '+(result.error||'Vérifiez permissions Drive'),'err');setUploading(false);return;}
       let cal=false;
       if(calendarIds&&job.title){
@@ -6731,22 +6756,30 @@ async function enregistrerBlocage(sid,emp,job,v,dateJob){
 // Seul le bureau le règle, dans le CRM.
 function BlocageSection({value,onChange,emp,jobName,calendarIds,notify,titre,sansDefinition}){
   const v=value;const set=o=>onChange({...v,...o});
-  const [envoi,setEnvoi]=useState('');
   const [dossier,setDossier]=useState(null);
+  const [enCours,setEnCours]=useState([]);   // photos en train de s'envoyer : [{k,nom,aperc}] — aperçu instantané
+  const [apercus,setApercus]=useState({});   // id du fichier Drive -> aperçu local (blob), pour garder la vignette
+  const vRef=useRef(v);vRef.current=v;       // toujours la valeur la plus récente (évite d'écraser du texte tapé pendant l'envoi)
   useEffect(()=>{if(!v.ouvert||dossier)return;let ok=true;dossierBlocages().then(d=>{if(ok)setDossier(d);});return()=>{ok=false;};},[v.ouvert]);
   async function ajouterPhotos(files){
     if(!files.length)return;
-    setEnvoi('Envoi des photos…');
-    const d=dossier||await dossierBlocages();
-    const ajout=[];
-    for(const f of files){
-      const nom='BLOCAGE_'+(jobName||'job').replace(/[\\/|]/g,'-')+'_'+Date.now()+'_'+(f.name||'photo');
-      const r=await uploadToDrive(new File([f],nom,{type:f.type||'application/octet-stream'}),emp.nom,jobName,d);
-      if(r.id)ajout.push({k:'fichier',nom:f.name||nom,id:r.id,mime:f.type||''});
-      else notify('Photo non envoyée : '+(r.error||'vérifie les permissions Drive'),'err');
-    }
-    onChange({...v,pj:[...(v.pj||[]),...ajout]});
-    setEnvoi('');
+    const lots=files.map((f,i)=>({k:Date.now()+'_'+i,f,aperc:/^image\//.test(f.type||'')?URL.createObjectURL(f):''}));
+    setEnCours(prev=>[...prev,...lots.map(l=>({k:l.k,nom:l.f.name||'photo',aperc:l.aperc}))]);   // feedback immédiat
+    const dP=dossier?Promise.resolve(dossier):dossierBlocages();
+    await Promise.all(lots.map(async l=>{   // toutes les photos partent en parallèle
+      try{
+        const d=await dP;
+        const f=await compresserImage(l.f);
+        const nom='BLOCAGE_'+(jobName||'job').replace(/[\\/|]/g,'-')+'_'+Date.now()+'_'+(f.name||'photo');
+        const r=await uploadToDrive(new File([f],nom,{type:f.type||'application/octet-stream'}),emp.nom,jobName,d,{rapide:true});
+        if(r.id){
+          setApercus(p=>({...p,[r.id]:l.aperc}));
+          vRef.current={...vRef.current,pj:[...(vRef.current.pj||[]),{k:'fichier',nom:l.f.name||nom,id:r.id,mime:f.type||l.f.type||''}]};
+          onChange(vRef.current);
+        }else notify('Photo non envoyée : '+(r.error||'vérifie les permissions Drive'),'err');
+      }catch(e){console.error(e);notify('Photo non envoyée : '+e.message,'err');}
+      setEnCours(prev=>prev.filter(x=>x.k!==l.k));
+    }));
   }
   const champ={width:'100%',padding:'0.5rem',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg3)',color:'var(--text)',fontSize:14,boxSizing:'border-box'};
   if(!v.ouvert)return(
@@ -6778,11 +6811,30 @@ function BlocageSection({value,onChange,emp,jobName,calendarIds,notify,titre,san
         ))}
       </div>
       <VoiceNoteRecorder empName={emp.nom} jobName={jobName} calendarIds={calendarIds} calEventTitle={jobName||null} folderId={dossier}
-        onUploaded={raw=>{const [u,nom]=raw.split('|');const m=u.match(/\/d\/([^/]+)/);onChange({...v,pj:[...(v.pj||[]),m?{k:'fichier',nom:nom||'Mémo vocal',id:m[1],mime:'audio/webm'}:{k:'lien',url:u,nom:nom||'Mémo vocal'}]});}} notify={notify}/>
+        onUploaded={raw=>{const [u,nom]=raw.split('|');const m=u.match(/\/d\/([^/]+)/);vRef.current={...vRef.current,pj:[...(vRef.current.pj||[]),m?{k:'fichier',nom:nom||'Mémo vocal',id:m[1],mime:'audio/webm'}:{k:'lien',url:u,nom:nom||'Mémo vocal'}]};onChange(vRef.current);}} notify={notify}/>
       <label style={{display:'inline-block',padding:'0.45rem 0.8rem',borderRadius:8,border:'1px solid var(--border)',fontSize:13,cursor:'pointer',marginBottom:'0.4rem'}}>
-        {envoi||'📷 Photos du blocage'}<input type="file" accept="image/*,video/*" multiple style={{display:'none'}} disabled={!!envoi} onChange={e=>{const l=[...e.target.files];e.target.value='';ajouterPhotos(l);}}/>
+        {enCours.length?'📷 + Ajouter une autre photo':'📷 Photos du blocage'}<input type="file" accept="image/*,video/*" multiple style={{display:'none'}} onChange={e=>{const l=[...e.target.files];e.target.value='';ajouterPhotos(l);}}/>
       </label>
-      {(v.pj||[]).length>0&&<div style={{fontSize:12,color:'var(--muted)'}}>{v.pj.map((x,i)=><div key={i}>{/^audio/.test(x.mime||'')?'🎤':'📷'} {x.nom} <span style={{cursor:'pointer',color:'var(--danger)'}} onClick={()=>onChange({...v,pj:v.pj.filter((y,k)=>k!==i)})}>✕</span></div>)}</div>}
+      {(enCours.length>0||(v.pj||[]).length>0)&&(
+        <div style={{fontSize:12,color:'var(--muted)'}}>
+          {enCours.map(x=>(
+            <div key={x.k} style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+              <div style={{position:'relative',width:48,height:48,borderRadius:8,overflow:'hidden',background:'var(--bg3)',flexShrink:0}}>
+                {x.aperc&&<img src={x.aperc} alt="" style={{width:'100%',height:'100%',objectFit:'cover',opacity:0.5}}/>}
+                <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>⏳</div>
+              </div>
+              <span>Envoi en cours… ne ferme pas l'écran</span>
+            </div>
+          ))}
+          {(v.pj||[]).map((x,i)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',gap:8,marginBottom:4}}>
+              {apercus[x.id]?<img src={apercus[x.id]} alt="" style={{width:48,height:48,borderRadius:8,objectFit:'cover',flexShrink:0}}/>:<span style={{fontSize:18}}>{/^audio/.test(x.mime||'')?'🎤':'📷'}</span>}
+              <span style={{flex:1,minWidth:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>✅ {x.nom}</span>
+              <span style={{cursor:'pointer',color:'var(--danger)',padding:'0 0.4rem'}} onClick={()=>{vRef.current={...vRef.current,pj:vRef.current.pj.filter((y,k)=>k!==i)};onChange(vRef.current);}}>✕</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
