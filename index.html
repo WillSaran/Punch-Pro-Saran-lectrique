@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v275';
+const APP_VERSION='v276';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -864,20 +864,20 @@ const CATALOGUE={
     {code:'5601-P2W',desc:'Interrupteur simple Décora',unite:'un'},
     {code:'5603-P2W',desc:'Interrupteur 3-voies Décora',unite:'un'},
     {code:'5604',desc:'Interrupteur 4-voies Décora',unite:'un'},
-    {code:'1GPJ/1GSW',desc:'Plaque 1 gang',unite:'un'},
-    {code:'2GPJ/2GSW',desc:'Plaque 2 gangs',unite:'un'},
-    {code:'3GPJ/3GSW',desc:'Plaque 3 gangs',unite:'un'},
-    {code:'4GPJ/4GSW',desc:'Plaque 4 gangs',unite:'un'},
+    {code:'1GPJ/1GSW',desc:'Plaque 1 gang',unite:'un',options:['GPJ — avec vis','GSW — sans vis']},
+    {code:'2GPJ/2GSW',desc:'Plaque 2 gangs',unite:'un',options:['GPJ — avec vis','GSW — sans vis']},
+    {code:'3GPJ/3GSW',desc:'Plaque 3 gangs',unite:'un',options:['GPJ — avec vis','GSW — sans vis']},
+    {code:'4GPJ/4GSW',desc:'Plaque 4 gangs',unite:'un',options:['GPJ — avec vis','GSW — sans vis']},
     {code:'SÉCHEUSE 30A',desc:'Prise sécheuse 30A',unite:'un'},
     {code:'POÊLE 50A',desc:'Prise poêle 50A',unite:'un'},
-    {code:'DVCL153',desc:'Variateur Décora 150W',unite:'un'},
+    {code:'VARIATEUR',desc:'Variateur Décora',unite:'un',options:['Lutron DVCL153 150W','Leviton']},
     {code:'FLP4',desc:'Luminaire FLP4',unite:'un',options:['3000K','4000K','CCT']},
     {code:'FLP4G',desc:'Luminaire encastré FLP4G',unite:'un',options:['3000K','4000K','CCT']},
     {code:'CARILLON',desc:'Carillon de porte',unite:'un'},
     {code:'TIMER TI072',desc:'Minuterie TI072',unite:'un'},
     {code:'FEU P1275CA',desc:'Détecteur de fumée',unite:'un'},
     {code:'MONOX 900-0119',desc:'Détecteur CO',unite:'un'},
-    {code:'RC840',desc:'Relais RC840 120/240V',unite:'un'},
+    {code:'RC840',desc:'Relais RC840',unite:'un',options:['120V','240V']},
     {code:'KIT PICO',desc:'Kit Pico Lutron',unite:'un'},
   ],
   'Divers':[
@@ -901,17 +901,19 @@ const CATALOGUE={
     {code:'RFA BUSHING',desc:'Bague CI27',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
   ],
   'Panneaux':[
-    // v273 : chaque panneau en deux versions — main lug (sans disjoncteur principal) ou avec disjoncteur principal
-    {code:'QO CQO1',desc:'Panneau QO (Square D) — main lug',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
-    {code:'QO CQO1',desc:'Panneau QO (Square D) — disj. principal',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
-    {code:'CHOM',desc:'Panneau CHOM — main lug',unite:'un',options:['24/48cir 125A','32cir 125A','42/84cir 200A']},
-    {code:'CHOM',desc:'Panneau CHOM — disj. principal',unite:'un',options:['24/48cir 125A','32cir 125A','42/84cir 200A']},
-    {code:'SIEQ',desc:'Panneau Siemens — main lug',unite:'un',options:['40cir 200A','60cir 200A']},
-    {code:'SIEQ',desc:'Panneau Siemens — disj. principal',unite:'un',options:['40cir 200A','60cir 200A']},
+    // v276 : juste les marques ; « main lug / disjoncteur principal » se choisit dans le panneau (le pad ajoute la mention)
+    {code:'QO CQO1',desc:'Panneau QO',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
+    {code:'CHOM',desc:'Panneau CHOM',unite:'un',options:['24/48cir 125A','32cir 125A','42/84cir 200A']},
+    {code:'SIEQ',desc:'Panneau SIEQ',unite:'un',options:['40cir 200A','60cir 200A']},
   ],
   'Disjoncteurs':[
-    {code:'BR DISJ',desc:'Disjoncteur BR/STAB',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A']},
-    {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-100A']},
+    // v276 : marques de disjoncteurs (toujours affichées, même si certains produits manquent) — mêmes calibres pour toutes
+    {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'CHOM DISJ',desc:'Disjoncteur CHOM',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'SIEQ DISJ',desc:'Disjoncteur SIEQ',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'BR DISJ',desc:'Disjoncteur BR',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'QBH DISJ',desc:'Disjoncteur QBH',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'STABLOK DISJ',desc:'Disjoncteur Stab-Lok',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
     {code:'PCAFI',desc:'Disjoncteur PCAFI (arc fault)',unite:'un',options:['1P-15A','1P-20A']},
     {code:'PDF',desc:'Disjoncteur PDF (fuite à la terre)',unite:'un',options:['1P-15A','1P-20A']},
     {code:'DOUBLE',desc:'Disjoncteur double',unite:'un',options:['15/15A','20/20A','15/20A','20/15A']},
@@ -8819,14 +8821,15 @@ function aplatirCatalogue(){
   }));
   return out;
 }
-function MaterielPicker({lignes,onChange}){
+function MaterielPicker({lignes,onChange,onApercu}){
   // v266 : le pad électronique, une page à la fois comme le carnet : Fil → Boîtes → Décora → Divers → Conduit → Panneaux → Disjoncteurs → Chauffage…
   // En haut : « Rien utilisé en… » pour sauter les pages vides. En bas de chaque page : chercher un produit / écrire à la main, puis page suivante.
   const [page,setPage]=useState(0);
   const [saute,setSaute]=useState({});    // catégories où rien n'a été utilisé
   const [q,setQ]=useState('');
   const [manuel,setManuel]=useState('');
-  const [sousSel,setSousSel]=useState('');   // v273 : sous-catégorie ouverte (Panneaux, Disjoncteurs, Chauffage)
+  const [sousSel,setSousSel]=useState('');
+  const [entree,setEntree]=useState('Main lug');   // v276 : panneaux — main lug ou disjoncteur principal   // v273 : sous-catégorie ouverte (Panneaux, Disjoncteurs, Chauffage)
   const [typConduit,setTypConduit]=useState('PVC');   // v272 : le conduit ouvre sur PVC
   const [lim,setLim]=useState({});
   const tout=useMemo(()=>aplatirCatalogue(),[_catCrmEtat]);
@@ -8894,7 +8897,7 @@ function MaterielPicker({lignes,onChange}){
   const resultats=mots.length?tout.filter(i=>{const t=(i.code+' '+i.desc+' '+i.cat).toLowerCase();return mots.every(m=>t.includes(m));}).slice(0,25):[];
   const manuelsPage=lignes.filter(l=>l.code==='Manuel'&&l.cat===sc.cat);
   const ajouterManuel=()=>{const t=manuel.trim();if(!t)return;const i={cat:sc.cat,sous:'',code:'Manuel',desc:t,unite:''};ajuster(i,1);setManuel('');};
-  const max=lim[sc.cat]||30;let compte=0;
+  const max=lim[sc.cat]||30;let compte=0;let coupe=false;
   if(!sections.length)return <div style={{fontSize:12,color:'var(--muted)'}}>Catalogue en chargement… écris le matériel dans « Autre matériel » plus bas.</div>;
   return <div id="pad-haut" style={{scrollMarginTop:8}} onTouchStart={debutTouche} onTouchEnd={finTouche}>
     <div style={{fontSize:11,color:'var(--muted)',margin:'0 0 4px'}}>Rien utilisé en… <span style={{opacity:0.7}}>(touche pour sauter la page)</span></div>
@@ -8912,11 +8915,14 @@ function MaterielPicker({lignes,onChange}){
       {sc.aTyp&&<div data-noswipe="1" style={{display:'flex',gap:8,margin:'0.7rem 0 0.2rem'}}>
         {['PVC','EMT'].map(t=><div key={t} onClick={()=>setTypConduit(t)} style={{flex:1,textAlign:'center',padding:'0.55rem',borderRadius:12,fontWeight:800,fontSize:14,cursor:'pointer',background:typConduit===t?'var(--emp,var(--accent))':'var(--bg3)',color:typConduit===t?'#fff':'var(--text)'}}>{t}</div>)}
       </div>}
+      {sc.cat==='Panneaux'&&<div data-noswipe="1" style={{display:'flex',gap:8,margin:'0.7rem 0 0.1rem'}}>
+        {['Main lug','Disj. principal'].map(t=><div key={t} onClick={()=>setEntree(t)} style={{flex:1,textAlign:'center',padding:'0.5rem',borderRadius:12,fontWeight:800,fontSize:13,cursor:'pointer',background:entree===t?'var(--emp,var(--accent))':'var(--bg3)',color:entree===t?'#fff':'var(--text)'}}>{t}</div>)}
+      </div>}
       {(()=>{const nom=sc.groupes.filter(g=>g.sous&&(!sc.aTyp||g.items.some(i=>i.typ===typConduit)));
         if(!(['Panneaux','Disjoncteurs','Chauffage'].includes(sc.cat)&&nom.length>=2))return null;
         const cur=nom.some(g=>g.sous===sousSel)?sousSel:nom[0].sous;
-        const court=t=>t.replace(/^(Panneau|Disjoncteur|Plinthe) /,'');
-        return <div data-noswipe="1" style={{display:'flex',gap:6,overflowX:'auto',padding:'0.7rem 0 0.2rem',WebkitOverflowScrolling:'touch'}}>
+        const court=t=>t.replace(/^(Panneau|Disjoncteur|Plinthe) /,'').replace(/\s*\(.*$/,'');
+        return <div data-noswipe="1" style={{display:'flex',gap:6,flexWrap:'wrap',padding:'0.7rem 0 0.2rem'}}>
           {nom.map(g=>{const on=g.sous===cur;const n=lignes.filter(l=>l.cat===sc.cat&&l.sous===g.sous&&l.qte>0).length;
             return <div key={g.sous} onClick={()=>setSousSel(g.sous)} style={{flexShrink:0,padding:'0.4rem 0.8rem',borderRadius:20,fontSize:12,fontWeight:on?800:500,cursor:'pointer',whiteSpace:'nowrap',background:on?'var(--emp,var(--accent))':'var(--bg3)',color:on?'#fff':'var(--text)'}}>{court(g.sous)}{n>0&&<b style={{marginLeft:5}}>{n}</b>}</div>;})}
         </div>;})()}
@@ -8925,14 +8931,18 @@ function MaterielPicker({lignes,onChange}){
         const nom=sc.groupes.filter(x=>x.sous);if(nom.length<2||!g.sous)return true;
         const cur=nom.some(x=>x.sous===sousSel)?sousSel:nom[0].sous;return g.sous===cur;
       }).map((g,gi)=>{
-        if(compte>=max)return null;
-        const vis=g.items.slice(0,Math.max(0,max-compte));compte+=vis.length;
+        if(compte>=max){coupe=true;return null;}
+        const tuiles0=g.items.some(i=>i.opt);
+        let vis=tuiles0?g.items:g.items.slice(0,Math.max(0,max-compte));   // une famille de tuiles s'affiche toujours en entier
+        if(vis.length<g.items.length)coupe=true;
+        compte+=tuiles0?1:vis.length;
+        if(sc.cat==='Panneaux')vis=vis.map(i=>({...i,desc:i.desc+' — '+entree.toLowerCase()}));
         const tuiles=vis.some(i=>i.opt);
         return <div key={gi}>
           {g.sous&&<div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.04em',margin:'0.7rem 0 0.2rem'}}>{g.sous}</div>}
           {tuiles?<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax('+(vis.some(i=>/^(pi|m|ft)$/i.test(i.unite))?150:92)+'px,1fr))',gap:8,margin:'0.3rem 0'}}>{vis.map(tuile)}</div>:vis.map((i,x)=>ligne(i,x,false))}
         </div>;})}
-      {sc.n>max&&<button type="button" className="btn-s" style={{width:'100%',marginTop:8,fontSize:12}} onClick={()=>setLim(l=>({...l,[sc.cat]:max+40}))}>Voir plus ({sc.n-max} autres)</button>}
+      {coupe&&<button type="button" className="btn-s" style={{width:'100%',marginTop:8,fontSize:12}} onClick={()=>setLim(l=>({...l,[sc.cat]:max+40}))}>Voir plus</button>}
       {manuelsPage.length>0&&<div style={{marginTop:8}}><div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',margin:'0.4rem 0 0.2rem'}}>Écrit à la main</div>{manuelsPage.map((l,x)=>ligne({cat:l.cat,sous:'',code:'Manuel',desc:l.desc,unite:''},x,false))}</div>}
       {/* fin de page : chercher / écrire à la main */}
       <div style={{marginTop:12,paddingTop:10,borderTop:'1px dashed rgba(255,255,255,0.2)'}}>
@@ -8949,7 +8959,7 @@ function MaterielPicker({lignes,onChange}){
       </div>
       <div style={{display:'flex',alignItems:'center',gap:8,marginTop:14}}>
         <button type="button" disabled={precedente===undefined} onClick={()=>aller(precedente)} className="btn-s" style={{flex:1,fontSize:12,opacity:precedente!==undefined?1:0.35}}>{precedente!==undefined?'← '+sections[precedente].cat:'—'}</button>
-        <button type="button" disabled={suivante===undefined} onClick={()=>aller(suivante)} className="btn-p" style={{flex:1.4,fontSize:13,marginTop:0,opacity:suivante!==undefined?1:0.5}}>{suivante!==undefined?'Page suivante : '+sections[suivante].cat+' →':'✓ Dernière page'}</button>
+        <button type="button" onClick={()=>{if(suivante!==undefined)aller(suivante);else if(onApercu)onApercu();}} className="btn-p" style={{flex:1.4,fontSize:13,marginTop:0}}>{suivante!==undefined?'Page suivante : '+sections[suivante].cat+' →':"👁️ Voir l'aperçu de l'AP"}</button>
       </div>
     </div>
     <div style={{fontSize:11,color:'var(--muted)',marginTop:5}}>{total>0?'✅ '+total+' ligne'+(total>1?'s':'')+' de stock ajoutée'+(total>1?'s':''):'Remplis page par page, comme le carnet. Ce que tu laisses à 0 ne sort pas.'}</div>
@@ -8981,7 +8991,7 @@ async function fabriquerPdfAp(d){
   champ('Type de travaux',TYPES_AP[d.type]?TYPES_AP[d.type].lib:'');
   champ('Employé',d.employe);
   champ('Heures',d.heures?d.heures+' h':'');
-  champ('Autres employés (heures)',d.equipe);
+  champ('Heures par employé',d.equipe);
   doc.setDrawColor(200);doc.setLineWidth(0.2);saut(4);doc.line(L,y,L+W,y);y+=6;
   champ('Où (endroit des travaux)',d.ou);
   champ('Description du projet',d.quoi);
@@ -9028,14 +9038,24 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
   const [lignesMat,setLignesMat]=useState([]);   // lignes du catalogue
   const [, setCatTick]=useState(0);
   useEffect(()=>{chargerCatalogueCrm().then(()=>setCatTick(t=>t+1));},[]);
-  const [heures,setHeures]=useState('');
-  const [autresEmp,setAutresEmp]=useState([]);   // [{nom,h}] autres employés sur la job
+  const [sa,setSa]=useState([{nom:emp.nom,h:'0'},{nom:'',h:'0'}]);   // v276 : SA 01 / SA 02 (… ) — nom + heures
+  const heures=String((sa.find(r=>r.nom===emp.nom)||{}).h||'');       // heures de celui qui remplit (pour le dépôt)
+  const lignesSA=sa.map((r,i)=>({n:'SA 0'+(i+1),nom:r.nom,h:r.h})).filter(r=>r.nom&&parseFloat(r.h)>0);
   const [apercu,setApercu]=useState(false);        // v271 : aperçu de l'AP, comme le carnet papier
   const [photos,setPhotos]=useState([]);   // 'url|nom'
   const [envoiPhoto,setEnvoiPhoto]=useState(0);
   const [envoi,setEnvoi]=useState(false);
   const [precedent,setPrecedent]=useState(null);
   const jobCal=sel?jobDeFacture(sel,jobsForLookup):null;
+  useEffect(()=>{   // v276 : SA 01 / SA 02 = les employés de l'événement (couleur + initiales à la fin du titre) ; compagnon d'abord
+    if(!emps||!emps.length)return;
+    let noms=[];
+    try{noms=(jobCal?jobAssignees(jobCal,emps):[]).map(e=>e.nom);}catch(e){}
+    noms.sort((a,b)=>(APPRENTIS_FACT.includes(a)?1:0)-(APPRENTIS_FACT.includes(b)?1:0));
+    if(!noms.includes(emp.nom))noms.unshift(emp.nom);
+    noms=noms.slice(0,2);
+    setSa(prev=>{const h=n=>(prev.find(r=>r.nom===n)||{}).h||'0';return [{nom:noms[0]||emp.nom,h:h(noms[0]||emp.nom)},{nom:noms[1]||'',h:h(noms[1]||'')},...prev.slice(2)];});
+  },[jobCal&&jobCal.id,projetNom]);
   const adresse=(jobCal&&jobCal.location)||'';
   const clean=s=>String(s||'').replace(/[^a-zA-Z0-9À-ɏ\-_ ]/g,'').trim();
   const g=TYPES_AP[type]||TYPES_AP.autre;
@@ -9067,7 +9087,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
     setEnvoi(true);
     try{
       const numFinal=await prochainNumeroAP(sid,emp);
-      const data={numero:numFinal,job:projetNom,adresse,client:sel?sel.feuille:'',dates:sel?sel.date:localDateStr(),type,employe:emp.nom,heures:heures.trim(),equipe:autresEmp.filter(a=>a.nom&&parseFloat(a.h)>0).map(a=>a.nom+' : '+a.h+' h').join(', '),
+      const data={numero:numFinal,job:projetNom,adresse,client:sel?sel.feuille:'',dates:sel?sel.date:localDateStr(),type,employe:emp.nom,heures:'',equipe:lignesSA.map(r=>r.n+' — '+r.nom+' : '+r.h+' h').join(', '),
         ou:ou.trim(),quoi:quoi.trim(),reste:reste.trim(),materiel:texteMateriel(lignesMat,materiel),dateRemplie:localDateStr()};
       const blob=await fabriquerPdfAp(data);
       const nomPdf='AP_'+numFinal+'_'+clean(projetNom)+'.pdf';
@@ -9075,8 +9095,8 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
       if(!r.url||!r.id)throw new Error(r.error||'PDF non déposé dans le Drive (permissions?)');
       const fichiers=[r.url+'|'+nomPdf,...photos];
       if(calendarIds&&projetNom){try{const ref=await findCalendarEventByTitle(calendarIds,projetNom);if(ref)await attachFileToCalendarEvent(ref.calendarId,ref.eventId,r.id,nomPdf,'application/pdf');}catch(e){}}
-      const equipeTxt=autresEmp.filter(a=>a.nom&&parseFloat(a.h)>0).map(a=>a.nom+' '+a.h+' h').join(', ');
-      const resume=[ou&&'OÙ : '+ou.trim(),(parseFloat(heures)>0)&&'HEURES : '+emp.nom+' '+heures+' h'+(equipeTxt?' + '+equipeTxt:''),!(parseFloat(heures)>0)&&equipeTxt&&'HEURES AUTRES : '+equipeTxt,'DESCRIPTION : '+quoi.trim(),reste&&'RENDU / RESTE : '+reste.trim(),texteMateriel(lignesMat,materiel)&&'MATÉRIEL : '+texteMateriel(lignesMat,materiel)].filter(Boolean).join('\n');
+      const equipeTxt=lignesSA.map(r=>r.n+' '+r.nom+' '+r.h+' h').join(', ');
+      const resume=[ou&&'OÙ : '+ou.trim(),equipeTxt&&'HEURES : '+equipeTxt,'DESCRIPTION : '+quoi.trim(),reste&&'RENDU / RESTE : '+reste.trim(),texteMateriel(lignesMat,materiel)&&'MATÉRIEL : '+texteMateriel(lignesMat,materiel)].filter(Boolean).join('\n');
       const jobObj={id:(jobCal&&jobCal.id)||(sel&&sel.eventId)||'',title:projetNom,location:adresse,start:jobCal&&jobCal.start};
       if(sid){try{await enregistrerDepot(sid,emp,jobObj,{type:'AP',numero:numFinal,note:'[AP numérique] ('+g.lib+') '+resume,fichiers,heures:parseFloat(heures)||0});}catch(e){console.error(e);notify('Attention : AP non gardé dans la feuille (PDF et courriel partent quand même)','warn');}}
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
@@ -9107,7 +9127,6 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
     const lg=lignesMat.filter(l=>l.qte>0&&l.code!=='Manuel');
     const man=lignesMat.filter(l=>l.qte>0&&l.code==='Manuel');
     const cats=[...new Set(lg.map(l=>l.cat))].sort((x,y)=>{const a1=ORD.indexOf(x),b1=ORD.indexOf(y);return (a1<0?99:a1)-(b1<0?99:b1);});
-    const eqp=autresEmp.filter(a=>a.nom&&parseFloat(a.h)>0);
     const papier={background:'#fbf8ef',color:'#1b1b1b',borderRadius:6,padding:'1rem 1.1rem',fontFamily:'"Courier New",monospace',fontSize:13,lineHeight:1.55,boxShadow:'0 4px 24px rgba(0,0,0,0.5)'};
     const ligneP={display:'flex',gap:8,borderBottom:'1px solid #cfc9b6',padding:'3px 0'};
     const etq={fontWeight:700,minWidth:92,textTransform:'uppercase',fontSize:11,paddingTop:1};
@@ -9121,8 +9140,8 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
           <div style={ligneP}><span style={etq}>Date</span><span>{localDateStr()}</span></div>
           <div style={ligneP}><span style={etq}>Job</span><span>{projetNom||'—'}</span></div>
           {adresse&&<div style={ligneP}><span style={etq}>Adresse</span><span>{adresse}</span></div>}
-          <div style={ligneP}><span style={etq}>Employé</span><span>{emp.nom}{parseFloat(heures)>0?' — '+heures+' h':''}</span></div>
-          {eqp.map((a,i)=><div key={i} style={ligneP}><span style={etq}>{i===0?'Aussi':''}</span><span>{a.nom} — {a.h} h</span></div>)}
+          <div style={ligneP}><span style={etq}>Rempli par</span><span>{emp.nom}</span></div>
+          {lignesSA.map((r,i)=><div key={i} style={ligneP}><span style={etq}>{r.n}</span><span>{r.nom} — {r.h} h</span></div>)}
           <div style={{margin:'10px 0 2px',fontWeight:700,fontSize:11,textTransform:'uppercase'}}>Description du projet</div>
           <div style={{whiteSpace:'pre-wrap',minHeight:40,borderBottom:'1px solid #cfc9b6',paddingBottom:6}}>{quoi.trim()||<span style={{color:'#b3261e'}}>(à remplir)</span>}</div>
           <div style={{margin:'12px 0 4px',fontWeight:700,fontSize:11,textTransform:'uppercase',borderTop:'2px solid #1b1b1b',paddingTop:6}}>Stock utilisé</div>
@@ -9161,20 +9180,22 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
         <div style={{marginTop:'0.9rem',fontSize:13}}>🔢 Numéro de cet AP : <b style={{color:'var(--accent)',fontSize:15}}>{numAuto}</b> <span style={{color:'var(--muted)',fontSize:11}}>(automatique)</span></div>
         <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>1. Description du projet *</div>
         <textarea value={quoi} onChange={e=>setQuoi(e.target.value)} rows={4} placeholder="Décris le projet…" style={{...champ,resize:'vertical'}}/>
-        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>2. Mes heures</div>
-        <HeuresStepper v={heures} onChange={setHeures}/>
-        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>3. Autre employé sur la job</div>
-        {autresEmp.map((a,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:6,flexWrap:'wrap'}}>
-          <select value={a.nom} onChange={e=>setAutresEmp(L=>L.map((x,k)=>k===i?{...x,nom:e.target.value}:x))} style={{...champ,width:'auto',flex:'1 1 120px'}}>
-            <option value="">— Qui? —</option>
-            {(emps||[]).filter(e=>e.nom!==emp.nom&&(e.nom===a.nom||!autresEmp.some(x=>x.nom===e.nom))).map(e=><option key={e.nom} value={e.nom}>{e.nom}</option>)}
-          </select>
-          <HeuresStepper v={a.h} onChange={h=>setAutresEmp(L=>L.map((x,k)=>k===i?{...x,h}:x))}/>
-          <button type="button" className="btn-s" onClick={()=>setAutresEmp(L=>L.filter((_,k)=>k!==i))}>✕</button>
-        </div>)}
-        <button type="button" className="btn-s" style={{fontSize:12}} onClick={()=>setAutresEmp(L=>[...L,{nom:'',h:'0'}])}>➕ Ajouter un employé</button>
-        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>4. Stock utilisé</div>
-        <MaterielPicker lignes={lignesMat} onChange={setLignesMat}/>
+        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>2. Heures — SA 01 / SA 02</div>
+        {sa.map((r,i)=>{const e0=(emps||[]).find(e=>e.nom===r.nom);return <div key={i} style={{marginBottom:10}}>
+          <div style={{display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontWeight:800,fontSize:12,color:'var(--accent)',minWidth:44}}>SA 0{i+1}</span>
+            {e0&&<span style={{width:10,height:10,borderRadius:'50%',background:e0.couleur,flexShrink:0}}></span>}
+            <select value={r.nom} onChange={e=>setSa(L=>L.map((x,k)=>k===i?{...x,nom:e.target.value}:x))} style={{...champ,width:'auto',flex:1}}>
+              <option value="">— Qui? —</option>
+              {(emps||[]).filter(e=>e.nom===r.nom||!sa.some(x=>x.nom===e.nom)).map(e=><option key={e.nom} value={e.nom}>{e.nom}</option>)}
+            </select>
+            {i>=2&&<button type="button" className="btn-s" onClick={()=>setSa(L=>L.filter((_,k)=>k!==i))}>✕</button>}
+          </div>
+          <div style={{marginTop:5}}><HeuresStepper v={r.h} onChange={h=>setSa(L=>L.map((x,k)=>k===i?{...x,h}:x))}/></div>
+        </div>;})}
+        <button type="button" className="btn-s" style={{fontSize:12}} onClick={()=>setSa(L=>[...L,{nom:'',h:'0'}])}>➕ Ajouter un employé (SA 0{sa.length+1})</button>
+        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>3. Stock utilisé</div>
+        <MaterielPicker lignes={lignesMat} onChange={setLignesMat} onApercu={()=>setApercu(true)}/>
         <div style={{...lbl,marginTop:'0.6rem'}}>Autre matériel (si pas dans le catalogue)</div>
         <textarea value={materiel} onChange={e=>setMateriel(e.target.value)} rows={2} placeholder="ex. support spécial, pièce commandée" style={{...champ,resize:'vertical'}}/>
         <div style={lbl}>Photos (facultatif)</div>
