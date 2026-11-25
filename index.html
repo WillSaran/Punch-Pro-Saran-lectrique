@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v256';
+const APP_VERSION='v257';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2141,7 +2141,7 @@ function vocalNomFichier(empName,jobName,ext){
   const job=String(jobName||'').replace(/[\\\/:*?"<>|_#]+/g,' ').replace(/\s+/g,' ').trim().slice(0,60);
   return 'VOCAL_'+vocalInitiales(empName)+'_'+(job && job.toLowerCase()!=='punch' ? job+'_' : '')+quand+'.'+ext;
 }
-function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded,notify,folderId}){
+function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded,notify,folderId,label}){
   const [recording,setRecording]=useState(false);
   const [uploading,setUploading]=useState(false);
   const [seconds,setSeconds]=useState(0);
@@ -2223,7 +2223,7 @@ function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded
   );
   return(
     <button type="button" onClick={startRecording} className="btn-s" style={{fontSize:12,padding:'0.4rem 0.7rem',marginBottom:'0.5rem'}}>
-      🎤 Message vocal
+      {label||'🎤 Message vocal'}
     </button>
   );
 }
@@ -2473,10 +2473,10 @@ async function envoyerDepotCourriel(data,token){
   return res.ok;
 }
 
-function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
+function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated,depart}){
   const [emp,setEmp]=useState(empProp||null);
-  const [type,setType]=useState(null); // 'AP' | 'OT'
-  const [job,setJob]=useState(null); // {title,location}
+  const [type,setType]=useState((depart&&depart.type)||null); // 'AP' | 'OT' (v257 : « Faire l'AP » → photo du pad arrive déjà sur Appel de service)
+  const [job,setJob]=useState((depart&&depart.job)||null); // {title,location}
   const [showAgenda,setShowAgenda]=useState(false);
   const [agendaQ,setAgendaQ]=useState('');
   const [showNew,setShowNew]=useState(false);
@@ -2529,6 +2529,7 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
   async function uploadPhoto(f0){
     if(!f0)return;
     if(!type||!job){notify('Choisis AP/OT et la job d\'abord','warn');return;}
+    if(!numero.trim()){notify('Inscris d\'abord le numéro '+(type==='AP'?'de l\'AP (écrit sur le pad)':'de l\'OT'),'warn');return;}
     setUploading(true);notify('⏳ Envoi de la photo…','warn');
     try{
       const f=await compresserImage(f0);   // photo réduite = envoi beaucoup plus rapide
@@ -2673,8 +2674,10 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
       {type&&job&&(
         <>
           <div className="csec">3. Photos et message vocal</div>
-          <div style={{marginBottom:'0.4rem'}}>
-            <input value={numero} onChange={e=>setNumero(e.target.value)} placeholder="Numéro du document (optionnel)" style={{width:'100%',fontSize:12}}/>
+          <div style={{marginBottom:'0.7rem'}}>
+            <div style={{fontWeight:700,fontSize:13,marginBottom:'0.3rem'}}>{type==='AP'?'Numéro de l\'AP (écrit sur le pad)':'Numéro de l\'OT'} <span style={{color:'var(--accent)'}}>*</span></div>
+            <input value={numero} onChange={e=>setNumero(e.target.value)} placeholder={type==='AP'?'Inscrire le numéro d\'AP du pad':'Inscrire le numéro d\'OT'} style={{width:'100%',fontSize:20,fontWeight:700,padding:'0.8rem 0.9rem',boxSizing:'border-box',letterSpacing:'0.5px'}}/>
+            <div style={{fontSize:11,color:'var(--muted)',marginTop:3}}>Obligatoire avant de prendre la photo.</div>
           </div>
           {fichiers.length>0&&(
             <div style={{marginBottom:'0.5rem'}}>
@@ -2696,17 +2699,6 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
                 onChange={async e=>{const fs=Array.from(e.target.files||[]);e.target.value='';for(const f of fs)await uploadPhoto(f);}}/>
             </div>
           </div>
-          <div style={{background:'var(--bg3)',border:'1px solid var(--accent)',borderRadius:10,padding:'0.65rem 0.75rem',margin:'0.3rem 0 0.6rem'}}>
-            <div style={{fontWeight:800,fontSize:13,marginBottom:'0.35rem'}}>🎤 Dis-le en message vocal (ou écris-le plus bas)</div>
-            <div style={{fontSize:13,lineHeight:1.55,marginBottom:'0.5rem'}}>
-              <div>• <strong>Résumé</strong> : comment la job a été, de <strong>1 à 10</strong>.</div>
-              <div>• <strong>Ton feeling</strong> de la job.</div>
-              <div>• <strong>Imprévus</strong> : ce qui n'était pas prévu.</div>
-            </div>
-            <VoiceNoteRecorder empName={emp.nom} jobName={job.title} calendarIds={calendarIds} calEventTitle={job.title}
-              folderId={PAD_SERVICE_ID} notify={notify} onUploaded={u=>setFichiers(prev=>[...prev,u])}/>
-          </div>
-
           <div className="csec">Comment la job a été? (1 à 10)</div>
           <div style={{display:'flex',gap:'0.25rem',flexWrap:'wrap',marginBottom:'0.6rem'}}>
             {[1,2,3,4,5,6,7,8,9,10].map(n=>(
@@ -2715,8 +2707,10 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
             ))}
           </div>
 
-          <div className="csec">Note écrite (optionnel)</div>
-          <textarea className="note-input" rows={4} placeholder={"Résumé de la job (1 à 10)...\nTon feeling de la job...\nImprévus..."} value={note} onChange={e=>setNote(e.target.value)}/>
+          <div className="csec">Ta note (résumé, feeling, imprévus)</div>
+          <textarea className="note-input" rows={4} placeholder={"Résumé de la job...\nTon feeling de la job...\nImprévus (ce qui n'était pas prévu)..."} value={note} onChange={e=>setNote(e.target.value)}/>
+          <VoiceNoteRecorder label="🎤 Dis-le en message vocal" empName={emp.nom} jobName={job.title} calendarIds={calendarIds} calEventTitle={job.title}
+            folderId={PAD_SERVICE_ID} notify={notify} onUploaded={u=>setFichiers(prev=>[...prev,u])}/>
 
           {dejaPunche===false&&(
             <div style={{background:'var(--bg3)',borderRadius:10,padding:'0.6rem 0.75rem',margin:'0.6rem 0'}}>
@@ -7591,6 +7585,8 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   const now=useClock();
   useEffect(()=>{chargerCatalogueCrm();},[]);
   const [step,setStep]=useState('emps');
+  const departRef=useRef(null); // v257 : départ du dépôt rapide depuis « Faire l'AP » (type + job)
+  useEffect(()=>{if(step!=='depot-rapide')departRef.current=null;},[step]);
   const isSubmittingRef=useRef(false); // empêche double-soumission (double-clic / réseau lent)
   // steps: emps > mode > job > punch-in > pin > result
   //                    > duration-out > pin-out > result
@@ -8111,7 +8107,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.05rem',margin:'0 0 0.6rem'}}>📋 Mes heures</div>
           <EmployeeHistory emp={selEmp} sid={sid} notify={notify} folders={folders} calendarIds={calendarIds} allEmps={emps} onJobsRefresh={refreshCalJobs}/>
           <div id="sec-factures" style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.05rem',margin:'2rem 0 0.6rem'}}>🧾 Mes factures manquantes</div>
-          <FacturesManquantesView emps={emps} jobsForLookup={allJobs.length>0?allJobs:jobs} meEmp={selEmp} sid={sid} calendarIds={calendarIds} notify={notify} onPhotoPad={()=>{refreshCalJobs();setStep('depot-rapide');}}/>
+          <FacturesManquantesView emps={emps} jobsForLookup={allJobs.length>0?allJobs:jobs} meEmp={selEmp} sid={sid} calendarIds={calendarIds} notify={notify} onPhotoPad={(ini)=>{refreshCalJobs();let jb=null;try{if(ini){const c=jobDeFacture(ini,allJobs.length>0?allJobs:jobs);jb=c?{title:c.title,location:c.location||'',id:c.id}:{title:ini.projet,location:''};}}catch(e){}departRef.current={type:'AP',job:jb};setStep('depot-rapide');}}/>
           </div>
           <div style={{marginTop:'1.4rem',borderTop:'1px solid var(--border)',paddingTop:'0.6rem'}}>
             <button className="btn-s" style={{width:'100%',fontSize:12}} onClick={()=>{setPlusOuvert(v=>!v);if(monDashTab==='heures'||monDashTab==='factures')setMonDashTab('projets');}}>{plusOuvert?'▾ Masquer':'▸ Plus : projets, ordres de travail, config'}</button>
@@ -8205,7 +8201,7 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
   );
   if(step==='depot-rapide')return(
     <div className="welcome" style={{justifyContent:'flex-start',paddingTop:'1rem'}}>
-      <DepotRapide emps={emps} emp={selEmp} sid={sid} jobs={jobs} allJobs={allJobs} calendarIds={calendarIds}
+      <DepotRapide emps={emps} emp={selEmp} sid={sid} jobs={jobs} allJobs={allJobs} calendarIds={calendarIds} depart={departRef.current}
         notify={notify} onJobCreated={refreshCalJobs}
         onClose={()=>setStep(selEmp?'mode':'emps')}/>
     </div>
@@ -8841,7 +8837,7 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
       <div style={{background:'var(--bg2, #161b22)',borderRadius:18,maxWidth:420,width:'100%',padding:'1.2rem'}}>
         <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.05rem',marginBottom:'0.2rem'}}>Faire l'AP{initial?' — '+initial.projet:''}</div>
         <div style={{fontSize:12,color:'var(--muted)',marginBottom:'1rem'}}>Comment veux-tu déposer l'appel de service ?</div>
-        <div onClick={()=>{onClose(false);if(onPhotoPad)onPhotoPad();}} style={{padding:'1rem',borderRadius:14,background:'rgba(255,255,255,0.06)',marginBottom:'0.6rem',cursor:'pointer'}}>
+        <div onClick={()=>{onClose(false);if(onPhotoPad)onPhotoPad(initial);}} style={{padding:'1rem',borderRadius:14,background:'rgba(255,255,255,0.06)',marginBottom:'0.6rem',cursor:'pointer'}}>
           <div style={{fontWeight:700,fontSize:15}}>📷 Photo de mon pad</div><div style={{fontSize:12,color:'var(--muted)',marginTop:2}}>J'ai rempli le carnet papier — je le prends en photo.</div></div>
         <div onClick={()=>setMode('elec')} style={{padding:'1rem',borderRadius:14,background:'rgba(255,122,26,0.14)',cursor:'pointer'}}>
           <div style={{fontWeight:700,fontSize:15,color:'var(--accent)'}}>✍️ Créer l'AP ici</div><div style={{fontSize:12,color:'var(--muted)',marginTop:2}}>Électronique : numéro automatique <b>{numAuto}</b>, adresse et job déjà remplies.</div></div>
