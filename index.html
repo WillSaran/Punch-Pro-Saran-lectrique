@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v271';
+const APP_VERSION='v272';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -882,14 +882,18 @@ const CATALOGUE={
     {code:'FORFAIT',desc:'Prix forfaitaire',unite:'un'},
   ],
   'Conduit':[
-    {code:'EMT',desc:'Conduit EMT (métallique)',unite:'barre',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
-    {code:'PVC',desc:'Conduit PVC',unite:'barre',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
-    {code:'BEND',desc:'Courbe conduit',unite:'un',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
-    {code:'COUPLING',desc:'Couplage REC',unite:'un',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
-    {code:'STRAP',desc:'Strap/collier RPS',unite:'un',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
-    {code:'CONN-1-VIS',desc:'Connecteur 1 vis CI7',unite:'un',sizes:['1/2"','3/4"','1"']},
-    {code:'CONN-2-VIS',desc:'Connecteur 2 vis CI8',unite:'un',sizes:['1/2"','3/4"','1"']},
-    {code:'RFA BUSHING',desc:'Bague CI27',unite:'un',sizes:['1/2"','3/4"','1"']},
+    // v272 : typ = 'PVC' | 'EMT' (le pad électronique ouvre sur PVC). Le PVC se compte au pied.
+    {code:'PVC',desc:'Conduit PVC (au pied)',unite:'pi',typ:'PVC',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'BEND',desc:'Courbe 90° PVC',unite:'un',typ:'PVC',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'COUPLING',desc:'Couplage PVC (REC)',unite:'un',typ:'PVC',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'STRAP',desc:'Strap PVC (RPS)',unite:'un',typ:'PVC',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'RTA',desc:'RTA — adaptateur de boîte PVC (ajoute le nut)',unite:'un',typ:'PVC',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'RTA-NUT',desc:'Nut (contre-écrou) pour RTA',unite:'un',typ:'PVC',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'RSLB',desc:'RSLB',unite:'un',typ:'PVC',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'EMT',desc:'Conduit EMT (métallique)',unite:'barre',typ:'EMT',sizes:['1/2"','3/4"','1"','1"1/4','1"1/2','2"']},
+    {code:'CONN-1-VIS',desc:'Connecteur 1 vis CI7',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
+    {code:'CONN-2-VIS',desc:'Connecteur 2 vis CI8',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
+    {code:'RFA BUSHING',desc:'Bague CI27',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
   ],
   'Panneaux':[
     {code:'QO CQO1',desc:'Panneau QO (Square D)',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
@@ -8767,8 +8771,8 @@ function aplatirCatalogue(){
   const out=[];
   Object.entries(CATALOGUE).forEach(([cat,L])=>L.forEach(i=>{
     const opts=i.options||i.sizes;
-    if(opts)opts.forEach(o=>out.push({cat,sous:i.desc,opt:String(o),code:i.code,desc:i.desc+' ('+o+')',unite:i.unite||'un'}));
-    else out.push({cat,sous:i.sous||'',code:i.code,desc:i.desc,unite:i.unite||'un',crm:!!i.crm});
+    if(opts)opts.forEach(o=>out.push({cat,sous:i.desc,opt:String(o),typ:i.typ||'',code:i.code,desc:i.desc+' ('+o+')',unite:i.unite||'un'}));
+    else out.push({cat,sous:i.sous||'',typ:i.typ||'',code:i.code,desc:i.desc,unite:i.unite||'un',crm:!!i.crm});
   }));
   return out;
 }
@@ -8779,6 +8783,7 @@ function MaterielPicker({lignes,onChange}){
   const [saute,setSaute]=useState({});    // catégories où rien n'a été utilisé
   const [q,setQ]=useState('');
   const [manuel,setManuel]=useState('');
+  const [typConduit,setTypConduit]=useState('PVC');   // v272 : le conduit ouvre sur PVC
   const [lim,setLim]=useState({});
   const tout=useMemo(()=>aplatirCatalogue(),[_catCrmEtat]);
   // v268 : les pages = seulement la feuille papier (7 catégories). Le reste du catalogue (kits, NMD, NMWU…) s'ajoute par la recherche ou à la main.
@@ -8794,19 +8799,20 @@ function MaterielPicker({lignes,onChange}){
       const groupes=[];
       const sans=items.filter(i=>!i.sous);if(sans.length)groupes.push({sous:'',items:sans});
       sousL.forEach(sn=>groupes.push({sous:sn,items:items.filter(i=>i.sous===sn)}));
-      return {cat:c,groupes,n:items.length};
+      return {cat:c,groupes,n:items.length,aTyp:items.some(i=>i.typ)};
     });
   },[tout]);
   const cle=i=>i.code+'|'+i.desc;
   const qteDe=i=>{const l=lignes.find(x=>x.k===cle(i));return l?l.qte:0;};
   const nbCat=c=>lignes.filter(l=>l.cat===c&&l.qte>0).length;
   const mk=(i,n)=>({k:cle(i),cat:i.cat,sous:i.sous||'',code:i.code,desc:i.desc,unite:i.unite,qte:n});
-  const ajuster=(i,d)=>{const k=cle(i);const ex=lignes.findIndex(l=>l.k===k);
-    if(ex<0){if(d>0)onChange([...lignes,mk(i,d)]);return;}
-    onChange(lignes.map((l,x)=>x===ex?{...l,qte:Math.max(0,Math.round((l.qte+d)*100)/100)}:l).filter(l=>l.qte>0));};
-  const fixer=(i,v)=>{const n=Math.max(0,parseFloat(String(v).replace(',','.'))||0);const k=cle(i);const ex=lignes.findIndex(l=>l.k===k);
-    if(ex<0){if(n>0)onChange([...lignes,mk(i,n)]);return;}
-    onChange(lignes.map((l,x)=>x===ex?{...l,qte:n}:l).filter(l=>l.qte>0));};
+  const majLigne=(L,i,delta,fixe)=>{const k=cle(i);const ex=L.findIndex(l=>l.k===k);
+    if(ex<0){const n=fixe!==undefined?fixe:delta;return n>0?[...L,mk(i,n)]:L;}
+    return L.map((l,x)=>x===ex?{...l,qte:fixe!==undefined?fixe:Math.max(0,Math.round((l.qte+delta)*100)/100)}:l).filter(l=>l.qte>0);};
+  // un RTA entraîne automatiquement son nut (même grosseur, même quantité)
+  const compagnon=i=>i.code==='RTA'?tout.find(x=>x.code==='RTA-NUT'&&x.opt===i.opt):null;
+  const ajuster=(i,d)=>{let L=majLigne(lignes,i,d);const c=compagnon(i);if(c)L=majLigne(L,c,d);onChange(L);};
+  const fixer=(i,v)=>{const n=Math.max(0,parseFloat(String(v).replace(',','.'))||0);let L=majLigne(lignes,i,0,n);const c=compagnon(i);if(c)L=majLigne(L,c,0,n);onChange(L);};
   const bt={width:34,height:34,borderRadius:9,border:'none',background:'var(--bg3)',color:'var(--text)',fontSize:17,cursor:'pointer',touchAction:'manipulation'};
   const total=lignes.filter(l=>l.qte>0).length;
   const ligne=(i,x,montrerCat)=>{const n=qteDe(i);const fil=/^(pi|m|ft)$/i.test(i.unite);
@@ -8825,6 +8831,7 @@ function MaterielPicker({lignes,onChange}){
         <button type="button" onClick={()=>ajuster(i,-1)} style={{...bt,width:28,height:28,fontSize:15,background:'rgba(0,0,0,0.2)'}}>−</button>
         <span style={{minWidth:18,fontWeight:800,fontSize:14,color:n>0?'var(--accent)':'var(--muted)'}}>{n}</span>
         <button type="button" onClick={()=>ajuster(i,1)} style={{...bt,width:28,height:28,fontSize:15,background:'rgba(0,0,0,0.2)'}}>+</button>
+        {/^(pi|m|ft)$/i.test(i.unite)&&<button type="button" onClick={()=>ajuster(i,10)} style={{...bt,width:34,height:28,fontSize:11,background:'rgba(0,0,0,0.2)'}}>+10</button>}
       </div></div>;};
   // pages actives = celles qu'on n'a pas sautées
   const actives=sections.map((sc,k)=>k).filter(k=>!saute[sections[k].cat]);
@@ -8858,13 +8865,16 @@ function MaterielPicker({lignes,onChange}){
         <div style={{flex:1,fontFamily:'var(--font-head)',fontWeight:800,fontSize:'0.95rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>{pg+1}. {sc.cat}</div>
         <span style={{fontSize:11,color:'var(--muted)'}}>Page {Math.max(pos,0)+1}/{actives.length||1} · glisse ←→</span>
       </div>
-      {sc.groupes.map((g,gi)=>{
+      {sc.aTyp&&<div data-noswipe="1" style={{display:'flex',gap:8,margin:'0.7rem 0 0.2rem'}}>
+        {['PVC','EMT'].map(t=><div key={t} onClick={()=>setTypConduit(t)} style={{flex:1,textAlign:'center',padding:'0.55rem',borderRadius:12,fontWeight:800,fontSize:14,cursor:'pointer',background:typConduit===t?'var(--emp,var(--accent))':'var(--bg3)',color:typConduit===t?'#fff':'var(--text)'}}>{t}</div>)}
+      </div>}
+      {sc.groupes.filter(g=>!sc.aTyp||g.items.some(i=>i.typ===typConduit)).map((g,gi)=>{
         if(compte>=max)return null;
         const vis=g.items.slice(0,Math.max(0,max-compte));compte+=vis.length;
         const tuiles=vis.some(i=>i.opt);
         return <div key={gi}>
           {g.sous&&<div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.04em',margin:'0.7rem 0 0.2rem'}}>{g.sous}</div>}
-          {tuiles?<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(92px,1fr))',gap:8,margin:'0.3rem 0'}}>{vis.map(tuile)}</div>:vis.map((i,x)=>ligne(i,x,false))}
+          {tuiles?<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax('+(vis.some(i=>/^(pi|m|ft)$/i.test(i.unite))?150:92)+'px,1fr))',gap:8,margin:'0.3rem 0'}}>{vis.map(tuile)}</div>:vis.map((i,x)=>ligne(i,x,false))}
         </div>;})}
       {sc.n>max&&<button type="button" className="btn-s" style={{width:'100%',marginTop:8,fontSize:12}} onClick={()=>setLim(l=>({...l,[sc.cat]:max+40}))}>Voir plus ({sc.n-max} autres)</button>}
       {manuelsPage.length>0&&<div style={{marginTop:8}}><div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',margin:'0.4rem 0 0.2rem'}}>Écrit à la main</div>{manuelsPage.map((l,x)=>ligne({cat:l.cat,sous:'',code:'Manuel',desc:l.desc,unite:''},x,false))}</div>}
