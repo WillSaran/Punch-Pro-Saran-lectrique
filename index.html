@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v264';
+const APP_VERSION='v265';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8255,11 +8255,6 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
         <div className="mode-btn" onClick={()=>{refreshCalJobs();setMode('confirm');setStep('job');}}>
           <div className="mode-icon">✅</div>
           <div><div className="mode-title">Confirmer une job</div><div className="mode-desc">Heures, dépl., coéquipiers, fichiers</div></div>
-        </div>
-        <div className="mode-btn" style={{borderColor:'var(--accent)',borderWidth:2,boxShadow:'0 0 0 1px var(--accent), 0 4px 14px rgba(255,122,26,0.25)',position:'relative'}} onClick={()=>{refreshCalJobs();setStep('depot-rapide');}}>
-          <span style={{position:'absolute',top:-9,right:12,background:'var(--accent)',color:'#fff',fontSize:10,fontWeight:800,letterSpacing:'0.08em',padding:'2px 9px',borderRadius:20}}>NOUVEAU</span>
-          <div className="mode-icon" style={{fontSize:'1.6rem'}}>📋</div>
-          <div><div className="mode-title" style={{fontSize:'1.05rem'}}>Dépôt AP / OT rapide</div><div className="mode-desc">Appel de service ou ordre de travail — photos, vocal. Ne remplace pas ton punch.</div></div>
         </div>
         <div className="mode-btn" style={{borderColor:'#d29922',borderWidth:2,boxShadow:'0 0 0 1px #d29922, 0 4px 14px rgba(210,153,34,0.25)',position:'relative'}} onClick={()=>{refreshCalJobs();setStep('blocage-rapide');}}>
           <span style={{position:'absolute',top:-9,right:12,background:'#d29922',color:'#fff',fontSize:10,fontWeight:800,letterSpacing:'0.08em',padding:'2px 9px',borderRadius:20}}>NOUVEAU</span>
