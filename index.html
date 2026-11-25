@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v277';
+const APP_VERSION='v278';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -879,6 +879,13 @@ const CATALOGUE={
     {code:'MONOX 900-0119',desc:'Détecteur CO',unite:'un'},
     {code:'RC840',desc:'Relais RC840',unite:'un',variantes:[{opt:'120V'},{opt:'240V'},{opt:'Limit switch + capot',code:'KS2V'}]},
     {code:'KIT PICO',desc:'Kit Pico Lutron',unite:'un'},
+  ],
+  'Produits extérieurs':[
+    {code:'WP',desc:'WP couvercle étanche',unite:'un',variantes:[{opt:'WP 3100',code:'WP3100'},{opt:'WP 6000',code:'WP6000'}]},
+    {code:'FS',desc:'Boîte FS',unite:'un',options:['1/2"','3/4"']},
+    {code:'FSC',desc:'Boîte FSC',unite:'un',options:['1/2"','3/4"']},
+    {code:'FD PVC',desc:'Boîte FD PVC',unite:'un',options:['1/2"','3/4"']},
+    {code:'RCTC 15',desc:'Connecteur RCTC 15',unite:'un',variantes:['Fileté','Collé']},
   ],
   'Divers':[
     {code:'DÉPL STD',desc:'Déplacement standard',unite:'un'},
@@ -8833,7 +8840,7 @@ function MaterielPicker({lignes,onChange,onApercu}){
   const [lim,setLim]=useState({});
   const tout=useMemo(()=>aplatirCatalogue(),[_catCrmEtat]);
   // v268 : les pages = seulement la feuille papier (7 catégories). Le reste du catalogue (kits, NMD, NMWU…) s'ajoute par la recherche ou à la main.
-  const ORDRE_PAD=['Fils','Boîtes','Décora','Conduit','Panneaux','Disjoncteurs','Chauffage'];
+  const ORDRE_PAD=['Fils','Boîtes','Décora','Produits extérieurs','Conduit','Panneaux','Disjoncteurs','Chauffage'];
   const PRIO_SOUS={'Fils':['NMD','NMWU','ACWU','RW90','AC90']};
   const sections=useMemo(()=>{
     const ordre=ORDRE_PAD.filter(c=>tout.some(i=>i.cat===c&&!i.crm));
@@ -9136,7 +9143,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
     </div>
   );
   if(apercu){
-    const ORD=['Fils','Boîtes','Décora','Conduit','Panneaux','Disjoncteurs','Chauffage'];
+    const ORD=['Fils','Boîtes','Décora','Produits extérieurs','Conduit','Panneaux','Disjoncteurs','Chauffage'];
     const lg=lignesMat.filter(l=>l.qte>0&&l.code!=='Manuel');
     const man=lignesMat.filter(l=>l.qte>0&&l.code==='Manuel');
     const cats=[...new Set(lg.map(l=>l.cat))].sort((x,y)=>{const a1=ORD.indexOf(x),b1=ORD.indexOf(y);return (a1<0?99:a1)-(b1<0?99:b1);});
