@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v286';
+const APP_VERSION='v287';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -916,9 +916,10 @@ const CATALOGUE={
     // v286 : entrée de service qui n'est pas dans le conduit. Codes H-tap = Blackburn (WR…) vérifiés sur catalogue ; le reste « à confirmer ».
     {code:'CONN HYDRO',desc:'Connecteur Hydro (code à confirmer)',unite:'un'},
     {code:'CAPOTE',desc:'Capote (code à confirmer)',unite:'un',options:['Petite','Grosse']},
-    {code:'WEDGE CLAMP',desc:'Wedge clamp (code à confirmer)',unite:'un'},
+    {code:'WEDGE CLAMP',desc:'Wedge clamp Blackburn',unite:'un',options:[{opt:'1/0 à #4',code:'W201-1'},{opt:'#2 à #6',code:'W62-1BFC-T'},{opt:'1/0 à #4 + coulisseau',code:'W20-1FC'}]},
+    {code:'ST 6',desc:'Hub 2" Myers (Crouse-Hinds)',unite:'un'},
     {code:'H-TAP',desc:'H-tap Blackburn',unite:'un',options:[{opt:'#2-6 / #2-6',code:'WR159'},{opt:'1/0-3 / #2-6',code:'WR189'},{opt:'2/0-1/0 / #2-6',code:'WR289'},{opt:'4/0-3/0 / #2-6',code:'WR379'},{opt:'4/0-3/0 / 2/0-1',code:'WR399'},{opt:'4/0-3/0 / 4/0-3/0',code:'WR419'},{opt:'477 / 4/0-1/0',code:'WR835'}]},
-    {code:'BQ2V',desc:'Kit BQ2V',unite:'un',variantes:[{opt:'AM'},{opt:'MH'}]},
+    {code:'BQ2V',desc:'Kit entrée 200A',unite:'un',variantes:[{opt:'BQ2V (ABB)',code:'BQ2V'},{opt:'AM200',code:'KIT-200AM'},{opt:'MH200',code:'KIT-200MH'}]},
   ],
   'Panneaux':[
     // v276 : juste les marques ; « main lug / disjoncteur principal » se choisit dans le panneau (le pad ajoute la mention)
