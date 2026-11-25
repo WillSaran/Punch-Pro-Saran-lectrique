@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v262';
+const APP_VERSION='v263';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8679,7 +8679,9 @@ function MaterielPicker({lignes,onChange}){
   const [catSel,setCatSel]=useState('');
   const [sousSel,setSousSel]=useState('');
   const tout=useMemo(()=>aplatirCatalogue(),[_catCrmEtat]);
-  const cats=useMemo(()=>{const m=[];tout.forEach(i=>{if(!m.includes(i.cat))m.push(i.cat);});return m;},[tout]);
+  const ORDRE_PAD=['Fils','Boîtes','Décora','Divers','Conduit','Panneaux','Disjoncteurs','Chauffage'];   // ordre du carnet papier
+  const cats=useMemo(()=>{const m=[];tout.forEach(i=>{if(!m.includes(i.cat))m.push(i.cat);});
+    const r=c=>{const k=ORDRE_PAD.indexOf(c);return k<0?99:k;};return m.map((c,i)=>[c,i]).sort((a,b)=>r(a[0])-r(b[0])||a[1]-b[1]).map(x=>x[0]);},[tout]);
   const cat=catSel||cats[0]||'';
   const delaCat=tout.filter(i=>i.cat===cat);
   const sousListe=[];delaCat.forEach(i=>{if(i.sous&&!sousListe.includes(i.sous))sousListe.push(i.sous);});
@@ -8737,6 +8739,13 @@ function MaterielPicker({lignes,onChange}){
       </div>:liste.map((i,x)=>ligneSimple(i,x,mots.length>0))}
       {sansSous.length>0&&<div style={{marginTop:tuiles?8:0}}><div style={{fontSize:10,color:'var(--muted)',textTransform:'uppercase',letterSpacing:'0.05em',padding:'0.5rem 0 0'}}>Autres produits — {cat}</div>{sansSous.map((i,x)=>ligneSimple(i,x,false))}</div>}
     </div>
+    {!mots.length&&cats.length>1&&(()=>{const k=Math.max(0,cats.indexOf(cat));const prev=cats[k-1],next=cats[k+1];
+      const aller=c=>{setCatSel(c);setSousSel('');};
+      return <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
+        <button type="button" disabled={!prev} onClick={()=>aller(prev)} className="btn-s" style={{flex:1,fontSize:12,opacity:prev?1:0.35}}>{prev?'← '+prev:'—'}</button>
+        <div style={{fontSize:11,color:'var(--muted)',whiteSpace:'nowrap'}}>Page {k+1}/{cats.length}</div>
+        <button type="button" disabled={!next} onClick={()=>aller(next)} className="btn-p" style={{flex:1,fontSize:12,marginTop:0,opacity:next?1:0.35}}>{next?next+' →':'Fini'}</button>
+      </div>;})()}
     <div style={{fontSize:11,color:'var(--muted)',marginTop:5}}>{total>0?'✅ '+total+' ligne'+(total>1?'s':'')+' de stock ajoutée'+(total>1?'s':'')+' (toutes catégories)':'Choisis une catégorie, puis mets les quantités.'}</div>
   </div>;
 }
