@@ -15,9 +15,6 @@
 <link rel="preload" as="script" href="https://apis.google.com/js/api.js">
 <link rel="apple-touch-icon" href="icon-512.png">
 <title>PunchPro — Saran Électrique</title>
-<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAIQBlBnZ_sjsDDu6uJS7jJA6M2zAKSETE&libraries=places" async defer></script>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -228,7 +225,10 @@ button{font-family:var(--font-body)}
 </style>
 </head>
 <body>
-<div id="root"></div>
+<div id="root"><div id="splash" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:#0d1117;color:#e6edf3;font-family:-apple-system,system-ui,sans-serif"><img src="icon-192.png" width="84" height="84" style="border-radius:20px" alt=""><div style="font-weight:800;font-size:18px;letter-spacing:.04em">PunchPro</div><div style="width:26px;height:26px;border:3px solid rgba(255,255,255,.18);border-top-color:#ff7a1a;border-radius:50%;animation:ppspin .8s linear infinite"></div><style>@keyframes ppspin{to{transform:rotate(360deg)}}</style></div></div>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 <script type="text/babel">
 // Capture redirect token IMMEDIATELY before React loads
 (function(){
@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v280';
+const APP_VERSION='v281';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -9954,6 +9954,13 @@ function App(){
     const accessToken=resp.access_token||(gapi.client.getToken()&&gapi.client.getToken().access_token);
     if(!accessToken)return;
     if(!gapi.client.getToken())gapi.client.setToken({access_token:accessToken});
+    let cur;
+    try{cur=JSON.parse(localStorage.getItem('pp_cfg')||'null');}catch{cur=null;}
+    if(!cur||!cur.spreadsheetId)cur=DEFAULT_CFG;
+    // v281 : tout part en même temps — le profil Google ET les appels Sheets (avant : on attendait le profil d'abord)
+    const pEmps=Promise.resolve().then(()=>getEmployees(cur.spreadsheetId));
+    const pStruct=Promise.resolve().then(()=>ensureStructure(cur.spreadsheetId));
+    pEmps.catch(()=>{});pStruct.catch(()=>{});
     let email='';
     try{
       const r=await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{'Authorization':'Bearer '+accessToken}});
@@ -9962,13 +9969,9 @@ function App(){
     }catch(e){console.error(e);}
     const boss=BOSS_EMAILS.includes(email);
     setUserEmail(email||'connecté');setIsBoss(boss);setView('punch');
-    let cur;
-    try{cur=JSON.parse(localStorage.getItem('pp_cfg')||'null');}catch{cur=null;}
-    if(!cur||!cur.spreadsheetId)cur=DEFAULT_CFG;
-    // Run all post-auth calls in parallel for speed
     const [empsData,,msgsData]=await Promise.allSettled([
-      getEmployees(cur.spreadsheetId),
-      ensureStructure(cur.spreadsheetId),
+      pEmps,
+      pStruct,
       boss?getMessages(cur.spreadsheetId):Promise.resolve([])
     ]);
     if(empsData.status==='fulfilled')setEmps(empsData.value||[]);
@@ -10056,6 +10059,7 @@ function App(){
   },[loginPret]);
   function handleAuth(){
     if(isIOS()||isPWA()){          // redirection : pas besoin d'attendre le chargement des APIs
+      setAuthLoading(true);
       doRedirectAuth(cfg.clientId);
     }else{
       setAuthLoading(true);                      // v279 : loading immédiat au clic, même si Google finit de charger
