@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v272';
+const APP_VERSION='v273';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -896,9 +896,13 @@ const CATALOGUE={
     {code:'RFA BUSHING',desc:'Bague CI27',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
   ],
   'Panneaux':[
-    {code:'QO CQO1',desc:'Panneau QO (Square D)',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
-    {code:'CHOM',desc:'Panneau CHOM (Eaton)',unite:'un',options:['24/48cir 125A','42/84cir 200A']},
-    {code:'SIEQ',desc:'Panneau Siemens',unite:'un',options:['40cir 200A','60cir 200A']},
+    // v273 : chaque panneau en deux versions — main lug (sans disjoncteur principal) ou avec disjoncteur principal
+    {code:'QO CQO1',desc:'Panneau QO (Square D) — main lug',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
+    {code:'QO CQO1',desc:'Panneau QO (Square D) — disj. principal',unite:'un',options:['24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
+    {code:'CHOM',desc:'Panneau CHOM — main lug',unite:'un',options:['24/48cir 125A','32cir 125A','42/84cir 200A']},
+    {code:'CHOM',desc:'Panneau CHOM — disj. principal',unite:'un',options:['24/48cir 125A','32cir 125A','42/84cir 200A']},
+    {code:'SIEQ',desc:'Panneau Siemens — main lug',unite:'un',options:['40cir 200A','60cir 200A']},
+    {code:'SIEQ',desc:'Panneau Siemens — disj. principal',unite:'un',options:['40cir 200A','60cir 200A']},
   ],
   'Disjoncteurs':[
     {code:'BR DISJ',desc:'Disjoncteur BR/STAB',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A']},
@@ -908,15 +912,15 @@ const CATALOGUE={
     {code:'DOUBLE',desc:'Disjoncteur double',unite:'un',options:['15/15A','20/20A','15/20A','20/15A']},
   ],
   'Chauffage':[
-    {code:'STEB',desc:'Plinthe STEB standard',unite:'un',options:['300W','500W','750W','1000W','1250W','1500W','1750W','2000W']},
-    {code:'STEPR',desc:'Plinthe STEPR',unite:'un',options:['500W','1000W','2000W']},
-    {code:'STEMIR',desc:'Plinthe STEMIR (salle de bain)',unite:'un',options:['1000W','1500W','2000W']},
-    {code:'STESK',desc:'Chauffage kick space STESK',unite:'un',options:['1000W blanc','1000W noir']},
-    {code:'STERWF',desc:'Thermostat Wi-Fi STERWF',unite:'un'},
-    {code:'STERWFT1W',desc:'Thermostat Wi-Fi STERWFT1W',unite:'un'},
-    {code:'TH401',desc:'Thermostat mécanique TH401',unite:'un'},
-    {code:'TH450',desc:'Thermostat électronique TH450',unite:'un'},
-    {code:'SIBT1W',desc:'Thermostat SIBT1W',unite:'un'},
+    {code:'STEB',desc:'Plinthe Brava (STEB)',unite:'un',options:['300W','500W','750W','1000W','1250W','1500W','1750W','2000W']},
+    {code:'STEPR',desc:'Plinthe Prima (STEPR)',unite:'un',options:['500W','1000W','2000W']},
+    {code:'STEMIR',desc:'Plinthe Mirage (STEMIR)',unite:'un',options:['1000W','1500W','2000W']},
+    {code:'STESK',desc:'Kickspace (STESK)',unite:'un',options:['1000W blanc','1000W noir']},
+    {code:'TH401',desc:'Thermostat mécanique TH401',unite:'un',sous:'Thermostats'},
+    {code:'TH450',desc:'Thermostat électronique TH450',unite:'un',sous:'Thermostats'},
+    {code:'SIBT1W',desc:'Thermostat SIBT1W',unite:'un',sous:'Thermostats'},
+    {code:'STERWF',desc:'Thermostat Wi-Fi STERWF',unite:'un',sous:'Thermostats intelligents'},
+    {code:'STERWFT1W',desc:'Thermostat Wi-Fi STERWFT1W',unite:'un',sous:'Thermostats intelligents'},
   ],
   'Bornes VE':[
     {code:'FLO Maison X3',desc:'FLO Maison X3 — 50A',unite:'un'},
@@ -8783,6 +8787,7 @@ function MaterielPicker({lignes,onChange}){
   const [saute,setSaute]=useState({});    // catégories où rien n'a été utilisé
   const [q,setQ]=useState('');
   const [manuel,setManuel]=useState('');
+  const [sousSel,setSousSel]=useState('');   // v273 : sous-catégorie ouverte (Panneaux, Disjoncteurs, Chauffage)
   const [typConduit,setTypConduit]=useState('PVC');   // v272 : le conduit ouvre sur PVC
   const [lim,setLim]=useState({});
   const tout=useMemo(()=>aplatirCatalogue(),[_catCrmEtat]);
@@ -8839,7 +8844,7 @@ function MaterielPicker({lignes,onChange}){
   const sc=sections[pg]||{cat:'',groupes:[],n:0};
   const pos=actives.indexOf(pg);
   const suivante=actives.find(k=>k>pg),precedente=[...actives].reverse().find(k=>k<pg);
-  const aller=k=>{setPage(k);setQ('');setManuel('');setTimeout(()=>{try{const el=document.getElementById('pad-haut');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}},40);};   // v270 : on revient en haut de la nouvelle page
+  const aller=k=>{setPage(k);setSousSel('');setQ('');setManuel('');setTimeout(()=>{try{const el=document.getElementById('pad-haut');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}},40);};   // v270 : on revient en haut de la nouvelle page
   const toucheRef=useRef(null);
   const debutTouche=e=>{const t=e.touches&&e.touches[0];toucheRef.current=(t&&!(e.target.closest&&e.target.closest('[data-noswipe],input,textarea')))?{x:t.clientX,y:t.clientY}:null;};
   const finTouche=e=>{const d=toucheRef.current;toucheRef.current=null;if(!d)return;const t=e.changedTouches&&e.changedTouches[0];if(!t)return;
@@ -8868,7 +8873,19 @@ function MaterielPicker({lignes,onChange}){
       {sc.aTyp&&<div data-noswipe="1" style={{display:'flex',gap:8,margin:'0.7rem 0 0.2rem'}}>
         {['PVC','EMT'].map(t=><div key={t} onClick={()=>setTypConduit(t)} style={{flex:1,textAlign:'center',padding:'0.55rem',borderRadius:12,fontWeight:800,fontSize:14,cursor:'pointer',background:typConduit===t?'var(--emp,var(--accent))':'var(--bg3)',color:typConduit===t?'#fff':'var(--text)'}}>{t}</div>)}
       </div>}
-      {sc.groupes.filter(g=>!sc.aTyp||g.items.some(i=>i.typ===typConduit)).map((g,gi)=>{
+      {(()=>{const nom=sc.groupes.filter(g=>g.sous&&(!sc.aTyp||g.items.some(i=>i.typ===typConduit)));
+        if(!(['Panneaux','Disjoncteurs','Chauffage'].includes(sc.cat)&&nom.length>=2))return null;
+        const cur=nom.some(g=>g.sous===sousSel)?sousSel:nom[0].sous;
+        const court=t=>t.replace(/^(Panneau|Disjoncteur|Plinthe) /,'');
+        return <div data-noswipe="1" style={{display:'flex',gap:6,overflowX:'auto',padding:'0.7rem 0 0.2rem',WebkitOverflowScrolling:'touch'}}>
+          {nom.map(g=>{const on=g.sous===cur;const n=lignes.filter(l=>l.cat===sc.cat&&l.sous===g.sous&&l.qte>0).length;
+            return <div key={g.sous} onClick={()=>setSousSel(g.sous)} style={{flexShrink:0,padding:'0.4rem 0.8rem',borderRadius:20,fontSize:12,fontWeight:on?800:500,cursor:'pointer',whiteSpace:'nowrap',background:on?'var(--emp,var(--accent))':'var(--bg3)',color:on?'#fff':'var(--text)'}}>{court(g.sous)}{n>0&&<b style={{marginLeft:5}}>{n}</b>}</div>;})}
+        </div>;})()}
+      {sc.groupes.filter(g=>!sc.aTyp||g.items.some(i=>i.typ===typConduit)).filter(g=>{
+        if(!(['Panneaux','Disjoncteurs','Chauffage'].includes(sc.cat)))return true;
+        const nom=sc.groupes.filter(x=>x.sous);if(nom.length<2||!g.sous)return true;
+        const cur=nom.some(x=>x.sous===sousSel)?sousSel:nom[0].sous;return g.sous===cur;
+      }).map((g,gi)=>{
         if(compte>=max)return null;
         const vis=g.items.slice(0,Math.max(0,max-compte));compte+=vis.length;
         const tuiles=vis.some(i=>i.opt);
