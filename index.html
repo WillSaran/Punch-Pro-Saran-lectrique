@@ -8,6 +8,11 @@
 <meta name="apple-mobile-web-app-title" content="PunchPro">
 <meta name="theme-color" content="#0d1117">
 <link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://accounts.google.com">
+<link rel="preconnect" href="https://apis.google.com">
+<link rel="preconnect" href="https://sheets.googleapis.com">
+<link rel="preload" as="script" href="https://accounts.google.com/gsi/client">
+<link rel="preload" as="script" href="https://apis.google.com/js/api.js">
 <link rel="apple-touch-icon" href="icon-512.png">
 <title>PunchPro — Saran Électrique</title>
 <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
@@ -791,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v274';
+const APP_VERSION='v275';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1543,18 +1548,26 @@ function loadScript(src){return new Promise(res=>{const s=document.createElement
 
 
 let ACTIVE_API_KEY=null; // clé API réellement utilisée à l'exécution (peut différer de DEFAULT_CFG si reconfigurée) — utile pour le Picker Drive
-async function initLibs(cfg,onToken){
-  await loadScript('https://apis.google.com/js/api.js');
-  await new Promise(res=>gapi.load('client',res));
-  await gapi.client.init({apiKey:cfg.apiKey,discoveryDocs:DISCOVERY});
-  ACTIVE_API_KEY=cfg.apiKey;
-  await loadScript('https://accounts.google.com/gsi/client');
+let _gapiPret=Promise.resolve();
+// v275 : GIS (connexion) et gapi (Sheets/Calendar) se chargent EN PARALLÈLE ; le bouton « Se connecter » s'active dès que GIS est prêt.
+async function initLibs(cfg,onToken,onGsiPret){
+  const pApi=loadScript('https://apis.google.com/js/api.js');
+  const pGsi=loadScript('https://accounts.google.com/gsi/client');
+  await pGsi;
+  _gapiPret=(async()=>{
+    await pApi;
+    await new Promise(res=>gapi.load('client',res));
+    await gapi.client.init({apiKey:cfg.apiKey,discoveryDocs:DISCOVERY});
+    ACTIVE_API_KEY=cfg.apiKey;
+  })();
   tokenClient=google.accounts.oauth2.initTokenClient({
     client_id:cfg.clientId,
     scope:SCOPES,
-    callback:onToken,
+    callback:async r=>{try{await _gapiPret;}catch(e){}onToken(r);},   // gapi.client doit être prêt avant de traiter le jeton
     error_callback:(e)=>{console.error('Auth error:',e);onToken({error:e.type||'popup_closed'});}
   });
+  if(onGsiPret)onGsiPret();
+  await _gapiPret;
 }
 function isIOS(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
@@ -9852,6 +9865,7 @@ function App(){
   const [emps,setEmps]=useState([]);
   const [notif,setNotif]=useState(null);
   const [libsReady,setLibsReady]=useState(false);
+  const [loginPret,setLoginPret]=useState(false);   // v275 : GIS prêt = on peut déjà cliquer sur « Se connecter »
   const [authLoading,setAuthLoading]=useState(false);
   const [refreshKey,setRefreshKey]=useState(0);
   const [showSidebar,setShowSidebar]=useState(false);
@@ -9916,7 +9930,7 @@ function App(){
 
   async function loadLibs(config){
     try{
-      await initLibs(config,onToken);
+      await initLibs(config,onToken,()=>setLoginPret(true));
       setLibsReady(true);
       const savedToken=sessionStorage.getItem('_oauth_token');
       if(savedToken){
@@ -9987,10 +10001,10 @@ function App(){
   },[authed]);
 
   function handleAuth(){
-    if(!libsReady){notify('APIs en chargement...','warn');return;}
-    if(isIOS()||isPWA()){
+    if(isIOS()||isPWA()){          // redirection : pas besoin d'attendre le chargement des APIs
       doRedirectAuth(cfg.clientId);
     }else{
+      if(!loginPret||!tokenClient){notify('Connexion Google en préparation…','warn');return;}
       setAuthLoading(true);
       setTimeout(()=>setAuthLoading(false),120000);
       try{tokenClient.requestAccessToken({prompt:'select_account'});}
@@ -9999,7 +10013,7 @@ function App(){
   }
   function handleSaveCfg(config){
     localStorage.setItem('pp_cfg',JSON.stringify(config));
-    setCfg(config);setShowCfg(false);setAuthed(false);setLibsReady(false);tokenClient=null;loadLibs(config);
+    setCfg(config);setShowCfg(false);setAuthed(false);setLibsReady(false);setLoginPret(false);tokenClient=null;loadLibs(config);
   }
   function handleSwitch(){
     setAuthed(false);setUserEmail('');setIsBoss(false);setAuthLoading(true);setMenuAction(null);
@@ -10087,7 +10101,7 @@ function App(){
         </div>
         <div className="topbar-right">
           {!authed&&(
-            <button onClick={handleAuth} disabled={authLoading||!libsReady}
+            <button onClick={handleAuth} disabled={authLoading||!(loginPret||isIOS()||isPWA())}
               style={{background:'#fff',border:'none',borderRadius:8,padding:'0.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',width:34,height:34,flexShrink:0,touchAction:'manipulation',opacity:authLoading?0.5:1}}>
               {authLoading
                 ?<span style={{fontSize:14}}>⏳</span>
@@ -10111,7 +10125,7 @@ function App(){
           <img src="logo.png" alt="Saran Électrique" style={{width:160,height:'auto',objectFit:'contain',marginBottom:'1.25rem',position:'relative',zIndex:1}} onError={e=>e.target.style.display='none'}/>
           <div style={{fontFamily:'var(--font-head)',fontSize:'1.4rem',fontWeight:800,marginBottom:'0.25rem',position:'relative',zIndex:1}}>Saran Électrique</div>
           <div style={{color:'var(--muted)',fontSize:'0.85rem',marginBottom:'2rem',position:'relative',zIndex:1}}>Système de gestion du temps</div>
-          <button className="btn-p" style={{width:'auto',padding:'0.75rem 2rem',marginTop:0,position:'relative',zIndex:1,fontSize:'0.95rem'}} onClick={handleAuth} disabled={authLoading||!libsReady||returningFromRedirect}>
+          <button className="btn-p" style={{width:'auto',padding:'0.75rem 2rem',marginTop:0,position:'relative',zIndex:1,fontSize:'0.95rem'}} onClick={handleAuth} disabled={authLoading||!(loginPret||isIOS()||isPWA())||returningFromRedirect}>
             {authLoading||returningFromRedirect?'⏳ Connexion en cours...':'🔐 Se connecter avec Google'}
           </button>
           {(authLoading||returningFromRedirect)&&(
@@ -10120,7 +10134,7 @@ function App(){
               <div style={{fontSize:11,color:'var(--muted)'}}>Veuillez patienter quelques secondes. Ne réappuyez pas sur le bouton.</div>
             </div>
           )}
-          {!libsReady&&!returningFromRedirect&&!authLoading&&<div style={{color:'var(--muted)',fontSize:11,marginTop:'0.75rem',position:'relative',zIndex:1}}>⏳ Chargement des APIs...</div>}
+          {!loginPret&&!(isIOS()||isPWA())&&!returningFromRedirect&&!authLoading&&<div style={{color:'var(--muted)',fontSize:11,marginTop:'0.75rem',position:'relative',zIndex:1}}>⏳ Chargement des APIs...</div>}
         </div>
       ):(
         <>
