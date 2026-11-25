@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v287';
+const APP_VERSION='v288';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -913,18 +913,31 @@ const CATALOGUE={
     {code:'RFA BUSHING',desc:'Bague CI27',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
   ],
   'Entrée électrique':[
-    // v286 : entrée de service qui n'est pas dans le conduit. Codes H-tap = Blackburn (WR…) vérifiés sur catalogue ; le reste « à confirmer ».
-    {code:'CONN HYDRO',desc:'Connecteur Hydro (code à confirmer)',unite:'un'},
-    {code:'CAPOTE',desc:'Capote (code à confirmer)',unite:'un',options:['Petite','Grosse']},
+    // v288 : codes tirés de tes commandes Dubo (BC-0006, BC-0009) ; wedge clamp / H-tap = Blackburn (catalogue) ; capotes = code encore à trouver
+    {code:'MM12',desc:'Mât 12 pi',unite:'un'},
+    {code:'KIT-200AM',desc:'Kit de mât 200A',unite:'un',variantes:[{opt:'AM200',code:'KIT-200AM'},{opt:'MH200',code:'KIT-200MH'}]},
+    {code:'BQ2-V',desc:'Base de compteur 200A',unite:'un'},
+    {code:'RMHU35',desc:'Moyeu (hub) PVC 2 po pour base de compteur',unite:'un'},
+    {code:'RFA35',desc:'Adaptateur femelle PVC 2 po (RFA)',unite:'un'},
+    {code:'MM700',desc:'Collier de mise à la terre 2-1/2 po (sur le mât)',unite:'un'},
+    {code:'RSLB60S',desc:'LB PVC 2 po',unite:'un'},
+    {code:'REE3590',desc:'Coude PVC 2 po 90°',unite:'un'},
+    {code:'RTA35',desc:'Adaptateur de boîte PVC 2 po',unite:'un'},
+    {code:'RPS35',desc:'Sangle PVC 2 po',unite:'un'},
+    {code:'CI1716',desc:'Contre-écrou 2 po',unite:'un'},
+    {code:'RC4002010',desc:'Conduit PVC 2 po (longueurs de 10 pi)',unite:'pi'},
+    {code:'1016BTB',desc:'Plaque de mise à la terre 10 × 16 po avec connecteur',unite:'un'},
+    {code:'RW250BLKALU',desc:'Fil alu RW90 250 noir (au pied)',unite:'pi'},
+    {code:'RW2WHTALU',desc:'Fil alu RW90 #2 blanc (au pied)',unite:'pi'},
+    {code:'TTD-2610XFBTA',desc:'Connecteur Hydro',unite:'un'},
+    {code:'CAPOTE',desc:'Capote (code à trouver)',unite:'un',options:['Petite','Grosse']},
     {code:'WEDGE CLAMP',desc:'Wedge clamp Blackburn',unite:'un',options:[{opt:'1/0 à #4',code:'W201-1'},{opt:'#2 à #6',code:'W62-1BFC-T'},{opt:'1/0 à #4 + coulisseau',code:'W20-1FC'}]},
-    {code:'ST 6',desc:'Hub 2" Myers (Crouse-Hinds)',unite:'un'},
     {code:'H-TAP',desc:'H-tap Blackburn',unite:'un',options:[{opt:'#2-6 / #2-6',code:'WR159'},{opt:'1/0-3 / #2-6',code:'WR189'},{opt:'2/0-1/0 / #2-6',code:'WR289'},{opt:'4/0-3/0 / #2-6',code:'WR379'},{opt:'4/0-3/0 / 2/0-1',code:'WR399'},{opt:'4/0-3/0 / 4/0-3/0',code:'WR419'},{opt:'477 / 4/0-1/0',code:'WR835'}]},
-    {code:'BQ2V',desc:'Kit entrée 200A',unite:'un',variantes:[{opt:'BQ2V (ABB)',code:'BQ2V'},{opt:'AM200',code:'KIT-200AM'},{opt:'MH200',code:'KIT-200MH'}]},
   ],
   'Panneaux':[
     // v276 : juste les marques ; « main lug / disjoncteur principal » se choisit dans le panneau (le pad ajoute la mention)
     {code:'QO CQO1',desc:'Panneau QO',unite:'un',options:['4cir','8cir',{opt:'24cir 125A',code:'QO CQO1-24-125'},{opt:'32cir 125A',code:'QO CQO1-32-125'},{opt:'32cir 200A',code:'QO CQO1-32-200'},{opt:'40cir 200A',code:'QO CQO1-40-200'},{opt:'60cir 200A',code:'QO CQO1-60-200'}]},
-    {code:'CHOM',desc:'Panneau CHOM',unite:'un',options:['4cir','8cir',{opt:'24/48cir 125A',code:'CHOM 2448-125'},'32cir 125A',{opt:'42/84cir 200A',code:'CHOM 4284-200'}]},
+    {code:'CHOM',desc:'Panneau CHOM',unite:'un',options:['4cir','8cir',{opt:'24/48cir 125A',code:'CHOM 2448-125'},'32cir 125A',{opt:'42/84cir 200A',code:'CHOM4284M200GC'}]},
     {code:'SIEQ',desc:'Panneau SIEQ',unite:'un',options:['4cir','8cir',{opt:'40cir 200A',code:'SIEQ 40-200'},{opt:'60cir 200A',code:'SIEQ 60-200'}]},
     {code:'PAN GEN',desc:'Panneau génératrice (24 circuits — à confirmer)',unite:'un',options:['30A','60A']},
     {code:'PAN EXT',desc:'Panneau extérieur',unite:'un',options:['4cir','8cir','12cir','24cir','32cir','40cir']},
@@ -933,8 +946,8 @@ const CATALOGUE={
     // v280 : disjoncteurs normaux par marque, puis un bloc « Disjoncteurs twin » plus bas dans la même marque. Codes seulement quand confirmés.
     {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:[{opt:'1P-15A',code:'QO115'},{opt:'1P-20A',code:'QO120'},{opt:'1P-30A',code:'QO130'},{opt:'2P-15A',code:'QO215'},{opt:'2P-20A',code:'QO220'},{opt:'2P-30A',code:'QO230'},{opt:'2P-40A',code:'QO240'},{opt:'2P-50A',code:'QO250'},{opt:'2P-60A',code:'QO260'},{opt:'2P-80A',code:'QO280'},{opt:'2P-100A',code:'QO2100'}]},
     {code:'QO TWIN',desc:'Disjoncteur twin QO',sousGrp:'Disjoncteur QO',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'QO1515'},{opt:'Twin 15-20',code:'QO1520'},{opt:'Twin 20-20',code:'QO2020'},{opt:'Twin 20-30',code:'QO2030'},'Quad 15-40-40-15']},
-    {code:'CHOM DISJ',desc:'Disjoncteur CHOM',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-80A','2P-100A']},
-    {code:'CHOM TWIN',desc:'Disjoncteur twin CHOM',sousGrp:'Disjoncteur CHOM',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'CHT1515'},'Twin 15-20',{opt:'Twin 20-20',code:'CHT2020'},'Quad 15-15-15-15','Quad 15-20-20-15','Quad 15-30-30-15']},
+    {code:'CHOM DISJ',desc:'Disjoncteur CHOM',unite:'un',options:[{opt:'1P-15A',code:'CHOM115'},'1P-20A','1P-30A','2P-15A',{opt:'2P-20A',code:'CHOM220'},'2P-30A',{opt:'2P-40A',code:'CHOM240'},'2P-50A','2P-60A','2P-80A','2P-100A']},
+    {code:'CHOM TWIN',desc:'Disjoncteur twin CHOM',sousGrp:'Disjoncteur CHOM',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'CHOMT1515230'},'Twin 15-20',{opt:'Twin 20-20',code:'CHT2020'},'Quad 15-15-15-15','Quad 15-20-20-15','Quad 15-30-30-15']},
     {code:'SIEQ DISJ',desc:'Disjoncteur SIEQ',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-80A','2P-100A']},
     {code:'SIEQ TWIN',desc:'Disjoncteur twin SIEQ',sousGrp:'Disjoncteur SIEQ',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'Q1515NC'},{opt:'Twin 15-20',code:'Q1520NC'},{opt:'Twin 20-20',code:'Q2020NC'},'Quad 15-15-15-15','Quad 15-20-20-15','Quad 15-30-30-15']},
     {code:'BR DISJ',desc:'Disjoncteur BR',unite:'un',options:[{opt:'1P-15A',code:'BR115'},{opt:'1P-20A',code:'BR120'},{opt:'1P-30A',code:'BR130'},{opt:'2P-15A',code:'BR215'},{opt:'2P-20A',code:'BR220'},{opt:'2P-30A',code:'BR230'},{opt:'2P-40A',code:'BR240'},{opt:'2P-50A',code:'BR250'},{opt:'2P-60A',code:'BR260'},{opt:'2P-80A',code:'BR280'},{opt:'2P-100A',code:'BR2100'}]},
@@ -9296,7 +9309,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
           <div style={{marginTop:5}}><HeuresStepper v={r.h} onChange={h=>setSa(L=>L.map((x,k)=>k===i?{...x,h}:x))}/></div>
         </div>;})}
         <button type="button" className="btn-s" style={{fontSize:12}} onClick={()=>setSa(L=>[...L,{nom:'',h:'0'}])}>➕ Ajouter {sa.length===1?'un SA 02':'un employé (SA 0'+(sa.length+1)+')'}</button>
-        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>3. Stock utilisé</div>
+        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>3. Stock utilisé <span style={{fontWeight:400,fontSize:11,color:'var(--muted)',textTransform:'none'}}>— tu peux swipe à gauche puis à droite pour changer de page</span></div>
         <MaterielPicker lignes={lignesMat} onChange={setLignesMat} onApercu={()=>setApercu(true)}/>
         <div style={{...lbl,marginTop:'0.6rem'}}>Autre matériel (si pas dans le catalogue)</div>
         <textarea value={materiel} onChange={e=>setMateriel(e.target.value)} rows={2} placeholder="ex. support spécial, pièce commandée" style={{...champ,resize:'vertical'}}/>
