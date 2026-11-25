@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v257';
+const APP_VERSION='v258';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8687,30 +8687,43 @@ function aplatirCatalogue(){
   return out;
 }
 function MaterielPicker({lignes,onChange}){
+  // v258 : « pad électronique » — onglets par catégorie, +/− par ligne, +10/+50 pour le fil (comme le carnet papier)
   const [q,setQ]=useState('');
-  const tout=useMemo(()=>aplatirCatalogue(),[lignes&&lignes.length,_catCrmEtat]);
+  const [catSel,setCatSel]=useState('');
+  const tout=useMemo(()=>aplatirCatalogue(),[_catCrmEtat]);
+  const cats=useMemo(()=>{const m={};tout.forEach(i=>{m[i.cat]=(m[i.cat]||0)+1;});return Object.keys(m);},[tout]);
+  const cat=catSel||cats[0]||'';
+  const cle=i=>i.code+'|'+i.desc;
+  const qteDe=i=>{const l=lignes.find(x=>x.k===cle(i));return l?l.qte:0;};
+  const nbCat=c=>lignes.filter(l=>l.cat===c).length;
   const mots=q.toLowerCase().split(/\s+/).filter(Boolean);
-  const res=mots.length?tout.filter(i=>{const t=(i.code+' '+i.desc+' '+i.cat).toLowerCase();return mots.every(m=>t.includes(m));}).slice(0,12):[];
-  const ajouter=i=>{const k=i.code+'|'+i.desc;const ex=lignes.findIndex(l=>l.k===k);
-    onChange(ex>=0?lignes.map((l,x)=>x===ex?{...l,qte:l.qte+1}:l):[...lignes,{k,code:i.code,desc:i.desc,unite:i.unite,qte:1}]);setQ('');};
-  const chg=(x,d)=>onChange(lignes.map((l,i)=>i===x?{...l,qte:Math.max(0,l.qte+d)}:l).filter(l=>l.qte>0));
-  const setQte=(x,v)=>onChange(lignes.map((l,i)=>i===x?{...l,qte:Math.max(0,parseFloat(String(v).replace(',','.'))||0)}:l));
+  const liste=(mots.length?tout.filter(i=>{const t=(i.code+' '+i.desc+' '+i.cat).toLowerCase();return mots.every(m=>t.includes(m));}):tout.filter(i=>i.cat===cat)).slice(0,80);
+  const ajuster=(i,d)=>{const k=cle(i);const ex=lignes.findIndex(l=>l.k===k);
+    if(ex<0){if(d>0)onChange([...lignes,{k,cat:i.cat,code:i.code,desc:i.desc,unite:i.unite,qte:d}]);return;}
+    onChange(lignes.map((l,x)=>x===ex?{...l,qte:Math.max(0,Math.round((l.qte+d)*100)/100)}:l).filter(l=>l.qte>0));};
+  const fixer=(i,v)=>{const n=Math.max(0,parseFloat(String(v).replace(',','.'))||0);const k=cle(i);const ex=lignes.findIndex(l=>l.k===k);
+    if(ex<0){if(n>0)onChange([...lignes,{k,cat:i.cat,code:i.code,desc:i.desc,unite:i.unite,qte:n}]);return;}
+    onChange(lignes.map((l,x)=>x===ex?{...l,qte:n}:l));};
+  const bt={width:32,height:32,borderRadius:8,border:'1px solid var(--border)',background:'none',color:'var(--text)',fontSize:16,cursor:'pointer',touchAction:'manipulation'};
+  const total=lignes.filter(l=>l.qte>0).length;
   return <div>
-    <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔎 Chercher dans le catalogue (ex. boîte 2 gang, NMD 14, 15A…)" style={{width:'100%',padding:'0.6rem',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg)',color:'var(--text)',fontSize:14,boxSizing:'border-box'}}/>
-    {res.length>0&&<div style={{border:'1px solid var(--border)',borderRadius:8,marginTop:4,maxHeight:220,overflowY:'auto'}}>
-      {res.map((i,x)=><div key={x} onClick={()=>ajouter(i)} style={{padding:'0.5rem 0.7rem',fontSize:13,cursor:'pointer',borderTop:x?'1px solid var(--border)':'none'}}>
-        <b>{i.code}</b> — {i.desc} <span style={{color:'var(--muted)',fontSize:11}}>· {i.cat} · {i.unite}</span></div>)}
+    <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔎 Chercher dans tout le stock (facultatif)" style={{width:'100%',padding:'0.5rem 0.6rem',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg)',color:'var(--text)',fontSize:13,boxSizing:'border-box',marginBottom:6}}/>
+    {!mots.length&&<div style={{display:'flex',gap:5,overflowX:'auto',paddingBottom:6,WebkitOverflowScrolling:'touch'}}>
+      {cats.map(c=>{const on=c===cat,n=nbCat(c);return <div key={c} onClick={()=>setCatSel(c)} style={{flexShrink:0,padding:'0.4rem 0.75rem',borderRadius:18,fontSize:12,cursor:'pointer',fontWeight:on?700:500,whiteSpace:'nowrap',background:on?'rgba(255,122,26,0.15)':'var(--bg3)',border:'1px solid '+(on?'var(--accent)':'var(--border)'),color:on?'var(--accent)':'var(--text)'}}>{c}{n>0&&<span style={{marginLeft:5,background:'var(--accent)',color:'#fff',borderRadius:10,padding:'0 6px',fontSize:11}}>{n}</span>}</div>;})}
     </div>}
-    {mots.length>0&&res.length===0&&<div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>Rien trouvé : écris-le dans « Autre matériel » plus bas.</div>}
-    {lignes.length>0&&<div style={{marginTop:6}}>
-      {lignes.map((l,x)=><div key={l.k} style={{display:'flex',alignItems:'center',gap:6,padding:'0.3rem 0',fontSize:13}}>
-        <div style={{flex:1,minWidth:0}}><b>{l.code}</b> <span style={{color:'var(--muted)'}}>{l.desc}</span></div>
-        <button type="button" onClick={()=>chg(x,-1)} style={{width:28,height:28,borderRadius:6,border:'1px solid var(--border)',background:'none',color:'var(--text)'}}>−</button>
-        <input value={l.qte} onChange={e=>setQte(x,e.target.value)} inputMode="decimal" style={{width:46,textAlign:'center',padding:'0.25rem',borderRadius:6,border:'1px solid var(--border)',background:'var(--bg)',color:'var(--text)'}}/>
-        <button type="button" onClick={()=>chg(x,1)} style={{width:28,height:28,borderRadius:6,border:'1px solid var(--border)',background:'none',color:'var(--text)'}}>+</button>
-        <span style={{fontSize:11,color:'var(--muted)',width:22}}>{l.unite}</span>
-      </div>)}
-    </div>}
+    <div style={{border:'1px solid var(--border)',borderRadius:10,maxHeight:300,overflowY:'auto'}}>
+      {liste.length===0&&<div style={{padding:'0.7rem',fontSize:12,color:'var(--muted)'}}>Rien trouvé : écris-le dans « Autre matériel » plus bas.</div>}
+      {liste.map((i,x)=>{const n=qteDe(i);const fil=/^(pi|m|ft)$/i.test(i.unite);
+        return <div key={cle(i)} style={{display:'flex',alignItems:'center',gap:5,padding:'0.4rem 0.55rem',borderTop:x?'1px solid var(--border)':'none',background:n>0?'rgba(255,122,26,0.07)':'transparent'}}>
+          <div style={{flex:1,minWidth:0,fontSize:12,lineHeight:1.25}}><b>{i.code}</b><div style={{color:'var(--muted)',fontSize:11}}>{i.desc}{mots.length>0&&' · '+i.cat}</div></div>
+          {fil&&<><button type="button" onClick={()=>ajuster(i,10)} style={{...bt,width:38,fontSize:11}}>+10</button><button type="button" onClick={()=>ajuster(i,50)} style={{...bt,width:38,fontSize:11}}>+50</button></>}
+          <button type="button" onClick={()=>ajuster(i,-1)} style={bt}>−</button>
+          <input value={n||''} placeholder="0" onChange={e=>fixer(i,e.target.value)} inputMode="decimal" style={{width:44,textAlign:'center',padding:'0.3rem 0.1rem',borderRadius:6,border:'1px solid var(--border)',background:'var(--bg)',color:'var(--text)',fontSize:14,fontWeight:n>0?700:400}}/>
+          <button type="button" onClick={()=>ajuster(i,1)} style={bt}>+</button>
+          <span style={{fontSize:10,color:'var(--muted)',width:20}}>{i.unite}</span>
+        </div>;})}
+    </div>
+    <div style={{fontSize:11,color:'var(--muted)',marginTop:4}}>{total>0?'✅ '+total+' ligne'+(total>1?'s':'')+' de stock ajoutée'+(total>1?'s':'')+' (toutes catégories)':'Choisis une catégorie, puis mets les quantités.'}</div>
   </div>;
 }
 const texteMateriel=(lignes,libre)=>[...lignes.map(l=>l.qte+' '+l.unite+' × '+l.code+' — '+l.desc),libre&&libre.trim()].filter(Boolean).join(', ');
@@ -8739,6 +8752,7 @@ async function fabriquerPdfAp(d){
   champ('Type de travaux',TYPES_AP[d.type]?TYPES_AP[d.type].lib:'');
   champ('Employé',d.employe);
   champ('Heures',d.heures?d.heures+' h':'');
+  champ('Autres employés (heures)',d.equipe);
   doc.setDrawColor(200);doc.setLineWidth(0.2);saut(4);doc.line(L,y,L+W,y);y+=6;
   champ('Où (endroit des travaux)',d.ou);
   champ('Travaux faits',d.quoi);
@@ -8758,7 +8772,18 @@ async function prochainNumeroAP(sid,emp){
   }catch(e){}
   return c+String(max+1).padStart(4,'0');
 }
-function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,onClose,onPhotoPad}){
+function HeuresStepper({v,onChange}){
+  const n=parseFloat(String(v).replace(',','.'))||0;
+  const set=x=>onChange(String(Math.max(0,Math.round(x*4)/4)));
+  const b={width:38,height:38,borderRadius:8,border:'1px solid var(--border)',background:'none',color:'var(--text)',fontSize:18,cursor:'pointer',touchAction:'manipulation'};
+  return <div style={{display:'flex',alignItems:'center',gap:6}}>
+    <button type="button" style={b} onClick={()=>set(n-0.25)}>−</button>
+    <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem',minWidth:64,textAlign:'center',color:'var(--accent)'}}>{n} h</div>
+    <button type="button" style={b} onClick={()=>set(n+0.25)}>+</button>
+    <button type="button" style={{...b,width:46,fontSize:12,fontWeight:700}} onClick={()=>set(n+1)}>+1h</button>
+  </div>;
+}
+function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,notify,onClose,onPhotoPad}){
   const [mode,setMode]=useState(null);   // null = choix | 'elec'
   const [numAuto,setNumAuto]=useState('…');
   useEffect(()=>{let ok=true;prochainNumeroAP(sid,emp).then(n=>{if(ok)setNumAuto(n);});return()=>{ok=false;};},[sid,emp&&emp.nom]);
@@ -8775,6 +8800,7 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
   const [, setCatTick]=useState(0);
   useEffect(()=>{chargerCatalogueCrm().then(()=>setCatTick(t=>t+1));},[]);
   const [heures,setHeures]=useState('');
+  const [autresEmp,setAutresEmp]=useState([]);   // [{nom,h}] autres employés sur la job
   const [photos,setPhotos]=useState([]);   // 'url|nom'
   const [envoiPhoto,setEnvoiPhoto]=useState(0);
   const [envoi,setEnvoi]=useState(false);
@@ -8811,7 +8837,7 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
     setEnvoi(true);
     try{
       const numFinal=await prochainNumeroAP(sid,emp);
-      const data={numero:numFinal,job:projetNom,adresse,client:sel?sel.feuille:'',dates:sel?sel.date:localDateStr(),type,employe:emp.nom,heures:heures.trim(),
+      const data={numero:numFinal,job:projetNom,adresse,client:sel?sel.feuille:'',dates:sel?sel.date:localDateStr(),type,employe:emp.nom,heures:heures.trim(),equipe:autresEmp.filter(a=>a.nom&&parseFloat(a.h)>0).map(a=>a.nom+' : '+a.h+' h').join(', '),
         ou:ou.trim(),quoi:quoi.trim(),reste:reste.trim(),materiel:texteMateriel(lignesMat,materiel),dateRemplie:localDateStr()};
       const blob=await fabriquerPdfAp(data);
       const nomPdf='AP_'+numFinal+'_'+clean(projetNom)+'.pdf';
@@ -8819,7 +8845,8 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
       if(!r.url||!r.id)throw new Error(r.error||'PDF non déposé dans le Drive (permissions?)');
       const fichiers=[r.url+'|'+nomPdf,...photos];
       if(calendarIds&&projetNom){try{const ref=await findCalendarEventByTitle(calendarIds,projetNom);if(ref)await attachFileToCalendarEvent(ref.calendarId,ref.eventId,r.id,nomPdf,'application/pdf');}catch(e){}}
-      const resume=[ou&&'OÙ : '+ou.trim(),'TRAVAUX : '+quoi.trim(),reste&&'RENDU / RESTE : '+reste.trim(),texteMateriel(lignesMat,materiel)&&'MATÉRIEL : '+texteMateriel(lignesMat,materiel)].filter(Boolean).join('\n');
+      const equipeTxt=autresEmp.filter(a=>a.nom&&parseFloat(a.h)>0).map(a=>a.nom+' '+a.h+' h').join(', ');
+      const resume=[ou&&'OÙ : '+ou.trim(),(parseFloat(heures)>0)&&'HEURES : '+emp.nom+' '+heures+' h'+(equipeTxt?' + '+equipeTxt:''),!(parseFloat(heures)>0)&&equipeTxt&&'HEURES AUTRES : '+equipeTxt,'TRAVAUX : '+quoi.trim(),reste&&'RENDU / RESTE : '+reste.trim(),texteMateriel(lignesMat,materiel)&&'MATÉRIEL : '+texteMateriel(lignesMat,materiel)].filter(Boolean).join('\n');
       const jobObj={id:(jobCal&&jobCal.id)||(sel&&sel.eventId)||'',title:projetNom,location:adresse,start:jobCal&&jobCal.start};
       if(sid){try{await enregistrerDepot(sid,emp,jobObj,{type:'AP',numero:numFinal,note:'[AP numérique] ('+g.lib+') '+resume,fichiers,heures:parseFloat(heures)||0});}catch(e){console.error(e);notify('Attention : AP non gardé dans la feuille (PDF et courriel partent quand même)','warn');}}
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
@@ -8859,7 +8886,7 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
         </select>
         {!sel&&<input value={jobLibre} onChange={e=>setJobLibre(e.target.value)} placeholder="Nom de la job / adresse" style={{...champ,marginTop:6}}/>}
         {adresse&&<div style={{fontSize:11,color:'var(--muted)',marginTop:3}}>📍 {adresse}</div>}
-        <div style={lbl}>Type de travaux</div>
+        <div style={{...lbl,fontSize:12,color:'var(--accent)'}}>1. Type de travaux</div>
         <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
           {Object.entries(TYPES_AP).map(([k,t])=>(
             <div key={k} onClick={()=>setType(k)} style={{padding:'0.4rem 0.7rem',borderRadius:10,fontSize:12,cursor:'pointer',fontWeight:type===k?700:500,background:type===k?'rgba(255,122,26,0.15)':'var(--bg3)',border:'1px solid '+(type===k?'var(--accent)':'var(--border)'),color:type===k?'var(--accent)':'var(--text)'}}>{t.lib}</div>
@@ -8874,12 +8901,22 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
         <textarea value={quoi} onChange={e=>setQuoi(e.target.value)} rows={4} placeholder={g.quoi} style={{...champ,resize:'vertical'}}/>
         <div style={lbl}>Où c'est rendu / reste à faire</div>
         <textarea value={reste} onChange={e=>setReste(e.target.value)} rows={2} placeholder={g.reste} style={{...champ,resize:'vertical'}}/>
-        <div style={lbl}>Matériel utilisé</div>
+        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>2. Mes heures</div>
+        <HeuresStepper v={heures} onChange={setHeures}/>
+        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>3. Autre employé sur la job</div>
+        {autresEmp.map((a,i)=><div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:6,flexWrap:'wrap'}}>
+          <select value={a.nom} onChange={e=>setAutresEmp(L=>L.map((x,k)=>k===i?{...x,nom:e.target.value}:x))} style={{...champ,width:'auto',flex:'1 1 120px'}}>
+            <option value="">— Qui? —</option>
+            {(emps||[]).filter(e=>e.nom!==emp.nom&&(e.nom===a.nom||!autresEmp.some(x=>x.nom===e.nom))).map(e=><option key={e.nom} value={e.nom}>{e.nom}</option>)}
+          </select>
+          <HeuresStepper v={a.h} onChange={h=>setAutresEmp(L=>L.map((x,k)=>k===i?{...x,h}:x))}/>
+          <button type="button" className="btn-s" onClick={()=>setAutresEmp(L=>L.filter((_,k)=>k!==i))}>✕</button>
+        </div>)}
+        <button type="button" className="btn-s" style={{fontSize:12}} onClick={()=>setAutresEmp(L=>[...L,{nom:'',h:'0'}])}>➕ Ajouter un employé</button>
+        <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>4. Stock utilisé</div>
         <MaterielPicker lignes={lignesMat} onChange={setLignesMat}/>
         <div style={{...lbl,marginTop:'0.6rem'}}>Autre matériel (si pas dans le catalogue)</div>
         <textarea value={materiel} onChange={e=>setMateriel(e.target.value)} rows={2} placeholder="ex. support spécial, pièce commandée" style={{...champ,resize:'vertical'}}/>
-        <div style={lbl}>Heures (facultatif)</div>
-        <input value={heures} onChange={e=>setHeures(e.target.value)} inputMode="decimal" placeholder="ex. 6.5" style={champ}/>
         <div style={lbl}>Photos (facultatif)</div>
         <label style={{display:'inline-block',padding:'0.5rem 0.9rem',borderRadius:8,border:'1px solid var(--border)',fontSize:13,cursor:'pointer'}}>
           📷 Ajouter des photos<input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>{const l=[...e.target.files];e.target.value='';ajouterPhotos(l);}}/>
@@ -9078,7 +9115,7 @@ function FacturesManquantesView({emps,jobsForLookup,meEmp,sid,calendarIds,notify
           </div>
         ))}
         <button className="btn-p" style={{marginTop:'1rem'}} onClick={()=>setApOuvert({initial:null})}>✍️ Faire un autre AP</button>
-        {apOuvert&&<FacturerAP emp={meEmp} options={manquantes} initial={apOuvert.initial} jobsForLookup={jobsForLookup} sid={sid} calendarIds={calendarIds} notify={notify} onPhotoPad={onPhotoPad}
+        {apOuvert&&<FacturerAP emps={emps} emp={meEmp} options={manquantes} initial={apOuvert.initial} jobsForLookup={jobsForLookup} sid={sid} calendarIds={calendarIds} notify={notify} onPhotoPad={onPhotoPad}
           onClose={fait=>{setApOuvert(null);if(fait)load();}}/>}
       </div>
     );
@@ -9114,7 +9151,7 @@ function FacturesManquantesView({emps,jobsForLookup,meEmp,sid,calendarIds,notify
           {!meEmp&&bloc('🟠 En traitement — appel de service fait, facture à venir',enTraitement,'var(--warning)')}
         </div>
       )}
-      {apOuvert&&meEmp&&<FacturerAP emp={meEmp} options={manquantes} initial={apOuvert.initial} jobsForLookup={jobsForLookup} sid={sid} calendarIds={calendarIds} notify={notify} onPhotoPad={onPhotoPad}
+      {apOuvert&&meEmp&&<FacturerAP emps={emps} emp={meEmp} options={manquantes} initial={apOuvert.initial} jobsForLookup={jobsForLookup} sid={sid} calendarIds={calendarIds} notify={notify} onPhotoPad={onPhotoPad}
         onClose={fait=>{setApOuvert(null);if(fait)load();}}/>}
     </div>
   );
