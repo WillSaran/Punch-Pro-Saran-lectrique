@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v267';
+const APP_VERSION='v268';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8745,7 +8745,7 @@ function aplatirCatalogue(){
   Object.entries(CATALOGUE).forEach(([cat,L])=>L.forEach(i=>{
     const opts=i.options||i.sizes;
     if(opts)opts.forEach(o=>out.push({cat,sous:i.desc,opt:String(o),code:i.code,desc:i.desc+' ('+o+')',unite:i.unite||'un'}));
-    else out.push({cat,sous:i.sous||'',code:i.code,desc:i.desc,unite:i.unite||'un'});
+    else out.push({cat,sous:i.sous||'',code:i.code,desc:i.desc,unite:i.unite||'un',crm:!!i.crm});
   }));
   return out;
 }
@@ -8758,13 +8758,13 @@ function MaterielPicker({lignes,onChange}){
   const [manuel,setManuel]=useState('');
   const [lim,setLim]=useState({});
   const tout=useMemo(()=>aplatirCatalogue(),[_catCrmEtat]);
-  const ORDRE_PAD=['Fils','Boîtes','Décora','Divers','Conduit','Panneaux','Disjoncteurs','Chauffage'];
+  // v268 : les pages = seulement la feuille papier (7 catégories). Le reste du catalogue (kits, NMD, NMWU…) s'ajoute par la recherche ou à la main.
+  const ORDRE_PAD=['Fils','Boîtes','Décora','Conduit','Panneaux','Disjoncteurs','Chauffage'];
   const PRIO_SOUS={'Fils':['NMD','NMWU','ACWU','RW90','AC90']};
   const sections=useMemo(()=>{
-    const ordre=[];tout.forEach(i=>{if(!ordre.includes(i.cat))ordre.push(i.cat);});
-    const r=c=>{const k=ORDRE_PAD.indexOf(c);return k<0?99:k;};
-    return ordre.map((c,x)=>[c,x]).sort((a,b)=>r(a[0])-r(b[0])||a[1]-b[1]).map(([c])=>{
-      const items=tout.filter(i=>i.cat===c);
+    const ordre=ORDRE_PAD.filter(c=>tout.some(i=>i.cat===c&&!i.crm));
+    return ordre.map(c=>[c]).map(([c])=>{
+      const items=tout.filter(i=>i.cat===c&&!i.crm);
       const sousL=[];items.forEach(i=>{if(i.sous&&!sousL.includes(i.sous))sousL.push(i.sous);});
       const prio=PRIO_SOUS[c];
       if(prio){const rang=sn=>{const t=String(sn).toUpperCase().replace(/[^A-Z0-9]/g,'');const k=prio.findIndex(p=>t.startsWith(p));return k<0?99:k;};sousL.sort((a,b)=>rang(a)-rang(b));}
@@ -8841,7 +8841,7 @@ function MaterielPicker({lignes,onChange}){
       {manuelsPage.length>0&&<div style={{marginTop:8}}><div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',margin:'0.4rem 0 0.2rem'}}>Écrit à la main</div>{manuelsPage.map((l,x)=>ligne({cat:l.cat,sous:'',code:'Manuel',desc:l.desc,unite:''},x,false))}</div>}
       {/* fin de page : chercher / écrire à la main */}
       <div style={{marginTop:12,paddingTop:10,borderTop:'1px dashed rgba(255,255,255,0.2)'}}>
-        <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Pas dans la liste ?</div>
+        <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Un autre produit ? (kits, autres fils, etc.)</div>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔎 Chercher un produit (tout le catalogue)" style={{width:'100%',padding:'0.55rem 0.7rem',borderRadius:10,border:'none',background:'var(--bg3)',color:'var(--text)',fontSize:13,boxSizing:'border-box'}}/>
         {mots.length>0&&<div style={{marginTop:4}}>
           {resultats.length===0&&<div style={{padding:'0.5rem 0',fontSize:12,color:'var(--muted)'}}>Rien trouvé — écris-le à la main juste en dessous.</div>}
