@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v260';
+const APP_VERSION='v261';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8646,7 +8646,7 @@ function fusionnerCatalogueCrm(rows){
     const code=String(r[0]||'').trim(),desc=String(r[1]||'').trim(),catCrm=String(r[2]||'').trim();
     if(!code||!desc||vus.has(_normCode(code)))return;
     const cat=MAP_CAT_CRM[catCrm]||(catCrm?catCrm.charAt(0)+catCrm.slice(1).toLowerCase():'Divers');
-    (CATALOGUE[cat]=CATALOGUE[cat]||[]).push({code,desc,sous:String(r[3]||'').trim(),unite:String(r[4]||'un').trim()||'un',crm:true});
+    (CATALOGUE[cat]=CATALOGUE[cat]||[]).push({code,desc,sous:String(r[3]||'').trim(),unite:((u)=>(catCrm==='FIL'&&/^m$/i.test(u))?'pi':(u||'un'))(String(r[4]||'un').trim()),crm:true});   // les gars comptent le fil en pieds
     vus.add(_normCode(code));n++;
   });
   return n;
