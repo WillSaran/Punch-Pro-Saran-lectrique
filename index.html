@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v278';
+const APP_VERSION='v279';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -9906,6 +9906,7 @@ function App(){
   const [emps,setEmps]=useState([]);
   const [notif,setNotif]=useState(null);
   const [libsReady,setLibsReady]=useState(false);
+  const authEnAttente=useRef(false);
   const [loginPret,setLoginPret]=useState(false);   // v275 : GIS prêt = on peut déjà cliquer sur « Se connecter »
   const [authLoading,setAuthLoading]=useState(false);
   const [refreshKey,setRefreshKey]=useState(0);
@@ -10041,13 +10042,17 @@ function App(){
     return()=>{window.fetch=origFetch;};
   },[authed]);
 
+  useEffect(()=>{
+    if(loginPret&&authEnAttente.current&&tokenClient){authEnAttente.current=false;
+      try{tokenClient.requestAccessToken({prompt:'select_account'});}catch(e){setAuthLoading(false);notify('Erreur connexion','err');}}
+  },[loginPret]);
   function handleAuth(){
     if(isIOS()||isPWA()){          // redirection : pas besoin d'attendre le chargement des APIs
       doRedirectAuth(cfg.clientId);
     }else{
-      if(!loginPret||!tokenClient){notify('Connexion Google en préparation…','warn');return;}
-      setAuthLoading(true);
+      setAuthLoading(true);                      // v279 : loading immédiat au clic, même si Google finit de charger
       setTimeout(()=>setAuthLoading(false),120000);
+      if(!loginPret||!tokenClient){authEnAttente.current=true;return;}   // la connexion part toute seule dès que Google est prêt
       try{tokenClient.requestAccessToken({prompt:'select_account'});}
       catch(e){setAuthLoading(false);notify('Erreur connexion','err');}
     }
@@ -10142,7 +10147,7 @@ function App(){
         </div>
         <div className="topbar-right">
           {!authed&&(
-            <button onClick={handleAuth} disabled={authLoading||!(loginPret||isIOS()||isPWA())}
+            <button onClick={handleAuth} disabled={authLoading}
               style={{background:'#fff',border:'none',borderRadius:8,padding:'0.3rem',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',width:34,height:34,flexShrink:0,touchAction:'manipulation',opacity:authLoading?0.5:1}}>
               {authLoading
                 ?<span style={{fontSize:14}}>⏳</span>
@@ -10166,7 +10171,7 @@ function App(){
           <img src="logo.png" alt="Saran Électrique" style={{width:160,height:'auto',objectFit:'contain',marginBottom:'1.25rem',position:'relative',zIndex:1}} onError={e=>e.target.style.display='none'}/>
           <div style={{fontFamily:'var(--font-head)',fontSize:'1.4rem',fontWeight:800,marginBottom:'0.25rem',position:'relative',zIndex:1}}>Saran Électrique</div>
           <div style={{color:'var(--muted)',fontSize:'0.85rem',marginBottom:'2rem',position:'relative',zIndex:1}}>Système de gestion du temps</div>
-          <button className="btn-p" style={{width:'auto',padding:'0.75rem 2rem',marginTop:0,position:'relative',zIndex:1,fontSize:'0.95rem'}} onClick={handleAuth} disabled={authLoading||!(loginPret||isIOS()||isPWA())||returningFromRedirect}>
+          <button className="btn-p" style={{width:'auto',padding:'0.75rem 2rem',marginTop:0,position:'relative',zIndex:1,fontSize:'0.95rem'}} onClick={handleAuth} disabled={authLoading||returningFromRedirect}>
             {authLoading||returningFromRedirect?'⏳ Connexion en cours...':'🔐 Se connecter avec Google'}
           </button>
           {(authLoading||returningFromRedirect)&&(
@@ -10175,7 +10180,7 @@ function App(){
               <div style={{fontSize:11,color:'var(--muted)'}}>Veuillez patienter quelques secondes. Ne réappuyez pas sur le bouton.</div>
             </div>
           )}
-          {!loginPret&&!(isIOS()||isPWA())&&!returningFromRedirect&&!authLoading&&<div style={{color:'var(--muted)',fontSize:11,marginTop:'0.75rem',position:'relative',zIndex:1}}>⏳ Chargement des APIs...</div>}
+          {false&&<div style={{color:'var(--muted)',fontSize:11,marginTop:'0.75rem',position:'relative',zIndex:1}}>⏳ Chargement des APIs...</div>}
         </div>
       ):(
         <>
