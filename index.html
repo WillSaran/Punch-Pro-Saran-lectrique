@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v270';
+const APP_VERSION='v271';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8964,6 +8964,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
   useEffect(()=>{chargerCatalogueCrm().then(()=>setCatTick(t=>t+1));},[]);
   const [heures,setHeures]=useState('');
   const [autresEmp,setAutresEmp]=useState([]);   // [{nom,h}] autres employés sur la job
+  const [apercu,setApercu]=useState(false);        // v271 : aperçu de l'AP, comme le carnet papier
   const [photos,setPhotos]=useState([]);   // 'url|nom'
   const [envoiPhoto,setEnvoiPhoto]=useState(0);
   const [envoi,setEnvoi]=useState(false);
@@ -9035,6 +9036,46 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
       </div>
     </div>
   );
+  if(apercu){
+    const ORD=['Fils','Boîtes','Décora','Conduit','Panneaux','Disjoncteurs','Chauffage'];
+    const lg=lignesMat.filter(l=>l.qte>0&&l.code!=='Manuel');
+    const man=lignesMat.filter(l=>l.qte>0&&l.code==='Manuel');
+    const cats=[...new Set(lg.map(l=>l.cat))].sort((x,y)=>{const a1=ORD.indexOf(x),b1=ORD.indexOf(y);return (a1<0?99:a1)-(b1<0?99:b1);});
+    const eqp=autresEmp.filter(a=>a.nom&&parseFloat(a.h)>0);
+    const papier={background:'#fbf8ef',color:'#1b1b1b',borderRadius:6,padding:'1rem 1.1rem',fontFamily:'"Courier New",monospace',fontSize:13,lineHeight:1.55,boxShadow:'0 4px 24px rgba(0,0,0,0.5)'};
+    const ligneP={display:'flex',gap:8,borderBottom:'1px solid #cfc9b6',padding:'3px 0'};
+    const etq={fontWeight:700,minWidth:92,textTransform:'uppercase',fontSize:11,paddingTop:1};
+    return <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:9999,overflowY:'auto',padding:'0.8rem'}}>
+      <div style={{maxWidth:520,margin:'0 auto'}}>
+        <div style={papier}>
+          <div style={{display:'flex',alignItems:'baseline',justifyContent:'space-between',borderBottom:'3px double #1b1b1b',paddingBottom:6,marginBottom:8}}>
+            <div style={{fontWeight:800,fontSize:16,letterSpacing:'0.06em'}}>APPEL DE SERVICE</div>
+            <div style={{fontWeight:800,fontSize:16,color:'#b3261e'}}>N° {numAuto}</div>
+          </div>
+          <div style={ligneP}><span style={etq}>Date</span><span>{localDateStr()}</span></div>
+          <div style={ligneP}><span style={etq}>Job</span><span>{projetNom||'—'}</span></div>
+          {adresse&&<div style={ligneP}><span style={etq}>Adresse</span><span>{adresse}</span></div>}
+          <div style={ligneP}><span style={etq}>Employé</span><span>{emp.nom}{parseFloat(heures)>0?' — '+heures+' h':''}</span></div>
+          {eqp.map((a,i)=><div key={i} style={ligneP}><span style={etq}>{i===0?'Aussi':''}</span><span>{a.nom} — {a.h} h</span></div>)}
+          <div style={{margin:'10px 0 2px',fontWeight:700,fontSize:11,textTransform:'uppercase'}}>Description du projet</div>
+          <div style={{whiteSpace:'pre-wrap',minHeight:40,borderBottom:'1px solid #cfc9b6',paddingBottom:6}}>{quoi.trim()||<span style={{color:'#b3261e'}}>(à remplir)</span>}</div>
+          <div style={{margin:'12px 0 4px',fontWeight:700,fontSize:11,textTransform:'uppercase',borderTop:'2px solid #1b1b1b',paddingTop:6}}>Stock utilisé</div>
+          {cats.length===0&&man.length===0&&!materiel.trim()&&<div style={{color:'#777'}}>Aucun stock indiqué.</div>}
+          {cats.map(c=><div key={c} style={{marginBottom:6}}>
+            <div style={{fontWeight:800,fontSize:12,textDecoration:'underline'}}>{c}</div>
+            {lg.filter(l=>l.cat===c).map(l=><div key={l.k} style={{display:'flex',gap:8,borderBottom:'1px dotted #cfc9b6',padding:'2px 0'}}>
+              <span style={{width:56,textAlign:'right',fontWeight:800,flexShrink:0}}>{l.qte} {l.unite}</span><span style={{flex:1}}>{l.code}{l.desc&&l.desc!==l.code?' — '+l.desc:''}</span></div>)}
+          </div>)}
+          {(man.length>0||materiel.trim())&&<div><div style={{fontWeight:800,fontSize:12,textDecoration:'underline'}}>Autres</div>
+            {man.map(l=><div key={l.k} style={{display:'flex',gap:8,borderBottom:'1px dotted #cfc9b6',padding:'2px 0'}}><span style={{width:56,textAlign:'right',fontWeight:800,flexShrink:0}}>{l.qte}</span><span style={{flex:1}}>{l.desc}</span></div>)}
+            {materiel.trim()&&<div style={{whiteSpace:'pre-wrap',padding:'2px 0'}}>{materiel.trim()}</div>}</div>}
+          {photos.length>0&&<div style={{marginTop:8,fontSize:11}}>📷 {photos.length} photo{photos.length>1?'s':''} jointe{photos.length>1?'s':''}</div>}
+        </div>
+        <button className="btn-s" style={{width:'100%',marginTop:'0.8rem'}} onClick={()=>setApercu(false)}>← Modifier</button>
+        <button className="btn-p" style={{width:'100%',marginTop:'0.4rem'}} disabled={envoi||envoiPhoto>0} onClick={()=>{setApercu(false);envoyer();}}>{envoi?'⏳ Création du PDF et envoi…':'📄 Créer l\'AP et l\'envoyer au bureau'}</button>
+      </div>
+    </div>;
+  }
   return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:9998,overflowY:'auto',padding:'0.8rem'}}>
       <div style={{background:'var(--bg2, #161b22)',border:'1px solid var(--border)',borderRadius:14,maxWidth:560,margin:'0 auto',padding:'1rem'}}>
@@ -9075,7 +9116,8 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
           📷 Ajouter des photos<input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>{const l=[...e.target.files];e.target.value='';ajouterPhotos(l);}}/>
         </label>
         {(photos.length>0||envoiPhoto>0)&&<div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>{photos.map((p,i)=><div key={i}>✅ {p.split('|')[1]}</div>)}{envoiPhoto>0&&<div>⏳ Envoi de {envoiPhoto} photo{envoiPhoto>1?'s':''}…</div>}</div>}
-        <button className="btn-p" style={{width:'100%',marginTop:'1rem'}} disabled={envoi||envoiPhoto>0} onClick={envoyer}>{envoi?'⏳ Création du PDF et envoi…':'📄 Créer l\'AP et l\'envoyer au bureau'}</button>
+        <button className="btn-s" style={{width:'100%',marginTop:'1rem',fontSize:13,fontWeight:700}} onClick={()=>setApercu(true)}>👁️ Voir l'aperçu de l'AP</button>
+        <button className="btn-p" style={{width:'100%',marginTop:'0.5rem'}} disabled={envoi||envoiPhoto>0} onClick={envoyer}>{envoi?'⏳ Création du PDF et envoi…':'📄 Créer l\'AP et l\'envoyer au bureau'}</button>
         <div style={{fontSize:11,color:'var(--muted)',marginTop:6,textAlign:'center'}}>Le PDF va dans « PAD SERVICE À TRAITER » et William reçoit un courriel.</div>
       </div>
     </div>
