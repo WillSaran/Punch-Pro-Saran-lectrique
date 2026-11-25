@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v258';
+const APP_VERSION='v259';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8310,19 +8310,6 @@ function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenu
           </div>
           {/* Tableau de bord rapide — visible avant de sélectionner un profil */}
           <div style={{width:'100%',maxWidth:560,marginTop:'1rem'}}>
-            <button onClick={()=>{refreshCalJobs();setSelEmp(null);setStep('depot-rapide');}}
-              style={{position:'relative',width:'100%',marginBottom:'0.9rem',padding:'1.05rem 1rem',borderRadius:14,border:'2px solid var(--accent)',
-                background:'linear-gradient(135deg,var(--accent),var(--accent2))',color:'#fff',cursor:'pointer',touchAction:'manipulation',textAlign:'left',
-                boxShadow:'0 4px 16px rgba(255,122,26,0.35)'}}>
-              <span style={{position:'absolute',top:-9,right:12,background:'#fff',color:'var(--accent)',fontSize:10,fontWeight:800,letterSpacing:'0.08em',padding:'2px 9px',borderRadius:20,border:'1px solid var(--accent)'}}>NOUVEAU</span>
-              <div style={{display:'flex',alignItems:'center',gap:12}}>
-                <span style={{fontSize:32}}>📋</span>
-                <span>
-                  <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.1rem'}}>Dépôt AP / OT rapide</div>
-                  <div style={{fontSize:12,opacity:0.95,marginTop:2}}>Photos + vocal d'un appel de service ou ordre de travail. Ne remplace pas ton punch.</div>
-                </span>
-              </div>
-            </button>
             <button onClick={()=>{refreshCalJobs();setSelEmp(null);setStep('blocage-rapide');}}
               style={{position:'relative',width:'100%',marginBottom:'0.9rem',padding:'0.9rem 1rem',borderRadius:14,border:'2px solid #d29922',
                 background:'rgba(210,153,34,0.14)',color:'var(--text)',cursor:'pointer',touchAction:'manipulation',textAlign:'left',
