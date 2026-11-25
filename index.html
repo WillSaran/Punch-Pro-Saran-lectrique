@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v261';
+const APP_VERSION='v262';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8683,6 +8683,10 @@ function MaterielPicker({lignes,onChange}){
   const cat=catSel||cats[0]||'';
   const delaCat=tout.filter(i=>i.cat===cat);
   const sousListe=[];delaCat.forEach(i=>{if(i.sous&&!sousListe.includes(i.sous))sousListe.push(i.sous);});
+  const PRIO_SOUS={'Fils':['NMD','NMWU','ACWU','RW90','AC90']};   // ordre voulu par William (comme l'appel de service)
+  const prio=PRIO_SOUS[cat];
+  if(prio){const rang=sn=>{const t=String(sn).toUpperCase().replace(/[^A-Z0-9]/g,'');const k=prio.findIndex(p=>t.startsWith(p));return k<0?99:k;};
+    sousListe.sort((a,b)=>rang(a)-rang(b));}   // tri stable : les autres gardent leur ordre
   const aSous=sousListe.length>=2&&delaCat.filter(i=>i.sous).length>=delaCat.length/2;
   const sous=aSous?(sousListe.includes(sousSel)?sousSel:sousListe[0]):'';
   const cle=i=>i.code+'|'+i.desc;
