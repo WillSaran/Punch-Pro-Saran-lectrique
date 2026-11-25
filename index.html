@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v282';
+const APP_VERSION='v283';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -870,7 +870,7 @@ const CATALOGUE={
     {code:'4GPJ/4GSW',desc:'Plaque 4 gangs',unite:'un',variantes:[{opt:'GPJ avec vis',code:'PJ264-W'},{opt:'GSW sans vis',code:'80312-SW'}]},
     {code:'SÉCHEUSE 30A',desc:'Prise sécheuse 30A',unite:'un'},
     {code:'POÊLE 50A',desc:'Prise poêle 50A',unite:'un'},
-    {code:'DVCL-153PH-WHC',desc:'Variateur Décora 150W',unite:'un',variantes:[{opt:'Lutron Diva DVCL-153PH-WHC'},{opt:'Leviton (code à confirmer)',code:'LEVITON DIM'}]},
+    {code:'DVCL-153PH-WHC',desc:'Variateur Décora 150W',unite:'un',variantes:[{opt:'Lutron Diva DVCL-153PH-WHC'},{opt:'Leviton Decora Slide 600W (DSL06-1LZ)',code:'DSL06-1LZ'}]},
     {code:'FLP4',desc:'Luminaire FLP4',unite:'un',options:['3000K','4000K','CCT']},
     {code:'FLP4G',desc:'Luminaire encastré FLP4G',unite:'un',options:['3000K','4000K','CCT']},
     {code:'CARILLON',desc:'Carillon de porte',unite:'un'},
@@ -886,7 +886,9 @@ const CATALOGUE={
     {code:'FS',desc:'Boîte FS',unite:'un',options:['1/2"','3/4"']},
     {code:'FSC',desc:'Boîte FSC',unite:'un',options:['1/2"','3/4"']},
     {code:'FD PVC',desc:'Boîte FD PVC',unite:'un',options:['1/2"','3/4"']},
-    {code:'OCT EXT',desc:'Boîte octogonale extérieure — code à confirmer',unite:'un',options:['1/2"','3/4"']},
+    {code:'OCT PVC',desc:'Boîte octogonale PVC extérieure — code à confirmer',unite:'un',options:['1/2"','3/4"','1"']},
+    {code:'RAB BOX',desc:'Boîte extérieure métal RAB',unite:'un',options:[{opt:'1/2" noir sans couvercle',code:'VXCB'},{opt:'3/4" avec couvercle',code:'VXJ-3/4'}]},
+    {code:'XC',desc:'Couvercle RAB XC (plaque pleine 4")',unite:'un'},
     {code:'RCTC15 FILETÉ',desc:'Connecteur RCTC 15 fileté — code à confirmer',unite:'un'},
     {code:'RCTC15 COLLÉ',desc:'Connecteur RCTC 15 collé — code à confirmer',unite:'un'},
   ],
@@ -3004,6 +3006,21 @@ function ChercherBlocages({emp,sid,calendarIds,notify}){
     </div>
   );
 }
+// v283 : « Faire l'AP » (appel de service électronique) directement dans Confirmer une job et le Punch OUT — marqué NOUVEAU
+function BoutonAP({emp,emps,jobName,jobs,jobEvent,date,sid,calendarIds,notify}){
+  const [ouvert,setOuvert]=useState(false);
+  const ev=jobEvent||(jobs||[]).find(j=>j.title===jobName)||null;
+  const ini=useMemo(()=>({projet:jobName||'',eventId:(ev&&ev.id)||'',date:date||localDateStr(),feuille:''}),[jobName,ev&&ev.id,date]);
+  if(!jobName||!emp)return null;
+  return <>
+    <div onClick={()=>setOuvert(true)} style={{margin:'0.7rem 0 0.2rem',padding:'0.8rem 0.9rem',borderRadius:14,background:'rgba(255,255,255,0.06)',border:'1.5px solid var(--emp,var(--accent))',cursor:'pointer',display:'flex',alignItems:'center',gap:10,touchAction:'manipulation'}}>
+      <span style={{fontSize:20}}>✍️</span>
+      <div style={{flex:1}}><div style={{fontWeight:800,fontSize:14}}>Faire l'AP (appel de service)</div><div style={{fontSize:11,color:'var(--muted)'}}>Heures SA 01 / SA 02, stock et aperçu — part au bureau</div></div>
+      <span style={{background:'var(--emp,var(--accent))',color:'#fff',fontSize:10,fontWeight:800,padding:'0.15rem 0.5rem',borderRadius:10,letterSpacing:'.05em'}}>NOUVEAU</span>
+    </div>
+    {ouvert&&<FacturerAP emp={emp} emps={emps} options={[ini]} initial={ini} jobsForLookup={ev?[ev]:(jobs||[])} sid={sid} calendarIds={calendarIds} notify={notify} onClose={()=>setOuvert(false)}/>}
+  </>;
+}
 function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
   const nouveauBloc=()=>({ouvert:true,cause:'',autre:'',desc:'',pj:[],perdu:0});
   const brouillon=useRef((()=>{try{const d=JSON.parse(localStorage.getItem('pp_blocage_brouillon')||'null');return d&&Date.now()-d.t<3*3600e3?d:null;}catch(e){return null;}})()).current;
@@ -3452,6 +3469,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
       <BlocagesMulti items={blocages} setItems={setBlocages} emp={emp} jobName={(selJobData&&selJobData.job)||''} calendarIds={calendarIds} notify={notify}/>
       {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:nom.startsWith('VOCAL_')?'🎤 Message vocal':'📎 '+nom;return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
       <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} jobLocation={selJobData&&selJobData.location||''} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
+      {selJobData&&selJobData.job&&<BoutonAP emp={emp} emps={allEmps} jobName={selJobData.job} jobs={allJobs||calJobs} sid={sid} calendarIds={calendarIds} notify={notify}/>}
       <button className="btn-p" style={{marginTop:'0.65rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')+(blocages.length?' + '+blocages.length+' blocage'+(blocages.length>1?'s':''):'')}</button>
     </div>
   );
@@ -3613,6 +3631,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
           </div>
         )}
       </div>
+      {!isOut&&<BoutonAP emp={emp} emps={allEmps} jobName={jobName} jobEvent={jobEvent} date={jobDate} sid={sid} calendarIds={calendarIds} notify={notify}/>}
       <button className="btn-p" style={{marginTop:'0.4rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'✓ Confirmer la job'+(blocages.length?' + '+blocages.length+' blocage'+(blocages.length>1?'s':''):'')}</button>
     </div>
   );
