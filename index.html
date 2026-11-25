@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v273';
+const APP_VERSION='v274';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -1279,16 +1279,42 @@ function useTheme(){
 // la dernière version — ce hook sert juste à PRÉVENIR l'employé qu'une
 // mise à jour existe, plutôt que de le laisser utiliser une version ouverte
 // depuis des heures sans le savoir.
+// v274 : version réellement en ligne = celle écrite dans index.html (plus de dépendance à version.json, qui n'était plus mis à jour)
+async function versionEnLigne(){
+  try{
+    const res=await fetch('index.html?t='+Date.now(),{cache:'no-store'});
+    if(!res.ok)return null;
+    const m=/const APP_VERSION='(v\d+)'/.exec(await res.text());
+    return m?m[1]:null;
+  }catch(e){return null;}
+}
+const _vAff=v=>{const r=String(v||'').replace(/^v/,'');return r?'v'+r[0]+'.'+r.slice(1):'';};
+// Tirer l'écran vers le bas (comme une page web) : vérifie la version, recharge si une nouvelle existe, sinon rafraîchit les données.
+function usePullRefresh(onGo){
+  const [pull,setPull]=useState(0);
+  const st=useRef(null),pr=useRef(0),go=useRef(onGo);go.current=onGo;
+  useEffect(()=>{
+    const enHaut=el=>{while(el&&el!==document.body&&el!==document.documentElement){if(el.scrollTop>0)return false;el=el.parentElement;}return (window.scrollY||document.documentElement.scrollTop||0)<=0;};
+    const ts=e=>{const t=e.touches[0];const bloque=e.target.closest&&e.target.closest('input,textarea,select,[data-noswipe],.overlay,[style*="position: fixed"]');
+      st.current=(e.touches.length===1&&!bloque&&enHaut(e.target))?{y:t.clientY,x:t.clientX}:null;pr.current=0;};
+    const tm=e=>{const d=st.current;if(!d)return;const dy=e.touches[0].clientY-d.y,dx=Math.abs(e.touches[0].clientX-d.x);
+      if(dy<=0||dx>dy){if(pr.current){pr.current=0;setPull(0);}if(dy<=0)st.current=null;return;}
+      pr.current=Math.min(110,dy*0.5);setPull(pr.current);};
+    const te=()=>{const d=st.current;st.current=null;const p=pr.current;pr.current=0;setPull(0);if(d&&p>=45)go.current();};
+    document.addEventListener('touchstart',ts,{passive:true});document.addEventListener('touchmove',tm,{passive:true});
+    document.addEventListener('touchend',te,{passive:true});document.addEventListener('touchcancel',te,{passive:true});
+    return()=>{document.removeEventListener('touchstart',ts);document.removeEventListener('touchmove',tm);document.removeEventListener('touchend',te);document.removeEventListener('touchcancel',te);};
+  },[]);
+  return pull;
+}
 function useUpdateAvailable(){
   const [available,setAvailable]=useState(false);
   useEffect(()=>{
     let stopped=false;
     async function check(){
       try{
-        const res=await fetch('version.json?t='+Date.now(),{cache:'no-store'});
-        if(!res.ok)return;
-        const data=await res.json();
-        if(!stopped&&data&&data.version&&data.version!==APP_VERSION)setAvailable(true);
+        const v=await versionEnLigne();
+        if(!stopped&&v&&v!==APP_VERSION)setAvailable(true);
       }catch(e){/* pas grave — on réessaiera au prochain intervalle */}
     }
     check();
@@ -9834,6 +9860,14 @@ function App(){
   const [unreadCount,setUnreadCount]=useState(0);
   const notify=useMemo(()=>(msg,type='info')=>{setNotif({id:Date.now(),msg,type});},[]);
   function onRefresh(){setRefreshKey(k=>k+1);}
+  const verifierVersion=async()=>{
+    notify('⏳ Vérification de la version…');
+    const v=await versionEnLigne();
+    if(v&&v!==APP_VERSION){notify('🔄 Nouvelle version '+_vAff(v)+' — mise à jour…','success');setTimeout(()=>window.location.reload(),700);return;}
+    onRefresh();
+    notify(v?'✅ À jour — tu as la version actuelle ('+_vAff(APP_VERSION)+')':'✅ Données rafraîchies ('+_vAff(APP_VERSION)+') — impossible de vérifier la version (hors ligne?)','success');
+  };
+  const pull=usePullRefresh(verifierVersion);
 
   function getCalendarIds(){
     if(!cfg||!cfg.calendarIds)return['primary'];
@@ -9978,6 +10012,9 @@ function App(){
 
   return(
     <div className="app-wrap">
+      {pull>0&&<div style={{position:'fixed',top:0,left:0,right:0,zIndex:9997,textAlign:'center',pointerEvents:'none',transform:'translateY('+(pull-30)+'px)',opacity:Math.min(1,pull/45)}}>
+        <span style={{display:'inline-block',background:'var(--bg2, #161b22)',border:'1px solid var(--border)',borderRadius:20,padding:'0.35rem 0.9rem',fontSize:12,fontWeight:700,boxShadow:'0 4px 16px rgba(0,0,0,0.4)'}}>{pull>=45?'↻ Relâche pour rafraîchir':'↓ Tire pour rafraîchir'}</span>
+      </div>}
       {updateAvailable&&(
         <div style={{flexShrink:0,zIndex:9998,background:'var(--emp,var(--accent))',color:'#fff',padding:'0.5rem 0.9rem',display:'flex',alignItems:'center',justifyContent:'center',gap:10,fontSize:12,fontWeight:600}}>
           <span>🔄 Une nouvelle version de PunchPro est disponible</span>
