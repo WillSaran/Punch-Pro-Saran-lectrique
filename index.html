@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v279';
+const APP_VERSION='v280';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -864,28 +864,30 @@ const CATALOGUE={
     {code:'5601-P2W',desc:'Interrupteur simple Décora',unite:'un'},
     {code:'5603-P2W',desc:'Interrupteur 3-voies Décora',unite:'un'},
     {code:'5604',desc:'Interrupteur 4-voies Décora',unite:'un'},
-    {code:'1GPJ/1GSW',desc:'Plaque 1 gang',unite:'un',variantes:['GPJ avec vis','GSW sans vis']},
-    {code:'2GPJ/2GSW',desc:'Plaque 2 gangs',unite:'un',variantes:['GPJ avec vis','GSW sans vis']},
-    {code:'3GPJ/3GSW',desc:'Plaque 3 gangs',unite:'un',variantes:['GPJ avec vis','GSW sans vis']},
-    {code:'4GPJ/4GSW',desc:'Plaque 4 gangs',unite:'un',variantes:['GPJ avec vis','GSW sans vis']},
+    {code:'1GPJ/1GSW',desc:'Plaque 1 gang',unite:'un',variantes:[{opt:'GPJ avec vis'},{opt:'GSW sans vis',code:'80301-SW'}]},
+    {code:'2GPJ/2GSW',desc:'Plaque 2 gangs',unite:'un',variantes:[{opt:'GPJ avec vis'},{opt:'GSW sans vis',code:'80309-SW'}]},
+    {code:'3GPJ/3GSW',desc:'Plaque 3 gangs',unite:'un',variantes:[{opt:'GPJ avec vis'},{opt:'GSW sans vis',code:'80311-SW'}]},
+    {code:'4GPJ/4GSW',desc:'Plaque 4 gangs',unite:'un',variantes:[{opt:'GPJ avec vis'},{opt:'GSW sans vis',code:'80312-SW'}]},
     {code:'SÉCHEUSE 30A',desc:'Prise sécheuse 30A',unite:'un'},
     {code:'POÊLE 50A',desc:'Prise poêle 50A',unite:'un'},
-    {code:'DVCL153',desc:'Variateur Décora',unite:'un',variantes:[{opt:'Lutron DVCL153 150W'},{opt:'Leviton',code:'LEVITON DIM'}]},
+    {code:'DVCL-153PH-WHC',desc:'Variateur Décora 150W',unite:'un',variantes:[{opt:'Leviton DVCL-153PH-WHC'},{opt:'Lutron Sunnata STCL-153M-WH',code:'LUTSTCL153MWH'}]},
     {code:'FLP4',desc:'Luminaire FLP4',unite:'un',options:['3000K','4000K','CCT']},
     {code:'FLP4G',desc:'Luminaire encastré FLP4G',unite:'un',options:['3000K','4000K','CCT']},
     {code:'CARILLON',desc:'Carillon de porte',unite:'un'},
     {code:'TIMER TI072',desc:'Minuterie TI072',unite:'un'},
     {code:'FEU P1275CA',desc:'Détecteur de fumée',unite:'un'},
     {code:'MONOX 900-0119',desc:'Détecteur CO',unite:'un'},
-    {code:'RC840',desc:'Relais RC840',unite:'un',variantes:[{opt:'120V'},{opt:'240V'},{opt:'Limit switch + capot',code:'KS2V'}]},
+    {code:'RC840',desc:'Relais RC840',unite:'un',options:[{opt:'120V'},{opt:'240V'},{opt:'Limit switch + capot',code:'KS2V'}]},
     {code:'KIT PICO',desc:'Kit Pico Lutron',unite:'un'},
   ],
   'Produits extérieurs':[
-    {code:'WP',desc:'WP couvercle étanche',unite:'un',variantes:[{opt:'WP 3100',code:'WP3100'},{opt:'WP 6000',code:'WP6000'}]},
+    {code:'WP3100',desc:'WP 3100 (couvercle étanche)',unite:'un'},
+    {code:'WP6000',desc:'WP 6000 (couvercle étanche)',unite:'un'},
     {code:'FS',desc:'Boîte FS',unite:'un',options:['1/2"','3/4"']},
     {code:'FSC',desc:'Boîte FSC',unite:'un',options:['1/2"','3/4"']},
     {code:'FD PVC',desc:'Boîte FD PVC',unite:'un',options:['1/2"','3/4"']},
-    {code:'RCTC 15',desc:'Connecteur RCTC 15',unite:'un',variantes:['Fileté','Collé']},
+    {code:'RCTC15 FILETÉ',desc:'Connecteur RCTC 15 fileté — code à confirmer',unite:'un'},
+    {code:'RCTC15 COLLÉ',desc:'Connecteur RCTC 15 collé — code à confirmer',unite:'un'},
   ],
   'Divers':[
     {code:'DÉPL STD',desc:'Déplacement standard',unite:'un'},
@@ -909,19 +911,25 @@ const CATALOGUE={
   ],
   'Panneaux':[
     // v276 : juste les marques ; « main lug / disjoncteur principal » se choisit dans le panneau (le pad ajoute la mention)
-    {code:'QO CQO1',desc:'Panneau QO',unite:'un',options:['4cir','8cir','24cir 125A','32cir 125A','32cir 200A','40cir 200A','60cir 200A']},
-    {code:'CHOM',desc:'Panneau CHOM',unite:'un',options:['4cir','8cir','24/48cir 125A','32cir 125A','42/84cir 200A']},
-    {code:'SIEQ',desc:'Panneau SIEQ',unite:'un',options:['4cir','8cir','40cir 200A','60cir 200A']},
+    {code:'QO CQO1',desc:'Panneau QO',unite:'un',options:['4cir','8cir',{opt:'24cir 125A',code:'QO CQO1-24-125'},{opt:'32cir 125A',code:'QO CQO1-32-125'},{opt:'32cir 200A',code:'QO CQO1-32-200'},{opt:'40cir 200A',code:'QO CQO1-40-200'},{opt:'60cir 200A',code:'QO CQO1-60-200'}]},
+    {code:'CHOM',desc:'Panneau CHOM',unite:'un',options:['4cir','8cir',{opt:'24/48cir 125A',code:'CHOM 2448-125'},'32cir 125A',{opt:'42/84cir 200A',code:'CHOM 4284-200'}]},
+    {code:'SIEQ',desc:'Panneau SIEQ',unite:'un',options:['4cir','8cir',{opt:'40cir 200A',code:'SIEQ 40-200'},{opt:'60cir 200A',code:'SIEQ 60-200'}]},
     {code:'PAN EXT',desc:'Panneau extérieur',unite:'un',options:['4cir','8cir','12cir','24cir','32cir','40cir']},
   ],
   'Disjoncteurs':[
-    // v276 : marques de disjoncteurs (toujours affichées, même si certains produits manquent) — mêmes calibres pour toutes
-    {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A','Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
-    {code:'CHOM DISJ',desc:'Disjoncteur CHOM',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A','Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
-    {code:'SIEQ DISJ',desc:'Disjoncteur SIEQ',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A','Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
-    {code:'BR DISJ',desc:'Disjoncteur BR',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A','Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
-    {code:'QBH DISJ',desc:'Disjoncteur QBH',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A','Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
-    {code:'STABLOK DISJ',desc:'Disjoncteur Stab-Lok',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A','Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
+    // v280 : disjoncteurs normaux par marque, puis un bloc « Disjoncteurs twin » plus bas dans la même marque. Codes seulement quand confirmés.
+    {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:[{opt:'1P-15A',code:'QO115'},{opt:'1P-20A',code:'QO120'},{opt:'1P-30A',code:'QO130'},{opt:'2P-15A',code:'QO215'},{opt:'2P-20A',code:'QO220'},{opt:'2P-30A',code:'QO230'},{opt:'2P-40A',code:'QO240'},{opt:'2P-50A',code:'QO250'},{opt:'2P-60A',code:'QO260'},{opt:'2P-100A',code:'QO2100'}]},
+    {code:'QO TWIN',desc:'Disjoncteur twin QO',sousGrp:'Disjoncteur QO',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'QO1515'},{opt:'Twin 15-20',code:'QO1520'},{opt:'Twin 20-20',code:'QO2020'},{opt:'Twin 20-30',code:'QO2030'},'Quad 15-40-40-15']},
+    {code:'CHOM DISJ',desc:'Disjoncteur CHOM',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'CHOM TWIN',desc:'Disjoncteur twin CHOM',sousGrp:'Disjoncteur CHOM',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'CHT1515'},'Twin 15-20',{opt:'Twin 20-20',code:'CHT2020'},'Twin 20-30','Quad 15-40-40-15']},
+    {code:'SIEQ DISJ',desc:'Disjoncteur SIEQ',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'SIEQ TWIN',desc:'Disjoncteur twin SIEQ',sousGrp:'Disjoncteur SIEQ',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'Q1515NC'},{opt:'Twin 15-20',code:'Q1520NC'},{opt:'Twin 20-20',code:'Q2020NC'},'Twin 20-30','Quad 15-40-40-15']},
+    {code:'BR DISJ',desc:'Disjoncteur BR',unite:'un',options:[{opt:'1P-15A',code:'BR115'},{opt:'1P-20A',code:'BR120'},{opt:'1P-30A',code:'BR130'},{opt:'2P-15A',code:'BR215'},{opt:'2P-20A',code:'BR220'},{opt:'2P-30A',code:'BR230'},{opt:'2P-40A',code:'BR240'},{opt:'2P-50A',code:'BR250'},{opt:'2P-60A',code:'BR260'},{opt:'2P-100A',code:'BR2100'}]},
+    {code:'BR TWIN',desc:'Disjoncteur twin BR',sousGrp:'Disjoncteur BR',bloc:'Disjoncteurs twin',unite:'un',options:['Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
+    {code:'QBH DISJ',desc:'Disjoncteur QBH',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'QBH TWIN',desc:'Disjoncteur twin QBH',sousGrp:'Disjoncteur QBH',bloc:'Disjoncteurs twin',unite:'un',options:['Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
+    {code:'STABLOK DISJ',desc:'Disjoncteur Stab-Lok',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'STABLOK TWIN',desc:'Disjoncteur twin Stab-Lok',sousGrp:'Disjoncteur Stab-Lok',bloc:'Disjoncteurs twin',unite:'un',options:['Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
   ],
   'Chauffage':[
     {code:'STEB',desc:'Plinthe Brava (STEB)',unite:'un',options:['300W','500W','750W','1000W','1250W','1500W','1750W','2000W']},
@@ -8822,7 +8830,7 @@ function aplatirCatalogue(){
   Object.entries(CATALOGUE).forEach(([cat,L])=>L.forEach(i=>{
     if(i.variantes){i.variantes.forEach(v=>{const o=typeof v==='string'?{opt:v}:v;out.push({cat,sous:i.sous||'',vb:i.desc,vopt:o.opt,typ:i.typ||'',code:o.code||i.code,desc:i.desc+' ('+o.opt+')',unite:i.unite||'un'});});return;}
     const opts=i.options||i.sizes;
-    if(opts)opts.forEach(o=>out.push({cat,sous:i.desc,opt:String(o),typ:i.typ||'',code:i.code,desc:i.desc+' ('+o+')',unite:i.unite||'un'}));
+    if(opts)opts.forEach(o0=>{const o=(o0&&typeof o0==='object')?o0:{opt:o0};out.push({cat,sous:i.sousGrp||i.desc,bloc:i.bloc||'',opt:String(o.opt),codeOpt:o.code||'',typ:i.typ||'',code:o.code||i.code,desc:i.desc+' ('+o.opt+')',unite:i.unite||'un'});});
     else out.push({cat,sous:i.sous||'',typ:i.typ||'',code:i.code,desc:i.desc,unite:i.unite||'un',crm:!!i.crm});
   }));
   return out;
@@ -8893,7 +8901,7 @@ function MaterielPicker({lignes,onChange,onApercu}){
       </div>
     </div>;};
   const tuile=i=>{const n=qteDe(i);return <div key={cle(i)} style={{borderRadius:12,padding:'0.45rem 0.35rem',textAlign:'center',background:n>0?'rgba(255,122,26,0.16)':'var(--bg3)',outline:n>0?'1.5px solid var(--accent)':'none'}}>
-      <div onClick={()=>ajuster(i,1)} style={{fontWeight:800,fontSize:14,cursor:'pointer',padding:'0.2rem 0',touchAction:'manipulation'}}>{i.opt}</div>
+      <div onClick={()=>ajuster(i,1)} style={{fontWeight:800,fontSize:14,cursor:'pointer',padding:'0.2rem 0',touchAction:'manipulation'}}>{i.opt}{i.codeOpt&&<div style={{fontWeight:400,fontSize:9.5,color:'var(--muted)'}}>{i.codeOpt}</div>}</div>
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
         <button type="button" onClick={()=>ajuster(i,-1)} style={{...bt,width:28,height:28,fontSize:15,background:'rgba(0,0,0,0.2)'}}>−</button>
         <span style={{minWidth:18,fontWeight:800,fontSize:14,color:n>0?'var(--accent)':'var(--muted)'}}>{n}</span>
@@ -8960,7 +8968,7 @@ function MaterielPicker({lignes,onChange,onApercu}){
         const tuiles=vis.some(i=>i.opt);
         return <div key={gi}>
           {g.sous&&<div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.04em',margin:'0.7rem 0 0.2rem'}}>{g.sous}</div>}
-          {tuiles?<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax('+(vis.some(i=>/^(pi|m|ft)$/i.test(i.unite))?150:92)+'px,1fr))',gap:8,margin:'0.3rem 0'}}>{vis.map(tuile)}</div>:vis.map((i,x)=>{if(i.vb){if(vis.findIndex(v=>v.vb===i.vb)!==x)return null;return ligneVar(vis.filter(v=>v.vb===i.vb),x);}return ligne(i,x,false);})}
+          {tuiles?[...new Set(vis.map(i=>i.bloc||''))].map(bl=><div key={'b'+bl}>{bl&&<div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',letterSpacing:'0.04em',margin:'0.9rem 0 0.2rem'}}>{bl}</div>}<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax('+(vis.some(i=>/^(pi|m|ft)$/i.test(i.unite))?150:92)+'px,1fr))',gap:8,margin:'0.3rem 0'}}>{vis.filter(i=>(i.bloc||'')===bl).map(tuile)}</div></div>):vis.map((i,x)=>{if(i.vb){if(vis.findIndex(v=>v.vb===i.vb)!==x)return null;return ligneVar(vis.filter(v=>v.vb===i.vb),x);}return ligne(i,x,false);})}
         </div>;})}
       {coupe&&<button type="button" className="btn-s" style={{width:'100%',marginTop:8,fontSize:12}} onClick={()=>setLim(l=>({...l,[sc.cat]:max+40}))}>Voir plus</button>}
       {manuelsPage.length>0&&<div style={{marginTop:8}}><div style={{fontSize:11,fontWeight:700,color:'var(--accent)',textTransform:'uppercase',margin:'0.4rem 0 0.2rem'}}>Écrit à la main</div>{manuelsPage.map((l,x)=>ligne({cat:l.cat,sous:'',code:'Manuel',desc:l.desc,unite:''},x,false))}</div>}
