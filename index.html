@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v285';
+const APP_VERSION='v286';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -911,6 +911,14 @@ const CATALOGUE={
     {code:'CONN-1-VIS',desc:'Connecteur 1 vis CI7',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
     {code:'CONN-2-VIS',desc:'Connecteur 2 vis CI8',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
     {code:'RFA BUSHING',desc:'Bague CI27',unite:'un',typ:'EMT',sizes:['1/2"','3/4"','1"']},
+  ],
+  'Entrée électrique':[
+    // v286 : entrée de service qui n'est pas dans le conduit. Codes H-tap = Blackburn (WR…) vérifiés sur catalogue ; le reste « à confirmer ».
+    {code:'CONN HYDRO',desc:'Connecteur Hydro (code à confirmer)',unite:'un'},
+    {code:'CAPOTE',desc:'Capote (code à confirmer)',unite:'un',options:['Petite','Grosse']},
+    {code:'WEDGE CLAMP',desc:'Wedge clamp (code à confirmer)',unite:'un'},
+    {code:'H-TAP',desc:'H-tap Blackburn',unite:'un',options:[{opt:'#2-6 / #2-6',code:'WR159'},{opt:'1/0-3 / #2-6',code:'WR189'},{opt:'2/0-1/0 / #2-6',code:'WR289'},{opt:'4/0-3/0 / #2-6',code:'WR379'},{opt:'4/0-3/0 / 2/0-1',code:'WR399'},{opt:'4/0-3/0 / 4/0-3/0',code:'WR419'},{opt:'477 / 4/0-1/0',code:'WR835'}]},
+    {code:'BQ2V',desc:'Kit BQ2V',unite:'un',variantes:[{opt:'AM'},{opt:'MH'}]},
   ],
   'Panneaux':[
     // v276 : juste les marques ; « main lug / disjoncteur principal » se choisit dans le panneau (le pad ajoute la mention)
@@ -2293,7 +2301,7 @@ function VoiceNoteRecorder({empName,jobName,calendarIds,calEventTitle,onUploaded
     </button>
   );
 }
-function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,folders,onUploaded,notify}){
+function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,folders,onUploaded,notify,nouveaute}){
   // mode = 'AP' | 'OT' | {folder} | null
   const [mode,setMode]=useState(null);
   const [titleInput,setTitleInput]=useState('');
@@ -2402,6 +2410,7 @@ function DriveUploader({empName,jobName,jobLocation,calendarIds,calEventTitle,fo
           ))}
         </div>
         {isDocMode&&<div style={{fontSize:10,color:'var(--muted)',marginTop:3}}>→ PAD SERVICE À TRAITER</div>}
+        {nouveaute||null}
       </div>
 
       {/* Dossiers Drive */}
@@ -3010,6 +3019,8 @@ function ChercherBlocages({emp,sid,calendarIds,notify}){
 // v283 : « Faire l'AP » (appel de service électronique) directement dans Confirmer une job et le Punch OUT — marqué NOUVEAU
 function BoutonAP({emp,emps,jobName,jobs,jobEvent,date,sid,calendarIds,notify,compact}){
   const [ouvert,setOuvert]=useState(null);   // null | 'AP' | 'OT'
+  const [faits,setFaits]=useState({});      // {AP:'BP0001',OT:'OT-BP0001'}
+  const fermer=(ok,autre,num)=>{if(ok&&num)setFaits(f=>({...f,[ouvert]:num}));setOuvert(autre||null);};
   const ev=jobEvent||(jobs||[]).find(j=>j.title===jobName)||null;
   const ini=useMemo(()=>({projet:jobName||'',eventId:(ev&&ev.id)||'',date:date||localDateStr(),feuille:''}),[jobName,ev&&ev.id,date]);
   if(!jobName||!emp)return null;
@@ -3021,12 +3032,12 @@ function BoutonAP({emp,emps,jobName,jobs,jobEvent,date,sid,calendarIds,notify,co
       </div>
       <div style={{display:'flex',gap:8}}>
         <div onClick={()=>setOuvert('AP')} style={{flex:1,padding:'0.65rem 0.5rem',borderRadius:10,background:'rgba(63,185,80,0.12)',border:'1px solid var(--success)',cursor:'pointer',textAlign:'center',touchAction:'manipulation'}}>
-          <div style={{fontWeight:800,fontSize:15,color:'var(--success)'}}>✍️ E-AP</div><div style={{fontSize:10,color:'var(--muted)'}}>Appel de service</div></div>
+          <div style={{fontWeight:800,fontSize:15,color:'var(--success)'}}>{faits.AP?'✅':'✍️'} E-AP</div><div style={{fontSize:10,color:'var(--muted)'}}>{faits.AP?'Fait · '+faits.AP:'Appel de service'}</div></div>
         <div onClick={()=>setOuvert('OT')} style={{flex:1,padding:'0.65rem 0.5rem',borderRadius:10,background:'rgba(210,153,34,0.12)',border:'1px solid var(--warning)',cursor:'pointer',textAlign:'center',touchAction:'manipulation'}}>
-          <div style={{fontWeight:800,fontSize:15,color:'var(--warning)'}}>✍️ E-OT</div><div style={{fontSize:10,color:'var(--muted)'}}>Ordre de travail</div></div>
+          <div style={{fontWeight:800,fontSize:15,color:'var(--warning)'}}>{faits.OT?'✅':'✍️'} E-OT</div><div style={{fontSize:10,color:'var(--muted)'}}>{faits.OT?'Fait · '+faits.OT:'Ordre de travail'}</div></div>
       </div>
     </div>
-    {ouvert&&<FacturerAP key={ouvert} kind={ouvert} emp={emp} emps={emps} options={[ini]} initial={ini} jobsForLookup={ev?[ev]:(jobs||[])} sid={sid} calendarIds={calendarIds} notify={notify} onClose={()=>setOuvert(null)} direct/>}
+    {ouvert&&<FacturerAP key={ouvert} kind={ouvert} emp={emp} emps={emps} options={[ini]} initial={ini} jobsForLookup={ev?[ev]:(jobs||[])} sid={sid} calendarIds={calendarIds} notify={notify} onClose={fermer} direct/>}
   </>;
 }
 function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
@@ -3476,8 +3487,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
       </div>
       <BlocagesMulti items={blocages} setItems={setBlocages} emp={emp} jobName={(selJobData&&selJobData.job)||''} calendarIds={calendarIds} notify={notify}/>
       {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:nom.startsWith('VOCAL_')?'🎤 Message vocal':'📎 '+nom;return(<div key={i} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg3)',borderRadius:8,padding:'0.35rem 0.6rem',marginBottom:'0.25rem'}}><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
-      <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} jobLocation={selJobData&&selJobData.location||''} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
-      {selJobData&&selJobData.job&&<BoutonAP emp={emp} emps={allEmps} jobName={selJobData.job} jobs={allJobs||calJobs} sid={sid} calendarIds={calendarIds} notify={notify}/>}
+      <DriveUploader empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} jobLocation={selJobData&&selJobData.location||''} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify} nouveaute={selJobData&&selJobData.job?<BoutonAP emp={emp} emps={allEmps} jobName={selJobData.job} jobs={allJobs||calJobs} sid={sid} calendarIds={calendarIds} notify={notify}/>:null}/>
       <button className="btn-p" style={{marginTop:'0.65rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'🔴 Punch OUT — '+timeOut+(totalH>0?' ('+totalH+'h)':'')+(blocages.length?' + '+blocages.length+' blocage'+(blocages.length>1?'s':''):'')}</button>
     </div>
   );
@@ -3615,7 +3625,7 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
       <div style={{marginBottom:'0.6rem'}}><div className="csec">Note (optionnel)</div><textarea className="note-input" rows={2} placeholder="Ex: matériel manquant..." value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/></div>
       <VoiceNoteRecorder empName={emp.nom} jobName={jobName||'punch'} calendarIds={calendarIds} calEventTitle={jobName||null} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
       {fichiersURL.length>0&&(<div style={{marginBottom:'0.5rem'}}>{fichiersURL.map((raw,i)=>{const parts=raw.split('|');const u=parts[0];const nom=parts[1]||raw;const lbl=nom.startsWith('AP_')?'📋 '+nom:nom.startsWith('OT_')?'🔧 '+nom:nom.startsWith('VOCAL_')?'🎤 Message vocal':'📎 '+nom;return(<div key={i} className="file-item"><a href={u} target="_blank" rel="noreferrer" style={{color:'var(--accent)',fontSize:11,flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{lbl}</a><button className="btn-icon" onClick={()=>setFichiersURL(prev=>prev.filter((_,j)=>j!==i))}>✕</button></div>);})}</div>)}
-      <DriveUploader empName={emp.nom} jobName={jobName||'punch'} jobLocation={jobLocation||''} calendarIds={calendarIds} calEventTitle={jobName||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
+      <DriveUploader empName={emp.nom} jobName={jobName||'punch'} jobLocation={jobLocation||''} calendarIds={calendarIds} calEventTitle={jobName||null} folders={folders||[]} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify} nouveaute={!isOut?<BoutonAP emp={emp} emps={allEmps} jobName={jobName} jobEvent={jobEvent} date={jobDate} sid={sid} calendarIds={calendarIds} notify={notify}/>:null}/>
       {!isOut&&<BlocagesMulti items={blocages} setItems={setBlocages} emp={emp} jobName={jobName||''} calendarIds={calendarIds} notify={notify}/>}
       {/* ── HEURES DE BANQUE ── */}
       <div className="dur-section">
@@ -3639,7 +3649,6 @@ function DurationForm({emp,allEmps,jobName,jobColor,jobLocation,jobDate,isOut,on
           </div>
         )}
       </div>
-      {!isOut&&<BoutonAP emp={emp} emps={allEmps} jobName={jobName} jobEvent={jobEvent} date={jobDate} sid={sid} calendarIds={calendarIds} notify={notify}/>}
       <button className="btn-p" style={{marginTop:'0.4rem'}} disabled={envoiBloc} onClick={confirm}>{envoiBloc?'⏳ Envoi du blocage…':'✓ Confirmer la job'+(blocages.length?' + '+blocages.length+' blocage'+(blocages.length>1?'s':''):'')}</button>
     </div>
   );
@@ -8877,7 +8886,7 @@ function MaterielPicker({lignes,onChange,onApercu}){
   const [lim,setLim]=useState({});
   const tout=useMemo(()=>aplatirCatalogue(),[_catCrmEtat]);
   // v268 : les pages = seulement la feuille papier (7 catégories). Le reste du catalogue (kits, NMD, NMWU…) s'ajoute par la recherche ou à la main.
-  const ORDRE_PAD=['Fils','Boîtes','Décora','Produits extérieurs','Conduit','Panneaux','Disjoncteurs','Chauffage'];
+  const ORDRE_PAD=ORDRE_PAD_G;
   const PRIO_SOUS={'Fils':['NMD','NMWU','ACWU','RW90','AC90']};
   const sections=useMemo(()=>{
     const ordre=ORDRE_PAD.filter(c=>tout.some(i=>i.cat===c&&!i.crm));
@@ -8967,7 +8976,7 @@ function MaterielPicker({lignes,onChange,onApercu}){
     <div style={{background:'rgba(255,255,255,0.04)',borderRadius:14,padding:'0.2rem 0.7rem 0.7rem'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'0.6rem 0 0.4rem',borderBottom:'2px solid var(--accent)'}}>
         <div style={{flex:1,fontFamily:'var(--font-head)',fontWeight:800,fontSize:'0.95rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>{pg+1}. {sc.cat}</div>
-        <span style={{fontSize:11,color:'var(--muted)'}}>Page {Math.max(pos,0)+1}/{actives.length||1} · glisse ←→</span>
+        <span style={{fontSize:11,color:'var(--muted)'}}>Page {Math.max(pos,0)+1}/{actives.length||1}</span>
       </div>
       {sc.aTyp&&<div data-noswipe="1" style={{display:'flex',gap:8,margin:'0.7rem 0 0.2rem'}}>
         {['PVC','EMT'].map(t=><div key={t} onClick={()=>setTypConduit(t)} style={{flex:1,textAlign:'center',padding:'0.55rem',borderRadius:12,fontWeight:800,fontSize:14,cursor:'pointer',background:typConduit===t?'var(--emp,var(--accent))':'var(--bg3)',color:typConduit===t?'#fff':'var(--text)'}}>{t}</div>)}
@@ -9014,7 +9023,9 @@ function MaterielPicker({lignes,onChange,onApercu}){
           <button type="button" className="btn-s" onClick={ajouterManuel} disabled={!manuel.trim()} style={{fontSize:12}}>Ajouter</button>
         </div>
       </div>
-      <div style={{display:'flex',alignItems:'center',gap:8,marginTop:14}}>
+      {nbCat(sc.cat)===0&&<button type="button" className="btn-s" data-noswipe="1" style={{width:'100%',marginTop:12,fontSize:13,fontWeight:700}} onClick={()=>{setSaute(o=>({...o,[sc.cat]:true}));if(suivante!==undefined)aller(suivante);else if(onApercu)onApercu();}}>⏭️ Rien utilisé en {sc.cat} — sauter cette page</button>}
+      <div style={{textAlign:'center',fontSize:11,color:'var(--muted)',marginTop:8}}>↔️ Tu peux aussi glisser (swipe) à gauche ou à droite pour changer de page</div>
+      <div style={{display:'flex',alignItems:'center',gap:8,marginTop:8}}>
         <button type="button" disabled={precedente===undefined} onClick={()=>aller(precedente)} className="btn-s" style={{flex:1,fontSize:12,opacity:precedente!==undefined?1:0.35}}>{precedente!==undefined?'← '+sections[precedente].cat:'—'}</button>
         <button type="button" onClick={()=>{if(suivante!==undefined)aller(suivante);else if(onApercu)onApercu();}} className="btn-p" style={{flex:1.4,fontSize:13,marginTop:0}}>{suivante!==undefined?'Page suivante : '+sections[suivante].cat+' →':"👁️ Voir l'aperçu de l'AP"}</button>
       </div>
@@ -9022,7 +9033,16 @@ function MaterielPicker({lignes,onChange,onApercu}){
     <div style={{fontSize:11,color:'var(--muted)',marginTop:5}}>{total>0?'✅ '+total+' ligne'+(total>1?'s':'')+' de stock ajoutée'+(total>1?'s':''):'Remplis page par page, comme le carnet. Ce que tu laisses à 0 ne sort pas.'}</div>
   </div>;
 }
-const texteMateriel=(lignes,libre)=>[...lignes.map(l=>l.code==='Manuel'?l.qte+' × '+l.desc:l.qte+' '+l.unite+' × '+l.code+' — '+l.desc),libre&&libre.trim()].filter(Boolean).join(', ');
+const ORDRE_PAD_G=['Fils','Boîtes','Décora','Produits extérieurs','Conduit','Entrée électrique','Panneaux','Disjoncteurs','Chauffage'];
+const texteMateriel=(lignes,libre)=>{
+  const L=(lignes||[]).filter(l=>l.qte>0);
+  const rang=c=>{const k=ORDRE_PAD_G.indexOf(c);return k<0?99:k;};
+  const cats=[...new Set(L.map(l=>l.cat))].sort((a,b)=>rang(a)-rang(b));
+  const out=[];
+  cats.forEach(c=>{out.push(String(c||'Autres').toUpperCase());L.filter(l=>l.cat===c).forEach(l=>out.push('   '+(l.code==='Manuel'?l.qte+' × '+l.desc:l.qte+' '+l.unite+' × '+l.code+(l.desc&&l.desc!==l.code?' — '+l.desc:''))));});
+  if(libre&&libre.trim()){out.push('AUTRES');out.push('   '+libre.trim());}
+  return out.join('\n');
+};
 
 async function fabriquerPdfAp(d){
   const {jsPDF}=await chargerJsPdf();
@@ -9098,7 +9118,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
   const [lignesMat,setLignesMat]=useState([]);   // lignes du catalogue
   const [, setCatTick]=useState(0);
   useEffect(()=>{chargerCatalogueCrm().then(()=>setCatTick(t=>t+1));},[]);
-  const [sa,setSa]=useState([{nom:emp.nom,h:'0'},{nom:'',h:'0'}]);   // v276 : SA 01 / SA 02 (… ) — nom + heures
+  const [sa,setSa]=useState([{nom:emp.nom,h:'0'}]);   // v276 : SA 01 / SA 02 (… ) — nom + heures
   const heures=String((sa.find(r=>r.nom===emp.nom)||{}).h||'');       // heures de celui qui remplit (pour le dépôt)
   const lignesSA=sa.map((r,i)=>({n:'SA 0'+(i+1),nom:r.nom,h:r.h})).filter(r=>r.nom&&parseFloat(r.h)>0);
   const [apercu,setApercu]=useState(false);        // v271 : aperçu de l'AP, comme le carnet papier
@@ -9114,7 +9134,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
     noms.sort((a,b)=>(APPRENTIS_FACT.includes(a)?1:0)-(APPRENTIS_FACT.includes(b)?1:0));
     if(!noms.includes(emp.nom))noms.unshift(emp.nom);
     noms=noms.slice(0,2);
-    setSa(prev=>{const h=n=>(prev.find(r=>r.nom===n)||{}).h||'0';return [{nom:noms[0]||emp.nom,h:h(noms[0]||emp.nom)},{nom:noms[1]||'',h:h(noms[1]||'')},...prev.slice(2)];});
+    setSa(prev=>{const h=n=>(prev.find(r=>r.nom===n)||{}).h||'0';const r=[{nom:noms[0]||emp.nom,h:h(noms[0]||emp.nom)}];if(noms[1])r.push({nom:noms[1],h:h(noms[1])});else if(prev[1]&&prev[1].nom)r.push(prev[1]);return [...r,...prev.slice(2)];});
   },[jobCal&&jobCal.id,projetNom]);
   const adresse=(jobCal&&jobCal.location)||'';
   const clean=s=>String(s||'').replace(/[^a-zA-Z0-9À-ɏ\-_ ]/g,'').trim();
@@ -9158,7 +9178,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
       const fichiers=[r.url+'|'+nomPdf,...photos];
       if(calendarIds&&projetNom){try{const ref=await findCalendarEventByTitle(calendarIds,projetNom);if(ref)await attachFileToCalendarEvent(ref.calendarId,ref.eventId,r.id,nomPdf,'application/pdf');}catch(e){}}
       const equipeTxt=lignesSA.map(r=>r.n+' '+r.nom+' '+r.h+' h').join(', ');
-      const resume=[ou&&'OÙ : '+ou.trim(),equipeTxt&&'HEURES : '+equipeTxt,'DESCRIPTION : '+quoi.trim(),reste&&'RENDU / RESTE : '+reste.trim(),texteMateriel(lignesMat,materiel)&&'MATÉRIEL : '+texteMateriel(lignesMat,materiel)].filter(Boolean).join('\n');
+      const resume=[ou&&'OÙ : '+ou.trim(),equipeTxt&&'HEURES : '+equipeTxt,'DESCRIPTION : '+quoi.trim(),reste&&'RENDU / RESTE : '+reste.trim(),texteMateriel(lignesMat,materiel)&&'MATÉRIEL :\n'+texteMateriel(lignesMat,materiel)].filter(Boolean).join('\n');
       const jobObj={id:(jobCal&&jobCal.id)||(sel&&sel.eventId)||'',title:projetNom,location:adresse,start:jobCal&&jobCal.start};
       if(sid){try{await enregistrerDepot(sid,emp,jobObj,{type:KD,numero:numFinal,note:'['+KD+' numérique] ('+g.lib+') '+resume,fichiers,heures:parseFloat(heures)||0});}catch(e){console.error(e);notify('Attention : AP non gardé dans la feuille (PDF et courriel partent quand même)','warn');}}
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
@@ -9179,7 +9199,8 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
         <div style={{fontSize:44}}>{fini.ok?'✅':'⚠️'}</div>
         <div style={{fontWeight:800,fontSize:'1.1rem',margin:'0.4rem 0'}}>{KD} {fini.numero} créé</div>
         <div style={{fontSize:13,lineHeight:1.5,color:'var(--muted)'}}>📄 PDF déposé dans le Drive ({fini.pdf})<br/>{fini.ok?'📧 Courriel envoyé au bureau (info@saranelectrique.com)'+(fini.cc?' — copie de confirmation à '+fini.cc:''):'⚠️ Le courriel n\'est pas parti — préviens le bureau'}</div>
-        <button className="btn-p" style={{width:'100%',marginTop:'1rem'}} onClick={()=>onClose(true)}>OK</button>
+        <button className="btn-p" style={{width:'100%',marginTop:'1rem'}} onClick={()=>onClose(true,null,fini.numero)}>OK</button>
+        {direct&&<button className="btn-s" style={{width:'100%',marginTop:'0.5rem',fontWeight:700}} onClick={()=>onClose(true,KD==='AP'?'OT':'AP',fini.numero)}>{KD==='AP'?'🔧 Faire aussi un E-OT (ordre de travail)':'📋 Faire aussi un E-AP (appel de service)'}</button>}
       </div>
     </div>);
   if(envoi)return(
@@ -9203,7 +9224,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
     </div>
   );
   if(apercu){
-    const ORD=['Fils','Boîtes','Décora','Produits extérieurs','Conduit','Panneaux','Disjoncteurs','Chauffage'];
+    const ORD=ORDRE_PAD_G;
     const lg=lignesMat.filter(l=>l.qte>0&&l.code!=='Manuel');
     const man=lignesMat.filter(l=>l.qte>0&&l.code==='Manuel');
     const cats=[...new Set(lg.map(l=>l.cat))].sort((x,y)=>{const a1=ORD.indexOf(x),b1=ORD.indexOf(y);return (a1<0?99:a1)-(b1<0?99:b1);});
@@ -9269,11 +9290,11 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
               <option value="">— Qui? —</option>
               {(emps||[]).filter(e=>e.nom===r.nom||!sa.some(x=>x.nom===e.nom)).map(e=><option key={e.nom} value={e.nom}>{e.nom}</option>)}
             </select>
-            {i>=2&&<button type="button" className="btn-s" onClick={()=>setSa(L=>L.filter((_,k)=>k!==i))}>✕</button>}
+            {i>=1&&<button type="button" className="btn-s" onClick={()=>setSa(L=>L.filter((_,k)=>k!==i))}>✕</button>}
           </div>
           <div style={{marginTop:5}}><HeuresStepper v={r.h} onChange={h=>setSa(L=>L.map((x,k)=>k===i?{...x,h}:x))}/></div>
         </div>;})}
-        <button type="button" className="btn-s" style={{fontSize:12}} onClick={()=>setSa(L=>[...L,{nom:'',h:'0'}])}>➕ Ajouter un employé (SA 0{sa.length+1})</button>
+        <button type="button" className="btn-s" style={{fontSize:12}} onClick={()=>setSa(L=>[...L,{nom:'',h:'0'}])}>➕ Ajouter {sa.length===1?'un SA 02':'un employé (SA 0'+(sa.length+1)+')'}</button>
         <div style={{...lbl,fontSize:12,color:'var(--accent)',marginTop:'1.1rem'}}>3. Stock utilisé</div>
         <MaterielPicker lignes={lignesMat} onChange={setLignesMat} onApercu={()=>setApercu(true)}/>
         <div style={{...lbl,marginTop:'0.6rem'}}>Autre matériel (si pas dans le catalogue)</div>
@@ -9283,7 +9304,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
           📷 Ajouter des photos<input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>{const l=[...e.target.files];e.target.value='';ajouterPhotos(l);}}/>
         </label>
         {(photos.length>0||envoiPhoto>0)&&<div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>{photos.map((p,i)=><div key={i}>✅ {p.split('|')[1]}</div>)}{envoiPhoto>0&&<div>⏳ Envoi de {envoiPhoto} photo{envoiPhoto>1?'s':''}…</div>}</div>}
-        {err&&<div style={{marginTop:'0.8rem',padding:'0.6rem 0.8rem',borderRadius:10,background:'rgba(255,77,77,0.15)',border:'1px solid #ff4d4d',fontSize:13,fontWeight:700}}>⚠️ {err}</div>}
+        {err&&<div style={{position:'fixed',inset:0,zIndex:10003,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'center',justifyContent:'center',padding:'1.2rem'}}><div style={{background:'#b3261e',color:'#fff',borderRadius:18,maxWidth:360,width:'100%',padding:'1.4rem',textAlign:'center',boxShadow:'0 10px 40px rgba(0,0,0,0.6)',animation:'ppsecoue .4s'}}><div style={{fontSize:46}}>⚠️</div><div style={{fontWeight:800,fontSize:'1.15rem',margin:'0.4rem 0 1rem',lineHeight:1.35}}>{err}</div><button onClick={()=>setErr('')} style={{width:'100%',padding:'0.8rem',borderRadius:12,border:'none',background:'#fff',color:'#b3261e',fontWeight:800,fontSize:16,cursor:'pointer'}}>OK</button></div><style>{'@keyframes ppsecoue{0%{transform:scale(.85)}60%{transform:scale(1.04)}100%{transform:scale(1)}}'}</style></div>}
         <button className="btn-s" style={{width:'100%',marginTop:'1rem',fontSize:13,fontWeight:700}} onClick={()=>{setErr('');setApercu(true);}}>👁️ Voir l'aperçu {KD==='OT'?'de l\'OT':'de l\'AP'}</button>
         <button className="btn-p" style={{width:'100%',marginTop:'0.5rem'}} disabled={envoi||envoiPhoto>0} onClick={envoyer}>{envoi?'⏳ Création du PDF et envoi…':'📄 Créer '+(KD==='OT'?'l\'OT':'l\'AP')+' et l\'envoyer au bureau'}</button>
         <div style={{fontSize:11,color:'var(--muted)',marginTop:6,textAlign:'center'}}>Le PDF va dans « PAD SERVICE À TRAITER » et William reçoit un courriel.</div>
