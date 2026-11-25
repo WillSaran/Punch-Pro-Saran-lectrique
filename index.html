@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v269';
+const APP_VERSION='v270';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8832,16 +8832,22 @@ function MaterielPicker({lignes,onChange}){
   const sc=sections[pg]||{cat:'',groupes:[],n:0};
   const pos=actives.indexOf(pg);
   const suivante=actives.find(k=>k>pg),precedente=[...actives].reverse().find(k=>k<pg);
-  const aller=k=>{setPage(k);setQ('');setManuel('');try{const el=document.getElementById('pad-haut');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}};
+  const aller=k=>{setPage(k);setQ('');setManuel('');setTimeout(()=>{try{const el=document.getElementById('pad-haut');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});}catch(e){}},40);};   // v270 : on revient en haut de la nouvelle page
+  const toucheRef=useRef(null);
+  const debutTouche=e=>{const t=e.touches&&e.touches[0];toucheRef.current=(t&&!(e.target.closest&&e.target.closest('[data-noswipe],input,textarea')))?{x:t.clientX,y:t.clientY}:null;};
+  const finTouche=e=>{const d=toucheRef.current;toucheRef.current=null;if(!d)return;const t=e.changedTouches&&e.changedTouches[0];if(!t)return;
+    const dx=t.clientX-d.x,dy=t.clientY-d.y;
+    if(Math.abs(dx)<70||Math.abs(dy)>Math.abs(dx)*0.6)return;   // glissement horizontal net seulement
+    if(dx<0&&suivante!==undefined)aller(suivante);else if(dx>0&&precedente!==undefined)aller(precedente);};
   const mots=q.toLowerCase().split(/\s+/).filter(Boolean);
   const resultats=mots.length?tout.filter(i=>{const t=(i.code+' '+i.desc+' '+i.cat).toLowerCase();return mots.every(m=>t.includes(m));}).slice(0,25):[];
   const manuelsPage=lignes.filter(l=>l.code==='Manuel'&&l.cat===sc.cat);
   const ajouterManuel=()=>{const t=manuel.trim();if(!t)return;const i={cat:sc.cat,sous:'',code:'Manuel',desc:t,unite:''};ajuster(i,1);setManuel('');};
   const max=lim[sc.cat]||30;let compte=0;
   if(!sections.length)return <div style={{fontSize:12,color:'var(--muted)'}}>Catalogue en chargement… écris le matériel dans « Autre matériel » plus bas.</div>;
-  return <div id="pad-haut" style={{scrollMarginTop:8}}>
+  return <div id="pad-haut" style={{scrollMarginTop:8}} onTouchStart={debutTouche} onTouchEnd={finTouche}>
     <div style={{fontSize:11,color:'var(--muted)',margin:'0 0 4px'}}>Rien utilisé en… <span style={{opacity:0.7}}>(touche pour sauter la page)</span></div>
-    <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8,WebkitOverflowScrolling:'touch'}}>
+    <div data-noswipe="1" style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8,WebkitOverflowScrolling:'touch'}}>
       {sections.map((s2,k)=>{const sk=!!saute[s2.cat];return <div key={s2.cat} style={{flexShrink:0,display:'flex',alignItems:'center',borderRadius:20,overflow:'hidden',background:k===pg?'var(--emp,var(--accent))':'var(--bg3)',color:k===pg?'#fff':'var(--text)',opacity:sk?0.55:1}}>
         <span onClick={()=>aller(k)} style={{padding:'0.35rem 0.5rem 0.35rem 0.75rem',fontSize:11.5,cursor:'pointer',whiteSpace:'nowrap',textDecoration:sk?'line-through':'none'}}>{s2.cat}{nbCat(s2.cat)>0&&<b style={{marginLeft:5}}>{nbCat(s2.cat)}</b>}</span>
         <span onClick={()=>{if(nbCat(s2.cat)>0)return;setSaute(o=>({...o,[s2.cat]:!sk}));}} title={sk?'Remettre cette page':'Rien utilisé ici'} style={{padding:'0.35rem 0.6rem 0.35rem 0.3rem',fontSize:11,cursor:nbCat(s2.cat)>0?'default':'pointer',opacity:nbCat(s2.cat)>0?0.3:0.9}}>{sk?'↺':'✕'}</span>
@@ -8850,7 +8856,7 @@ function MaterielPicker({lignes,onChange}){
     <div style={{background:'rgba(255,255,255,0.04)',borderRadius:14,padding:'0.2rem 0.7rem 0.7rem'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'0.6rem 0 0.4rem',borderBottom:'2px solid var(--accent)'}}>
         <div style={{flex:1,fontFamily:'var(--font-head)',fontWeight:800,fontSize:'0.95rem',textTransform:'uppercase',letterSpacing:'0.05em'}}>{pg+1}. {sc.cat}</div>
-        <span style={{fontSize:11,color:'var(--muted)'}}>Page {Math.max(pos,0)+1}/{actives.length||1}</span>
+        <span style={{fontSize:11,color:'var(--muted)'}}>Page {Math.max(pos,0)+1}/{actives.length||1} · glisse ←→</span>
       </div>
       {sc.groupes.map((g,gi)=>{
         if(compte>=max)return null;
