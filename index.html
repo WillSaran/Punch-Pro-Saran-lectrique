@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v288';
+const APP_VERSION='v289';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2563,6 +2563,22 @@ async function envoyerDepotCourriel(data,token){
   return res.ok;
 }
 
+// v289 : cote 1 à 10 — tous les chiffres sur une seule ligne + une barre à glisser en dessous (0 = pas de cote)
+function Note10({value,onChange,fond}){
+  const v=+value||0;
+  return <div style={{marginBottom:'0.6rem'}}>
+    <div style={{display:'flex',gap:3,flexWrap:'nowrap'}}>
+      {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+        <div key={n} onClick={()=>onChange(v===n?0:n)} style={{flex:'1 1 0',minWidth:0,height:34,borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,cursor:'pointer',touchAction:'manipulation',
+          fontWeight:v===n?800:500,background:v===n?'var(--accent)':(fond||'var(--bg3)'),color:v===n?'#fff':'var(--text)',border:'1px solid '+(v===n?'var(--accent)':'var(--border)')}}>{n}</div>
+      ))}
+    </div>
+    <div data-noswipe="1" style={{display:'flex',alignItems:'center',gap:10,marginTop:8}}>
+      <input type="range" min="0" max="10" step="1" value={v} onChange={e=>onChange(parseInt(e.target.value,10)||0)} style={{flex:1,accentColor:'var(--accent)',height:28}}/>
+      <div style={{minWidth:46,textAlign:'right',fontWeight:800,fontSize:15,color:v>0?'var(--accent)':'var(--muted)'}}>{v>0?v+' / 10':'—'}</div>
+    </div>
+  </div>;
+}
 function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated,depart}){
   const [emp,setEmp]=useState(empProp||null);
   const [type,setType]=useState((depart&&depart.type)||null); // 'AP' | 'OT' (v257 : « Faire l'AP » → photo du pad arrive déjà sur Appel de service)
@@ -2790,12 +2806,7 @@ function DepotRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClo
             </div>
           </div>
           <div className="csec">Comment la job a été? (1 à 10)</div>
-          <div style={{display:'flex',gap:'0.25rem',flexWrap:'wrap',marginBottom:'0.6rem'}}>
-            {[1,2,3,4,5,6,7,8,9,10].map(n=>(
-              <div key={n} onClick={()=>setNote10(note10===n?0:n)} style={{width:34,height:34,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,cursor:'pointer',touchAction:'manipulation',
-                fontWeight:note10===n?800:500,background:note10===n?'var(--accent)':'var(--bg3)',color:note10===n?'#fff':'var(--text)',border:'1px solid '+(note10===n?'var(--accent)':'var(--border)')}}>{n}</div>
-            ))}
-          </div>
+          <Note10 value={note10} onChange={setNote10} fond="var(--bg3)"/>
 
           <div className="csec">Ta note (résumé, feeling, imprévus)</div>
           <textarea className="note-input" rows={4} placeholder={"Résumé de la job...\nTon feeling de la job...\nImprévus (ce qui n'était pas prévu)..."} value={note} onChange={e=>setNote(e.target.value)}/>
@@ -3490,12 +3501,7 @@ function PunchOutScreen({emp,allEmps,pts:ptsProp,sid,onConfirm,onBack,notify,fol
         </div>
         <VoiceNoteRecorder empName={emp.nom} jobName={(selJobData&&selJobData.job)||'punch'} calendarIds={calendarIds} calEventTitle={selJobData&&selJobData.job||null} onUploaded={url=>setFichiersURL(prev=>[...prev,url])} notify={notify}/>
         <div className="csec">Comment la job a été? (1 à 10)</div>
-        <div style={{display:'flex',gap:'0.25rem',flexWrap:'wrap',marginBottom:'0.5rem'}}>
-          {[1,2,3,4,5,6,7,8,9,10].map(n=>(
-            <div key={n} onClick={()=>setNote10(note10===n?0:n)} style={{width:32,height:34,borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,cursor:'pointer',touchAction:'manipulation',
-              fontWeight:note10===n?800:500,background:note10===n?'var(--accent)':'var(--bg2)',color:note10===n?'#fff':'var(--text)',border:'1px solid '+(note10===n?'var(--accent)':'var(--border)')}}>{n}</div>
-          ))}
-        </div>
+        <Note10 value={note10} onChange={setNote10} fond="var(--bg2)"/>
         <div className="csec">Note écrite (optionnel)</div>
         <textarea className="note-input" rows={3} placeholder={"Résumé de la job (1 à 10)...\nTon feeling de la job...\nImprévus..."} value={note} onChange={e=>{const v=e.target.value;setNote(v);}}/>
       </div>
