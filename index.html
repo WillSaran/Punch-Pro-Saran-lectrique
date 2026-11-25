@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v283';
+const APP_VERSION='v284';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -2511,7 +2511,7 @@ const PAD_SERVICE_ID='1CI-OuXIuiSKUksL7BUyGAN__tRPxbklB';
 async function envoyerDepotCourriel(data,token){
   const lignes=(data.fichiers||[]).map(raw=>{const p=raw.split('|');return '  - '+(p[1]||'fichier')+'\n    '+p[0];});
   const label=data.type==='AP'?'Appel de service':'Ordre de travail';
-  const body='Bonjour,\n\n'+data.employe+(data.numerique?' a REMPLI un appel de service dans l\'application PunchPro (PDF créé automatiquement) pour la job :\n':' a déposé un(e) '+label+' ('+data.type+') pour la job :\n')+(data.job||'—')+'\n'
+  const body=(data.numerique?'✅ CONFIRMATION — nouvel appel de service électronique (en essai).\n\n':'')+'Bonjour,\n\n'+data.employe+(data.numerique?' a REMPLI un appel de service dans l\'application PunchPro (PDF créé automatiquement) pour la job :\n':' a déposé un(e) '+label+' ('+data.type+') pour la job :\n')+(data.job||'—')+'\n'
     +(data.adresse?'Adresse : '+data.adresse+'\n':'')
     +(data.numero?'Numéro : '+data.numero+'\n':'')
     +'\nFICHIERS (dossier PAD SERVICE À TRAITER) :\n'+(lignes.length?lignes.join('\n'):'  (aucun fichier)')+'\n\n'
@@ -2521,9 +2521,9 @@ async function envoyerDepotCourriel(data,token){
     +(data.heures>0?'HEURES PRÉ-MARQUÉES PAR L\'EMPLOYÉ : '+data.heures+' h (aucun punch trouvé aujourd\'hui — à valider)\n\n':'')
     +'Date : '+localDateStr()+'\n\nEnvoyé depuis PunchPro — Saran Électrique';
   const to='info@saranelectrique.com';
-  const subjectTxt='['+data.type+(data.numerique?' numérique':'')+'] '+(data.job||'Dépôt rapide')+' — '+data.employe;
+  const subjectTxt=(data.numerique?'✅ ':'')+'['+data.type+(data.numerique?' numérique':'')+'] '+(data.job||'Dépôt rapide')+' — '+data.employe;
   const subjB64=(()=>{const by=new TextEncoder().encode(subjectTxt);let bin='';by.forEach(b=>bin+=String.fromCharCode(b));return btoa(bin);})();
-  const msgHeader='To: '+to+'\r\nSubject: =?UTF-8?B?'+subjB64+'?=\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
+  const msgHeader='To: '+to+'\r\n'+(data.cc?'Cc: '+data.cc+'\r\n':'')+'Subject: =?UTF-8?B?'+subjB64+'?=\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n';
   const bodyBytes=new TextEncoder().encode(body);
   let b64='';
   for(let i=0;i<bodyBytes.length;i+=57){
@@ -3018,7 +3018,7 @@ function BoutonAP({emp,emps,jobName,jobs,jobEvent,date,sid,calendarIds,notify}){
       <div style={{flex:1}}><div style={{fontWeight:800,fontSize:14}}>Faire l'AP (appel de service)</div><div style={{fontSize:11,color:'var(--muted)'}}>Heures SA 01 / SA 02, stock et aperçu — part au bureau</div></div>
       <span style={{background:'var(--emp,var(--accent))',color:'#fff',fontSize:10,fontWeight:800,padding:'0.15rem 0.5rem',borderRadius:10,letterSpacing:'.05em'}}>NOUVEAU</span>
     </div>
-    {ouvert&&<FacturerAP emp={emp} emps={emps} options={[ini]} initial={ini} jobsForLookup={ev?[ev]:(jobs||[])} sid={sid} calendarIds={calendarIds} notify={notify} onClose={()=>setOuvert(false)}/>}
+    {ouvert&&<FacturerAP emp={emp} emps={emps} options={[ini]} initial={ini} jobsForLookup={ev?[ev]:(jobs||[])} sid={sid} calendarIds={calendarIds} notify={notify} onClose={()=>setOuvert(false)} direct/>}
   </>;
 }
 function BlocageRapide({emps,emp:empProp,sid,jobs,allJobs,calendarIds,notify,onClose,onJobCreated}){
@@ -9071,8 +9071,10 @@ function HeuresStepper({v,onChange}){
     <button type="button" style={{...b,width:46,fontSize:12,fontWeight:700}} onClick={()=>set(n+1)}>+1h</button>
   </div>;
 }
-function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,notify,onClose,onPhotoPad}){
-  const [mode,setMode]=useState(null);   // null = choix | 'elec'
+function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,notify,onClose,onPhotoPad,direct}){
+  const [mode,setMode]=useState(direct?'elec':null);
+  const [err,setErr]=useState('');
+  const [fini,setFini]=useState(null);   // v284 : écran de confirmation   // null = choix | 'elec'
   const [numAuto,setNumAuto]=useState('…');
   useEffect(()=>{let ok=true;prochainNumeroAP(sid,emp).then(n=>{if(ok)setNumAuto(n);});return()=>{ok=false;};},[sid,emp&&emp.nom]);
   const [sel,setSel]=useState(initial||null);               // facture manquante choisie (ou null = autre job)
@@ -9131,8 +9133,10 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
     }));
   }
   async function envoyer(){
-    if(!projetNom){notify('Choisis ou écris la job','warn');return;}
-    if(!quoi.trim()){notify('Écris la description du projet','warn');return;}
+    if(envoi)return;   // v284 : un seul envoi à la fois
+    setErr('');
+    if(!projetNom){setErr('Choisis ou écris la job.');setApercu(false);return;}
+    if(!quoi.trim()){setErr('Écris la description du projet avant d\'envoyer.');setApercu(false);return;}
     setEnvoi(true);
     try{
       const numFinal=await prochainNumeroAP(sid,emp);
@@ -9150,14 +9154,32 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
       if(sid){try{await enregistrerDepot(sid,emp,jobObj,{type:'AP',numero:numFinal,note:'[AP numérique] ('+g.lib+') '+resume,fichiers,heures:parseFloat(heures)||0});}catch(e){console.error(e);notify('Attention : AP non gardé dans la feuille (PDF et courriel partent quand même)','warn');}}
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
       let ok=false;
-      if(token)ok=await envoyerDepotCourriel({employe:emp.nom,type:'AP',numerique:true,job:projetNom,adresse,numero:numFinal,note:'Type : '+g.lib+'\n'+resume,fichiers,heures:0},token);
-      notify(ok?'✅ AP créé — PDF déposé, courriel envoyé':'✅ AP créé (PDF déposé, courriel non envoyé)',ok?'success':'warn');
-      onClose(true);
-    }catch(e){console.error(e);notify('Erreur : '+e.message,'err');}
+      let moi='';
+      if(token){try{const ui=await (await fetch('https://www.googleapis.com/oauth2/v3/userinfo',{headers:{'Authorization':'Bearer '+token}})).json();moi=(ui.email||'').toLowerCase();}catch(e){}}
+      const cc=moi&&moi!=='info@saranelectrique.com'?moi:'';
+      if(token)ok=await envoyerDepotCourriel({employe:emp.nom,type:'AP',numerique:true,job:projetNom,adresse,numero:numFinal,note:'Type : '+g.lib+'\n'+resume,fichiers,heures:0,cc},token);
+      setFini({ok,numero:numFinal,pdf:nomPdf,cc});
+    }catch(e){console.error(e);setErr('Erreur : '+e.message+' — rien n\'a été perdu, tu peux réessayer.');setApercu(false);}
     setEnvoi(false);
   }
   const champ={width:'100%',padding:'0.55rem',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg3)',color:'var(--text)',fontSize:14,boxSizing:'border-box',fontFamily:'inherit'};
   const lbl={fontSize:11,fontWeight:700,color:'var(--muted)',margin:'0.7rem 0 0.25rem',textTransform:'uppercase',letterSpacing:'0.04em'};
+  if(fini)return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:10001,display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem'}}>
+      <div style={{background:'var(--bg2, #161b22)',borderRadius:18,maxWidth:380,width:'100%',padding:'1.4rem',textAlign:'center'}}>
+        <div style={{fontSize:44}}>{fini.ok?'✅':'⚠️'}</div>
+        <div style={{fontWeight:800,fontSize:'1.1rem',margin:'0.4rem 0'}}>AP {fini.numero} créé</div>
+        <div style={{fontSize:13,lineHeight:1.5,color:'var(--muted)'}}>📄 PDF déposé dans le Drive ({fini.pdf})<br/>{fini.ok?'📧 Courriel envoyé au bureau (info@saranelectrique.com)'+(fini.cc?' — copie de confirmation à '+fini.cc:''):'⚠️ Le courriel n\'est pas parti — préviens le bureau'}</div>
+        <button className="btn-p" style={{width:'100%',marginTop:'1rem'}} onClick={()=>onClose(true)}>OK</button>
+      </div>
+    </div>);
+  if(envoi)return(
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:10001,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:14,color:'#fff'}}>
+      <div style={{width:38,height:38,border:'4px solid rgba(255,255,255,.2)',borderTopColor:'#ff7a1a',borderRadius:'50%',animation:'ppspin .8s linear infinite'}}></div>
+      <div style={{fontWeight:800,fontSize:16}}>Création de l'AP en cours…</div>
+      <div style={{fontSize:12,opacity:.75}}>PDF, Drive et courriel — ne touche à rien</div>
+      <style>{'@keyframes ppspin{to{transform:rotate(360deg)}}'}</style>
+    </div>);
   if(mode===null)return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:9998,overflowY:'auto',padding:'0.8rem',display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{background:'var(--bg2, #161b22)',borderRadius:18,maxWidth:420,width:'100%',padding:'1.2rem'}}>
@@ -9206,7 +9228,7 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
           {photos.length>0&&<div style={{marginTop:8,fontSize:11}}>📷 {photos.length} photo{photos.length>1?'s':''} jointe{photos.length>1?'s':''}</div>}
         </div>
         <button className="btn-s" style={{width:'100%',marginTop:'0.8rem'}} onClick={()=>setApercu(false)}>← Modifier</button>
-        <button className="btn-p" style={{width:'100%',marginTop:'0.4rem'}} disabled={envoi||envoiPhoto>0} onClick={()=>{setApercu(false);envoyer();}}>{envoi?'⏳ Création du PDF et envoi…':'📄 Créer l\'AP et l\'envoyer au bureau'}</button>
+        <button className="btn-p" style={{width:'100%',marginTop:'0.4rem'}} disabled={envoi||envoiPhoto>0} onClick={envoyer}>{envoi?'⏳ Création du PDF et envoi…':'📄 Créer l\'AP et l\'envoyer au bureau'}</button>
       </div>
     </div>;
   }
@@ -9252,7 +9274,8 @@ function FacturerAP({emp,emps,options,initial,jobsForLookup,sid,calendarIds,noti
           📷 Ajouter des photos<input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>{const l=[...e.target.files];e.target.value='';ajouterPhotos(l);}}/>
         </label>
         {(photos.length>0||envoiPhoto>0)&&<div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>{photos.map((p,i)=><div key={i}>✅ {p.split('|')[1]}</div>)}{envoiPhoto>0&&<div>⏳ Envoi de {envoiPhoto} photo{envoiPhoto>1?'s':''}…</div>}</div>}
-        <button className="btn-s" style={{width:'100%',marginTop:'1rem',fontSize:13,fontWeight:700}} onClick={()=>setApercu(true)}>👁️ Voir l'aperçu de l'AP</button>
+        {err&&<div style={{marginTop:'0.8rem',padding:'0.6rem 0.8rem',borderRadius:10,background:'rgba(255,77,77,0.15)',border:'1px solid #ff4d4d',fontSize:13,fontWeight:700}}>⚠️ {err}</div>}
+        <button className="btn-s" style={{width:'100%',marginTop:'1rem',fontSize:13,fontWeight:700}} onClick={()=>{setErr('');setApercu(true);}}>👁️ Voir l'aperçu de l'AP</button>
         <button className="btn-p" style={{width:'100%',marginTop:'0.5rem'}} disabled={envoi||envoiPhoto>0} onClick={envoyer}>{envoi?'⏳ Création du PDF et envoi…':'📄 Créer l\'AP et l\'envoyer au bureau'}</button>
         <div style={{fontSize:11,color:'var(--muted)',marginTop:6,textAlign:'center'}}>Le PDF va dans « PAD SERVICE À TRAITER » et William reçoit un courriel.</div>
       </div>
