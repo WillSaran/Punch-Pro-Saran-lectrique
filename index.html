@@ -796,7 +796,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v281';
+const APP_VERSION='v282';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -864,10 +864,10 @@ const CATALOGUE={
     {code:'5601-P2W',desc:'Interrupteur simple Décora',unite:'un'},
     {code:'5603-P2W',desc:'Interrupteur 3-voies Décora',unite:'un'},
     {code:'5604',desc:'Interrupteur 4-voies Décora',unite:'un'},
-    {code:'1GPJ/1GSW',desc:'Plaque 1 gang',unite:'un',variantes:[{opt:'GPJ avec vis'},{opt:'GSW sans vis',code:'80301-SW'}]},
-    {code:'2GPJ/2GSW',desc:'Plaque 2 gangs',unite:'un',variantes:[{opt:'GPJ avec vis'},{opt:'GSW sans vis',code:'80309-SW'}]},
-    {code:'3GPJ/3GSW',desc:'Plaque 3 gangs',unite:'un',variantes:[{opt:'GPJ avec vis'},{opt:'GSW sans vis',code:'80311-SW'}]},
-    {code:'4GPJ/4GSW',desc:'Plaque 4 gangs',unite:'un',variantes:[{opt:'GPJ avec vis'},{opt:'GSW sans vis',code:'80312-SW'}]},
+    {code:'1GPJ/1GSW',desc:'Plaque 1 gang',unite:'un',variantes:[{opt:'GPJ avec vis',code:'PJ26-W'},{opt:'GSW sans vis',code:'80301-SW'}]},
+    {code:'2GPJ/2GSW',desc:'Plaque 2 gangs',unite:'un',variantes:[{opt:'GPJ avec vis',code:'PJ262-W'},{opt:'GSW sans vis',code:'80309-SW'}]},
+    {code:'3GPJ/3GSW',desc:'Plaque 3 gangs',unite:'un',variantes:[{opt:'GPJ avec vis',code:'PJ263-W'},{opt:'GSW sans vis',code:'80311-SW'}]},
+    {code:'4GPJ/4GSW',desc:'Plaque 4 gangs',unite:'un',variantes:[{opt:'GPJ avec vis',code:'PJ264-W'},{opt:'GSW sans vis',code:'80312-SW'}]},
     {code:'SÉCHEUSE 30A',desc:'Prise sécheuse 30A',unite:'un'},
     {code:'POÊLE 50A',desc:'Prise poêle 50A',unite:'un'},
     {code:'DVCL-153PH-WHC',desc:'Variateur Décora 150W',unite:'un',variantes:[{opt:'Lutron Diva DVCL-153PH-WHC'},{opt:'Leviton (code à confirmer)',code:'LEVITON DIM'}]},
@@ -886,6 +886,7 @@ const CATALOGUE={
     {code:'FS',desc:'Boîte FS',unite:'un',options:['1/2"','3/4"']},
     {code:'FSC',desc:'Boîte FSC',unite:'un',options:['1/2"','3/4"']},
     {code:'FD PVC',desc:'Boîte FD PVC',unite:'un',options:['1/2"','3/4"']},
+    {code:'OCT EXT',desc:'Boîte octogonale extérieure — code à confirmer',unite:'un',options:['1/2"','3/4"']},
     {code:'RCTC15 FILETÉ',desc:'Connecteur RCTC 15 fileté — code à confirmer',unite:'un'},
     {code:'RCTC15 COLLÉ',desc:'Connecteur RCTC 15 collé — code à confirmer',unite:'un'},
   ],
@@ -914,21 +915,22 @@ const CATALOGUE={
     {code:'QO CQO1',desc:'Panneau QO',unite:'un',options:['4cir','8cir',{opt:'24cir 125A',code:'QO CQO1-24-125'},{opt:'32cir 125A',code:'QO CQO1-32-125'},{opt:'32cir 200A',code:'QO CQO1-32-200'},{opt:'40cir 200A',code:'QO CQO1-40-200'},{opt:'60cir 200A',code:'QO CQO1-60-200'}]},
     {code:'CHOM',desc:'Panneau CHOM',unite:'un',options:['4cir','8cir',{opt:'24/48cir 125A',code:'CHOM 2448-125'},'32cir 125A',{opt:'42/84cir 200A',code:'CHOM 4284-200'}]},
     {code:'SIEQ',desc:'Panneau SIEQ',unite:'un',options:['4cir','8cir',{opt:'40cir 200A',code:'SIEQ 40-200'},{opt:'60cir 200A',code:'SIEQ 60-200'}]},
+    {code:'PAN GEN',desc:'Panneau génératrice (24 circuits — à confirmer)',unite:'un',options:['30A','60A']},
     {code:'PAN EXT',desc:'Panneau extérieur',unite:'un',options:['4cir','8cir','12cir','24cir','32cir','40cir']},
   ],
   'Disjoncteurs':[
     // v280 : disjoncteurs normaux par marque, puis un bloc « Disjoncteurs twin » plus bas dans la même marque. Codes seulement quand confirmés.
-    {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:[{opt:'1P-15A',code:'QO115'},{opt:'1P-20A',code:'QO120'},{opt:'1P-30A',code:'QO130'},{opt:'2P-15A',code:'QO215'},{opt:'2P-20A',code:'QO220'},{opt:'2P-30A',code:'QO230'},{opt:'2P-40A',code:'QO240'},{opt:'2P-50A',code:'QO250'},{opt:'2P-60A',code:'QO260'},{opt:'2P-100A',code:'QO2100'}]},
+    {code:'QO DISJ',desc:'Disjoncteur QO',unite:'un',options:[{opt:'1P-15A',code:'QO115'},{opt:'1P-20A',code:'QO120'},{opt:'1P-30A',code:'QO130'},{opt:'2P-15A',code:'QO215'},{opt:'2P-20A',code:'QO220'},{opt:'2P-30A',code:'QO230'},{opt:'2P-40A',code:'QO240'},{opt:'2P-50A',code:'QO250'},{opt:'2P-60A',code:'QO260'},{opt:'2P-80A',code:'QO280'},{opt:'2P-100A',code:'QO2100'}]},
     {code:'QO TWIN',desc:'Disjoncteur twin QO',sousGrp:'Disjoncteur QO',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'QO1515'},{opt:'Twin 15-20',code:'QO1520'},{opt:'Twin 20-20',code:'QO2020'},{opt:'Twin 20-30',code:'QO2030'},'Quad 15-40-40-15']},
-    {code:'CHOM DISJ',desc:'Disjoncteur CHOM',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
-    {code:'CHOM TWIN',desc:'Disjoncteur twin CHOM',sousGrp:'Disjoncteur CHOM',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'CHT1515'},'Twin 15-20',{opt:'Twin 20-20',code:'CHT2020'},'Twin 20-30','Quad 15-40-40-15']},
-    {code:'SIEQ DISJ',desc:'Disjoncteur SIEQ',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
-    {code:'SIEQ TWIN',desc:'Disjoncteur twin SIEQ',sousGrp:'Disjoncteur SIEQ',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'Q1515NC'},{opt:'Twin 15-20',code:'Q1520NC'},{opt:'Twin 20-20',code:'Q2020NC'},'Twin 20-30','Quad 15-40-40-15']},
-    {code:'BR DISJ',desc:'Disjoncteur BR',unite:'un',options:[{opt:'1P-15A',code:'BR115'},{opt:'1P-20A',code:'BR120'},{opt:'1P-30A',code:'BR130'},{opt:'2P-15A',code:'BR215'},{opt:'2P-20A',code:'BR220'},{opt:'2P-30A',code:'BR230'},{opt:'2P-40A',code:'BR240'},{opt:'2P-50A',code:'BR250'},{opt:'2P-60A',code:'BR260'},{opt:'2P-100A',code:'BR2100'}]},
+    {code:'CHOM DISJ',desc:'Disjoncteur CHOM',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-80A','2P-100A']},
+    {code:'CHOM TWIN',desc:'Disjoncteur twin CHOM',sousGrp:'Disjoncteur CHOM',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'CHT1515'},'Twin 15-20',{opt:'Twin 20-20',code:'CHT2020'},'Quad 15-15-15-15','Quad 15-20-20-15','Quad 15-30-30-15']},
+    {code:'SIEQ DISJ',desc:'Disjoncteur SIEQ',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-80A','2P-100A']},
+    {code:'SIEQ TWIN',desc:'Disjoncteur twin SIEQ',sousGrp:'Disjoncteur SIEQ',bloc:'Disjoncteurs twin',unite:'un',options:[{opt:'Twin 15-15',code:'Q1515NC'},{opt:'Twin 15-20',code:'Q1520NC'},{opt:'Twin 20-20',code:'Q2020NC'},'Quad 15-15-15-15','Quad 15-20-20-15','Quad 15-30-30-15']},
+    {code:'BR DISJ',desc:'Disjoncteur BR',unite:'un',options:[{opt:'1P-15A',code:'BR115'},{opt:'1P-20A',code:'BR120'},{opt:'1P-30A',code:'BR130'},{opt:'2P-15A',code:'BR215'},{opt:'2P-20A',code:'BR220'},{opt:'2P-30A',code:'BR230'},{opt:'2P-40A',code:'BR240'},{opt:'2P-50A',code:'BR250'},{opt:'2P-60A',code:'BR260'},{opt:'2P-80A',code:'BR280'},{opt:'2P-100A',code:'BR2100'}]},
     {code:'BR TWIN',desc:'Disjoncteur twin BR',sousGrp:'Disjoncteur BR',bloc:'Disjoncteurs twin',unite:'un',options:['Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
-    {code:'QBH DISJ',desc:'Disjoncteur QBH',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'QBH DISJ',desc:'Disjoncteur QBH',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-80A','2P-100A']},
     {code:'QBH TWIN',desc:'Disjoncteur twin QBH',sousGrp:'Disjoncteur QBH',bloc:'Disjoncteurs twin',unite:'un',options:['Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
-    {code:'STABLOK DISJ',desc:'Disjoncteur Stab-Lok',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-100A']},
+    {code:'STABLOK DISJ',desc:'Disjoncteur Stab-Lok',unite:'un',options:['1P-15A','1P-20A','1P-30A','2P-15A','2P-20A','2P-30A','2P-40A','2P-50A','2P-60A','2P-80A','2P-100A']},
     {code:'STABLOK TWIN',desc:'Disjoncteur twin Stab-Lok',sousGrp:'Disjoncteur Stab-Lok',bloc:'Disjoncteurs twin',unite:'un',options:['Twin 15-15','Twin 15-20','Twin 20-20','Twin 20-30','Quad 15-40-40-15']},
   ],
   'Chauffage':[
