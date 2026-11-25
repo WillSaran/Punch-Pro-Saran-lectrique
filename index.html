@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v255';
+const APP_VERSION='v256';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -8839,7 +8839,7 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
   if(mode===null)return(
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:9998,overflowY:'auto',padding:'0.8rem',display:'flex',alignItems:'center',justifyContent:'center'}}>
       <div style={{background:'var(--bg2, #161b22)',borderRadius:18,maxWidth:420,width:'100%',padding:'1.2rem'}}>
-        <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.05rem',marginBottom:'0.2rem'}}>Facturer{initial?' — '+initial.projet:''}</div>
+        <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1.05rem',marginBottom:'0.2rem'}}>Faire l'AP{initial?' — '+initial.projet:''}</div>
         <div style={{fontSize:12,color:'var(--muted)',marginBottom:'1rem'}}>Comment veux-tu déposer l'appel de service ?</div>
         <div onClick={()=>{onClose(false);if(onPhotoPad)onPhotoPad();}} style={{padding:'1rem',borderRadius:14,background:'rgba(255,255,255,0.06)',marginBottom:'0.6rem',cursor:'pointer'}}>
           <div style={{fontWeight:700,fontSize:15}}>📷 Photo de mon pad</div><div style={{fontSize:12,color:'var(--muted)',marginTop:2}}>J'ai rempli le carnet papier — je le prends en photo.</div></div>
@@ -8853,7 +8853,7 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:9998,overflowY:'auto',padding:'0.8rem'}}>
       <div style={{background:'var(--bg2, #161b22)',border:'1px solid var(--border)',borderRadius:14,maxWidth:560,margin:'0 auto',padding:'1rem'}}>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',flex:1}}>✍️ Facturer — créer l'AP</div>
+          <div style={{fontFamily:'var(--font-head)',fontWeight:800,fontSize:'1rem',flex:1}}>✍️ Faire l'AP</div>
           <button className="btn-s" onClick={()=>onClose(false)}>✕</button>
         </div>
         <div style={lbl}>Job</div>
@@ -9000,7 +9000,7 @@ function FacturesManquantesView({emps,jobsForLookup,meEmp,sid,calendarIds,notify
           {o?<span style={{display:'inline-block',fontSize:10,fontWeight:700,padding:'1px 7px',borderRadius:10,background:o.couleur,color:'#fff'}}>{o.nom}</span>
             :<span style={{fontSize:10,color:'var(--muted)',fontStyle:'italic'}}>Non attitré</span>}
         </div>
-        {meEmp&&notify&&<button className="btn-s" style={{marginTop:5,fontSize:11,fontWeight:700,borderColor:'var(--accent)',color:'var(--accent)'}} onClick={()=>setApOuvert({initial:t})}>✍️ Facturer — créer l'AP</button>}
+        {meEmp&&notify&&<button className="btn-s" style={{marginTop:5,fontSize:11,fontWeight:700,borderColor:'var(--accent)',color:'var(--accent)'}} onClick={()=>setApOuvert({initial:t})}>✍️ Faire l'AP</button>}
       </>
     );
   }
@@ -9078,10 +9078,10 @@ function FacturesManquantesView({emps,jobsForLookup,meEmp,sid,calendarIds,notify
               <div style={{fontWeight:600,fontSize:14,lineHeight:1.25}}>{t.projet}</div>
               <div style={{fontSize:11,color:'var(--muted)',marginTop:2}}>{t.feuille} · {t.date}{t.passages>1?' · '+t.passages+' passages':''}</div>
             </div>
-            <button className="btn-s" style={{fontSize:12,fontWeight:700,color:'var(--accent)',flexShrink:0}} onClick={()=>setApOuvert({initial:t})}>✍️ Facturer</button>
+            <button className="btn-s" style={{fontSize:12,fontWeight:700,color:'var(--accent)',flexShrink:0}} onClick={()=>setApOuvert({initial:t})}>✍️ Faire l'AP</button>
           </div>
         ))}
-        <button className="btn-p" style={{marginTop:'1rem'}} onClick={()=>setApOuvert({initial:null})}>✍️ Facturer mon compte</button>
+        <button className="btn-p" style={{marginTop:'1rem'}} onClick={()=>setApOuvert({initial:null})}>✍️ Faire un autre AP</button>
         {apOuvert&&<FacturerAP emp={meEmp} options={manquantes} initial={apOuvert.initial} jobsForLookup={jobsForLookup} sid={sid} calendarIds={calendarIds} notify={notify} onPhotoPad={onPhotoPad}
           onClose={fait=>{setApOuvert(null);if(fait)load();}}/>}
       </div>
@@ -9105,7 +9105,7 @@ function FacturesManquantesView({emps,jobsForLookup,meEmp,sid,calendarIds,notify
           </div>
         )}
         <div style={{flex:1}}></div>
-        {meEmp&&notify&&<button className="btn-p" style={{marginTop:0,fontSize:12,padding:'0.4rem 0.8rem'}} onClick={()=>setApOuvert({initial:null})}>✍️ Facturer mon compte</button>}
+        {meEmp&&notify&&<button className="btn-p" style={{marginTop:0,fontSize:12,padding:'0.4rem 0.8rem'}} onClick={()=>setApOuvert({initial:null})}>✍️ Faire un autre AP</button>}
         <button className="btn-s" style={{fontSize:11}} onClick={load}>↻ Actualiser</button>
       </div>
       {loadingFactures?(
