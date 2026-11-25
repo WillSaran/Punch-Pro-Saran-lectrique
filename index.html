@@ -791,7 +791,7 @@ button{font-family:var(--font-body)}
 // v235 (2026-10-30): Le blocage se signale maintenant dans « Confirmer une job » (section
 //   « ⚠️ Signaler un blocage », envoyé avec la confirmation). Boutons retirés des cartes.
 //   Seul le bureau règle un blocage (dans le CRM).
-const APP_VERSION='v254';
+const APP_VERSION='v255';
 const APP_VERSION_DISPLAY=(()=>{const raw=APP_VERSION.replace(/^v/,'');return 'v'+raw[0]+'.'+raw.slice(1);})();
 
 const { useState, useEffect, useRef, useMemo } = React;
@@ -7589,6 +7589,7 @@ function JobSummary({jobs,allJobs,emp,notify,calendarIds,sid,allEmps,onJobsRefre
 
 function WelcomeScreen({emps,sid,calendarIds,notify,onRefresh,setNavBack,setMenuAction,folders,refreshKey,cfg}){
   const now=useClock();
+  useEffect(()=>{chargerCatalogueCrm();},[]);
   const [step,setStep]=useState('emps');
   const isSubmittingRef=useRef(false); // empêche double-soumission (double-clic / réseau lent)
   // steps: emps > mode > job > punch-in > pin > result
@@ -8649,6 +8650,75 @@ function chargerJsPdf(){
   return _jspdfPromise;
 }
 const _pdfTxt=t=>String(t||'').replace(/[’‘]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/[^\x09\x0A\x0D\x20-\x7E -ÿ]/g,'');
+
+// ── CATALOGUE CRM → PunchPro (v255) : onglet « Catalogue CRM » de STOCK PUNCH PRO (publié par le CRM, SANS prix) ──
+const MAP_CAT_CRM={'FIL':'Fils','BOÎTES':'Boîtes','DÉCORA':'Décora','CONDUIT':'Conduit','PANNEAUX':'Panneaux','DISJONCTEURS':'Disjoncteurs','CHAUFFAGE':'Chauffage','BORNES':'Bornes VE','DIVERS':'Divers'};
+let _catCrmEtat=0; // 0 = pas essayé, 1 = en cours, 2 = fait
+const _normCode=c=>String(c||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+function fusionnerCatalogueCrm(rows){
+  const vus=new Set();
+  Object.values(CATALOGUE).forEach(L=>L.forEach(i=>vus.add(_normCode(i.code))));
+  let n=0;
+  rows.forEach(r=>{
+    const code=String(r[0]||'').trim(),desc=String(r[1]||'').trim(),catCrm=String(r[2]||'').trim();
+    if(!code||!desc||vus.has(_normCode(code)))return;
+    const cat=MAP_CAT_CRM[catCrm]||(catCrm?catCrm.charAt(0)+catCrm.slice(1).toLowerCase():'Divers');
+    (CATALOGUE[cat]=CATALOGUE[cat]||[]).push({code,desc,unite:String(r[4]||'un').trim()||'un',crm:true});
+    vus.add(_normCode(code));n++;
+  });
+  return n;
+}
+async function chargerCatalogueCrm(){
+  if(_catCrmEtat)return;_catCrmEtat=1;
+  let rows=null;
+  try{
+    const r=await gapi.client.sheets.spreadsheets.values.get({spreadsheetId:STOCK_SHEET_ID,range:"'Catalogue CRM'!A2:F"});
+    rows=r.result.values||[];
+    try{localStorage.setItem('catalogueCrm',JSON.stringify(rows));}catch(e){}
+  }catch(e){
+    try{rows=JSON.parse(localStorage.getItem('catalogueCrm')||'null');}catch(e2){}
+  }
+  if(rows&&rows.length)fusionnerCatalogueCrm(rows);
+  _catCrmEtat=rows?2:0; // si échec total, on réessaiera plus tard
+}
+function aplatirCatalogue(){
+  const out=[];
+  Object.entries(CATALOGUE).forEach(([cat,L])=>L.forEach(i=>{
+    const opts=i.options||i.sizes;
+    if(opts)opts.forEach(o=>out.push({cat,code:i.code,desc:i.desc+' ('+o+')',unite:i.unite||'un'}));
+    else out.push({cat,code:i.code,desc:i.desc,unite:i.unite||'un'});
+  }));
+  return out;
+}
+function MaterielPicker({lignes,onChange}){
+  const [q,setQ]=useState('');
+  const tout=useMemo(()=>aplatirCatalogue(),[lignes&&lignes.length,_catCrmEtat]);
+  const mots=q.toLowerCase().split(/\s+/).filter(Boolean);
+  const res=mots.length?tout.filter(i=>{const t=(i.code+' '+i.desc+' '+i.cat).toLowerCase();return mots.every(m=>t.includes(m));}).slice(0,12):[];
+  const ajouter=i=>{const k=i.code+'|'+i.desc;const ex=lignes.findIndex(l=>l.k===k);
+    onChange(ex>=0?lignes.map((l,x)=>x===ex?{...l,qte:l.qte+1}:l):[...lignes,{k,code:i.code,desc:i.desc,unite:i.unite,qte:1}]);setQ('');};
+  const chg=(x,d)=>onChange(lignes.map((l,i)=>i===x?{...l,qte:Math.max(0,l.qte+d)}:l).filter(l=>l.qte>0));
+  const setQte=(x,v)=>onChange(lignes.map((l,i)=>i===x?{...l,qte:Math.max(0,parseFloat(String(v).replace(',','.'))||0)}:l));
+  return <div>
+    <input value={q} onChange={e=>setQ(e.target.value)} placeholder="🔎 Chercher dans le catalogue (ex. boîte 2 gang, NMD 14, 15A…)" style={{width:'100%',padding:'0.6rem',borderRadius:8,border:'1px solid var(--border)',background:'var(--bg)',color:'var(--text)',fontSize:14,boxSizing:'border-box'}}/>
+    {res.length>0&&<div style={{border:'1px solid var(--border)',borderRadius:8,marginTop:4,maxHeight:220,overflowY:'auto'}}>
+      {res.map((i,x)=><div key={x} onClick={()=>ajouter(i)} style={{padding:'0.5rem 0.7rem',fontSize:13,cursor:'pointer',borderTop:x?'1px solid var(--border)':'none'}}>
+        <b>{i.code}</b> — {i.desc} <span style={{color:'var(--muted)',fontSize:11}}>· {i.cat} · {i.unite}</span></div>)}
+    </div>}
+    {mots.length>0&&res.length===0&&<div style={{fontSize:12,color:'var(--muted)',marginTop:4}}>Rien trouvé : écris-le dans « Autre matériel » plus bas.</div>}
+    {lignes.length>0&&<div style={{marginTop:6}}>
+      {lignes.map((l,x)=><div key={l.k} style={{display:'flex',alignItems:'center',gap:6,padding:'0.3rem 0',fontSize:13}}>
+        <div style={{flex:1,minWidth:0}}><b>{l.code}</b> <span style={{color:'var(--muted)'}}>{l.desc}</span></div>
+        <button type="button" onClick={()=>chg(x,-1)} style={{width:28,height:28,borderRadius:6,border:'1px solid var(--border)',background:'none',color:'var(--text)'}}>−</button>
+        <input value={l.qte} onChange={e=>setQte(x,e.target.value)} inputMode="decimal" style={{width:46,textAlign:'center',padding:'0.25rem',borderRadius:6,border:'1px solid var(--border)',background:'var(--bg)',color:'var(--text)'}}/>
+        <button type="button" onClick={()=>chg(x,1)} style={{width:28,height:28,borderRadius:6,border:'1px solid var(--border)',background:'none',color:'var(--text)'}}>+</button>
+        <span style={{fontSize:11,color:'var(--muted)',width:22}}>{l.unite}</span>
+      </div>)}
+    </div>}
+  </div>;
+}
+const texteMateriel=(lignes,libre)=>[...lignes.map(l=>l.qte+' '+l.unite+' × '+l.code+' — '+l.desc),libre&&libre.trim()].filter(Boolean).join(', ');
+
 async function fabriquerPdfAp(d){
   const {jsPDF}=await chargerJsPdf();
   const doc=new jsPDF({unit:'mm',format:'letter'});
@@ -8704,7 +8774,10 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
   const [ou,setOu]=useState('');
   const [quoi,setQuoi]=useState('');
   const [reste,setReste]=useState('');
-  const [materiel,setMateriel]=useState('');
+  const [materiel,setMateriel]=useState('');   // texte libre « autre matériel »
+  const [lignesMat,setLignesMat]=useState([]);   // lignes du catalogue
+  const [, setCatTick]=useState(0);
+  useEffect(()=>{chargerCatalogueCrm().then(()=>setCatTick(t=>t+1));},[]);
   const [heures,setHeures]=useState('');
   const [photos,setPhotos]=useState([]);   // 'url|nom'
   const [envoiPhoto,setEnvoiPhoto]=useState(0);
@@ -8743,14 +8816,14 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
     try{
       const numFinal=await prochainNumeroAP(sid,emp);
       const data={numero:numFinal,job:projetNom,adresse,client:sel?sel.feuille:'',dates:sel?sel.date:localDateStr(),type,employe:emp.nom,heures:heures.trim(),
-        ou:ou.trim(),quoi:quoi.trim(),reste:reste.trim(),materiel:materiel.trim(),dateRemplie:localDateStr()};
+        ou:ou.trim(),quoi:quoi.trim(),reste:reste.trim(),materiel:texteMateriel(lignesMat,materiel),dateRemplie:localDateStr()};
       const blob=await fabriquerPdfAp(data);
       const nomPdf='AP_'+numFinal+'_'+clean(projetNom)+'.pdf';
       const r=await uploadToDrive(new File([blob],nomPdf,{type:'application/pdf'}),emp.nom,nomPdf.replace(/\.pdf$/,''),PAD_SERVICE_ID,{rapide:true});
       if(!r.url||!r.id)throw new Error(r.error||'PDF non déposé dans le Drive (permissions?)');
       const fichiers=[r.url+'|'+nomPdf,...photos];
       if(calendarIds&&projetNom){try{const ref=await findCalendarEventByTitle(calendarIds,projetNom);if(ref)await attachFileToCalendarEvent(ref.calendarId,ref.eventId,r.id,nomPdf,'application/pdf');}catch(e){}}
-      const resume=[ou&&'OÙ : '+ou.trim(),'TRAVAUX : '+quoi.trim(),reste&&'RENDU / RESTE : '+reste.trim(),materiel&&'MATÉRIEL : '+materiel.trim()].filter(Boolean).join('\n');
+      const resume=[ou&&'OÙ : '+ou.trim(),'TRAVAUX : '+quoi.trim(),reste&&'RENDU / RESTE : '+reste.trim(),texteMateriel(lignesMat,materiel)&&'MATÉRIEL : '+texteMateriel(lignesMat,materiel)].filter(Boolean).join('\n');
       const jobObj={id:(jobCal&&jobCal.id)||(sel&&sel.eventId)||'',title:projetNom,location:adresse,start:jobCal&&jobCal.start};
       if(sid){try{await enregistrerDepot(sid,emp,jobObj,{type:'AP',numero:numFinal,note:'[AP numérique] ('+g.lib+') '+resume,fichiers,heures:parseFloat(heures)||0});}catch(e){console.error(e);notify('Attention : AP non gardé dans la feuille (PDF et courriel partent quand même)','warn');}}
       const token=gapi.client.getToken()&&gapi.client.getToken().access_token;
@@ -8806,7 +8879,9 @@ function FacturerAP({emp,options,initial,jobsForLookup,sid,calendarIds,notify,on
         <div style={lbl}>Où c'est rendu / reste à faire</div>
         <textarea value={reste} onChange={e=>setReste(e.target.value)} rows={2} placeholder={g.reste} style={{...champ,resize:'vertical'}}/>
         <div style={lbl}>Matériel utilisé</div>
-        <textarea value={materiel} onChange={e=>setMateriel(e.target.value)} rows={2} placeholder="ex. 3 boîtes simples, 30 pi NMD 14/2, 2 disjoncteurs 15 A" style={{...champ,resize:'vertical'}}/>
+        <MaterielPicker lignes={lignesMat} onChange={setLignesMat}/>
+        <div style={{...lbl,marginTop:'0.6rem'}}>Autre matériel (si pas dans le catalogue)</div>
+        <textarea value={materiel} onChange={e=>setMateriel(e.target.value)} rows={2} placeholder="ex. support spécial, pièce commandée" style={{...champ,resize:'vertical'}}/>
         <div style={lbl}>Heures (facultatif)</div>
         <input value={heures} onChange={e=>setHeures(e.target.value)} inputMode="decimal" placeholder="ex. 6.5" style={champ}/>
         <div style={lbl}>Photos (facultatif)</div>
